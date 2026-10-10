@@ -3,6 +3,7 @@ name: Build and Release Debug APK
 on:
   push:
     branches:
+      - backup-clean
       - main
   workflow_dispatch:
 
@@ -32,7 +33,6 @@ jobs:
           echo "=== JAVA_HOME ==="
           echo "JAVA_HOME=$JAVA_HOME"
           
-          # Detect active Java major version
           RAW_VERSION=$(java -version 2>&1 | awk -F '"' '/version/ {print $2}')
           echo "Raw Java version: $RAW_VERSION"
           if [ -z "$RAW_VERSION" ]; then
@@ -120,7 +120,7 @@ jobs:
             exit 1
           fi
           
-          echo "Verified APK successfully: $EXPECTED_APK ($(stat -c%s "$EXPECTED_APK" 2>/dev/null || wc -c < "$EXPECTED_APK") bytes)"
+          echo "Verified APK successfully: $EXPECTED_APK ($(stat -c%s "$EXPECTED_APK" 2>/dev/null \vert{}\vert{} wc -c < "$EXPECTED_APK") bytes)"
 
       - name: Upload debug APK artifact
         uses: actions/upload-artifact@v4
@@ -136,7 +136,7 @@ jobs:
           mkdir -p "$RUNNER_TMP_DIR"
           
           RAW_REPO_NAME="${GITHUB_REPOSITORY#*/}"
-          CLEAN_REPO_NAME=$(echo "$RAW_REPO_NAME" | tr -cs 'a-zA-Z0-9_-' '-' | tr '[:upper:]' '[:lower:]' | sed 's/^-//;s/-$//')
+          CLEAN_REPO_NAME=$(echo "$RAW_REPO_NAME" \vert{} tr -cs 'a-zA-Z0-9_-' '-' \vert{} tr '[:upper:]' '[:lower:]' \vert{} sed 's/^-//;s/-$//')
           if [ -z "$CLEAN_REPO_NAME" ]; then
             CLEAN_REPO_NAME="android-app"
           fi
@@ -248,3 +248,4 @@ jobs:
               echo "You can still download the APK right now from the **Artifacts** section of this workflow run: **\`app-debug-apk\`**."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+          
