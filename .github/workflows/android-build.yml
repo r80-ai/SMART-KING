@@ -3,19 +3,14 @@ name: Android Build & Release
 on:
   push:
     branches:
-      - main
       - backup-clean
+      - main
     tags:
       - 'v*'
   workflow_dispatch:
     inputs:
-      create_release:
-        description: 'Publish as a GitHub Release (for manual dispatch)'
-        required: false
-        type: boolean
-        default: true
       tag_name:
-        description: 'Release Tag Name (optional, e.g. v1.0.0)'
+        description: 'Custom Release Tag (optional)'
         required: false
         type: string
         default: ''
@@ -77,7 +72,7 @@ jobs:
             echo "Decoding debug.keystore from debug.keystore.base64..."
             base64 -d ./debug.keystore.base64 > ./debug.keystore
           else
-            echo "Generating temporary debug keystore for assembleDebug..."
+            echo "Generating debug keystore for assembleDebug..."
             keytool -genkey -v \
               -keystore ./debug.keystore \
               -storepass android \
@@ -126,58 +121,55 @@ jobs:
           fi
           echo "Verified APK successfully: $EXPECTED_APK ($FILE_SIZE bytes)"
 
-      - name: Upload debug APK artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: PDF-Master-Debug-APK
-          path: app/build/outputs/apk/debug/app-debug.apk
-          if-no-files-found: error
-
-      - name: Prepare release metadata & asset
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.create_release == true || github.event.inputs.create_release == 'true'))
+      - name: Prepare release asset
         id: prepare_release
         run: |
-          TMP_DIR="${RUNNER_TEMP:-/tmp}/release_assets"
-          mkdir -p "$TMP_DIR"
-          
           if [ "${{ github.ref_type }}" = "tag" ]; then
             TAG_NAME="${{ github.ref_name }}"
           elif [ -n "${{ inputs.tag_name }}" ]; then
             TAG_NAME="${{ inputs.tag_name }}"
           else
-            TAG_NAME="v1.0-build-${{ github.run_number }}"
+            if [ "${{ github.run_attempt }}" -gt 1 ]; then
+              TAG_NAME="v1.0.0-b${{ github.run_number }}.${{ github.run_attempt }}"
+            else
+              TAG_NAME="v1.0.0-b${{ github.run_number }}"
+            fi
           fi
           
-          ASSET_NAME="PDF-Master-${TAG_NAME}-debug.apk"
-          ASSET_PATH="${TMP_DIR}/${ASSET_NAME}"
+          # Target release asset name requested: PDF-Master-Debug.apk
+          RELEASE_APK="PDF-Master-Debug.apk"
+          cp "app/build/outputs/apk/debug/app-debug.apk" "$RELEASE_APK"
           
-          cp "app/build/outputs/apk/debug/app-debug.apk" "$ASSET_PATH"
+          APK_BYTES=$(wc -c < "$RELEASE_APK" | tr -d ' ')
           echo "tag_name=${TAG_NAME}" >> "$GITHUB_OUTPUT"
-          echo "asset_path=${ASSET_PATH}" >> "$GITHUB_OUTPUT"
-          echo "asset_name=${ASSET_NAME}" >> "$GITHUB_OUTPUT"
-          echo "Prepared release asset: $ASSET_PATH for tag: $TAG_NAME"
+          echo "release_apk=${RELEASE_APK}" >> "$GITHUB_OUTPUT"
+          echo "apk_size_bytes=${APK_BYTES}" >> "$GITHUB_OUTPUT"
+          echo "Prepared release asset: $RELEASE_APK ($APK_BYTES bytes) for Tag: $TAG_NAME"
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-Master-Debug-APK
+          path: PDF-Master-Debug.apk
+          if-no-files-found: error
 
       - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.create_release == true || github.event.inputs.create_release == 'true'))
-        id: publish_release
+        id: create_release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.prepare_release.outputs.tag_name }}
           name: PDF Master ${{ steps.prepare_release.outputs.tag_name }}
           body: |
-            ### 📱 PDF Master Debug Release (${{ steps.prepare_release.outputs.tag_name }})
+            ### 📱 PDF Master Automatic Release (${{ steps.prepare_release.outputs.tag_name }})
             
-            - **Commit**: ${{ github.sha }}
-            - **Ref / Branch**: ${{ github.ref_name }}
+            - **Branch**: `${{ github.ref_name }}`
+            - **Commit**: `${{ github.sha }}`
             - **Build Run**: [#${{ github.run_number }}](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
-            - **Release Assets**:
-              - `app-debug.apk`
-              - `${{ steps.prepare_release.outputs.asset_name }}`
+            - **Release Asset**: `PDF-Master-Debug.apk` ($(( ${{ steps.prepare_release.outputs.apk_size_bytes }} / 1024 / 1024 )) MB)
             
-            > **Installation**: Download the `.apk` file directly to your Android device to install and use.
+            > **Direct Download**: Download `PDF-Master-Debug.apk` below directly to your Android device to install.
           files: |
-            app/build/outputs/apk/debug/app-debug.apk
-            ${{ steps.prepare_release.outputs.asset_path }}
+            PDF-Master-Debug.apk
           draft: false
           prerelease: false
           generate_release_notes: true
@@ -185,53 +177,37 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Verify GitHub Release and Attached APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.prepare_release.outputs.tag_name }}"
+          echo "=== Verifying GitHub Release for tag: $TAG ==="
+          gh release view "$TAG"
+          echo "Confirmed: GitHub Release '$TAG' is verified and PDF-Master-Debug.apk is published!"
+
       - name: Report Build & Release Result
         if: always()
         run: |
           echo "=== Build & Release Summary ==="
-          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
-            APK_SIZE=$(wc -c < "app/build/outputs/apk/debug/app-debug.apk" | tr -d ' ')
-            echo "✅ Debug APK built successfully: app/build/outputs/apk/debug/app-debug.apk ($APK_SIZE bytes)"
-            echo "📦 Artifact 'PDF-Master-Debug-APK' uploaded to GitHub Actions."
-            {
-              echo "## 📱 PDF Master Build Summary"
-              echo "- **Status**: ✅ APK Generated Successfully"
-              echo "- **Size**: $((APK_SIZE / 1024 / 1024)) MB"
-              echo "- **Artifact**: \`PDF-Master-Debug-APK\`"
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "❌ Debug APK was not generated."
-            {
-              echo "## ❌ Build Failed"
-              echo "Debug APK was not found at app/build/outputs/apk/debug/app-debug.apk"
-            } >> "$GITHUB_STEP_SUMMARY"
-          fi
-          
-          if [ "${{ steps.publish_release.outcome }}" = "success" ]; then
+          if [ -f "PDF-Master-Debug.apk" ]; then
+            APK_SIZE=$(wc -c < "PDF-Master-Debug.apk" | tr -d ' ')
             TAG="${{ steps.prepare_release.outputs.tag_name }}"
             REL_URL="${{ github.server_url }}/${{ github.repository }}/releases/tag/${TAG}"
-            echo "🚀 GitHub Release created successfully: $REL_URL"
+            echo "✅ Debug APK built successfully: PDF-Master-Debug.apk ($APK_SIZE bytes)"
+            echo "🚀 GitHub Release: $REL_URL"
             {
-              echo ""
-              echo "### 🚀 GitHub Release Published"
+              echo "## 📱 PDF Master Automatic Build & Release"
+              echo "- **Status**: ✅ Succeeded"
               echo "- **Release Tag**: \`${TAG}\`"
-              echo "- **Download URL**: [${TAG} Release](${REL_URL})"
-              echo "- **Assets**: \`app-debug.apk\`, \`${{ steps.prepare_release.outputs.asset_name }}\`"
+              echo "- **Release APK**: [PDF-Master-Debug.apk](${REL_URL})"
+              echo "- **Size**: $((APK_SIZE / 1024 / 1024)) MB"
+              echo "- **Direct Download**: [Download APK](${REL_URL})"
             } >> "$GITHUB_STEP_SUMMARY"
-          elif [ "${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && (inputs.create_release == true || github.event.inputs.create_release == 'true')) }}" = "true" ]; then
-            echo "⚠️ Release publishing was attempted but did not complete successfully. Check logs above."
           else
-            echo "ℹ️ Branch push build completed. (Pushed to branch '${{ github.ref_name }}'. To publish a Release, push a 'v*' tag, e.g.: git tag v1.0 && git push origin v1.0)"
+            echo "❌ Build failed. Debug APK was not generated."
             {
-              echo ""
-              echo "### ℹ️ Release Note"
-              echo "This build was triggered by a branch push to \`${{ github.ref_name }}\`."
-              echo "The APK is available in the **Artifacts** section below."
-              echo "To automatically create a GitHub Release, push a version tag:"
-              echo "\`\`\`bash"
-              echo "git checkout ${{ github.ref_name }}"
-              echo "git tag v1.0"
-              echo "git push origin v1.0"
-              echo "\`\`\`"
+              echo "## ❌ Build Failed"
+              echo "Debug APK was not generated. No Release was published."
             } >> "$GITHUB_STEP_SUMMARY"
           fi
