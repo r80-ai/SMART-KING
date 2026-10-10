@@ -336,6 +336,18 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
                 onBack = { viewModel.closeModal() }
             )
         }
+        ActiveModal.DOC_ENHANCER -> {
+            com.example.ui.screens.DocEnhancerScreen(
+                viewModel = viewModel,
+                onBack = { viewModel.closeModal() }
+            )
+        }
+        ActiveModal.NAME_DATE_PHOTO -> {
+            com.example.ui.screens.NameDatePhotoScreen(
+                viewModel = viewModel,
+                onBack = { viewModel.closeModal() }
+            )
+        }
         ActiveModal.EDIT -> {
             com.example.ui.screens.EditPdfScreen(
                 initialFile = selectedFile,

@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.hisab.HisabHistoryManager
 import com.example.hisab.HisabSubScreen
+import com.example.ui.screens.PrintBillingScreen
+import com.example.ui.screens.QuickUpiQrScreen
 import com.example.ui.theme.CrimsonPrimary
 import com.example.ui.theme.ToolBlue
 import com.example.ui.theme.ToolGreen
@@ -47,6 +49,7 @@ import java.util.Locale
 @Composable
 fun HisabMainScreen(
     onBack: () -> Unit,
+    viewModel: com.example.ui.PdfMasterViewModel,
     modifier: Modifier = Modifier
 ) {
     var currentSubScreen by remember { mutableStateOf(HisabSubScreen.HOME) }
@@ -89,6 +92,8 @@ fun HisabMainScreen(
                                     HisabSubScreen.SHOP_HISAB -> "দোকান হিসাব"
                                     HisabSubScreen.AGE_CALCULATOR -> "বয়স ক্যালকুলেটর"
                                     HisabSubScreen.NORMAL_CALCULATOR -> "সাধারণ ক্যালকুলেটর"
+                                    HisabSubScreen.PRINT_BILLING -> "প্রিন্ট ও জেরক্স বিল"
+                                    HisabSubScreen.QUICK_UPI_QR -> "UPI QR বিলার"
                                 },
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
@@ -114,6 +119,8 @@ fun HisabMainScreen(
                                 HisabSubScreen.SHOP_HISAB -> "দাম, পরিমাণ, কেজি-গ্রাম, ছাড়, GST ও লাভ-ক্ষতি"
                                 HisabSubScreen.AGE_CALCULATOR -> "বয়স গণনা ও পরবর্তী জন্মদিন"
                                 HisabSubScreen.NORMAL_CALCULATOR -> "মৌলিক পাটিগণিত ও ফলাফল ইতিহাস"
+                                HisabSubScreen.PRINT_BILLING -> "দ্রুত ক্যাশ মেমো এবং পেমেন্ট QR জেনারেটর"
+                                HisabSubScreen.QUICK_UPI_QR -> "Bharat UPI পেমেন্ট রিসিভ করার জন্য QR"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -179,6 +186,8 @@ fun HisabMainScreen(
                         onOpenShopHisab = { currentSubScreen = HisabSubScreen.SHOP_HISAB },
                         onOpenAgeCalculator = { currentSubScreen = HisabSubScreen.AGE_CALCULATOR },
                         onOpenNormalCalculator = { currentSubScreen = HisabSubScreen.NORMAL_CALCULATOR },
+                        onOpenPrintBilling = { currentSubScreen = HisabSubScreen.PRINT_BILLING },
+                        onOpenQuickUpi = { currentSubScreen = HisabSubScreen.QUICK_UPI_QR },
                         onOpenHistory = { showHistoryDialog = true }
                     )
                 }
@@ -211,6 +220,18 @@ fun HisabMainScreen(
                     ) {
                         HisabNormalCalculatorSection(onSavedToHistory = { showToast(it) })
                     }
+                }
+                HisabSubScreen.PRINT_BILLING -> {
+                    PrintBillingScreen(
+                        onBack = { currentSubScreen = HisabSubScreen.HOME },
+                        viewModel = viewModel
+                    )
+                }
+                HisabSubScreen.QUICK_UPI_QR -> {
+                    QuickUpiQrScreen(
+                        onBack = { currentSubScreen = HisabSubScreen.HOME },
+                        viewModel = viewModel
+                    )
                 }
             }
         }
@@ -336,6 +357,8 @@ private fun HisabCalculatorHomeScreen(
     onOpenShopHisab: () -> Unit,
     onOpenAgeCalculator: () -> Unit,
     onOpenNormalCalculator: () -> Unit,
+    onOpenPrintBilling: () -> Unit,
+    onOpenQuickUpi: () -> Unit,
     onOpenHistory: () -> Unit
 ) {
     val historyList by HisabHistoryManager.history.collectAsState()
@@ -399,6 +422,38 @@ private fun HisabCalculatorHomeScreen(
         }
 
         // 3 LARGE MAIN CATEGORY CARDS
+        Text(
+            text = "সাইবার ক্যাফ ও ব্যবসা টুলস",
+            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
+        )
+
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            HisabCategoryBigCard(
+                categoryNumber = "৪",
+                titleEn = "Billing Memo",
+                titleBn = "জেরক্স ও প্রিন্ট বিল",
+                description = "দোকানের ক্যাশ মেমো তৈরি এবং পেমেন্ট QR জেনারেটর",
+                icon = Icons.Default.ReceiptLong,
+                accentColor = ToolTeal,
+                testTag = "card_nav_print_bill",
+                onClick = onOpenPrintBilling,
+                modifier = Modifier.weight(1f)
+            )
+            HisabCategoryBigCard(
+                categoryNumber = "৫",
+                titleEn = "Quick QR",
+                titleBn = "দ্রুত পেমেন্ট QR",
+                description = "টাকার পরিমাণ লিখে সরাসরি পেমেন্ট QR দেখান",
+                icon = Icons.Default.QrCode,
+                accentColor = ToolPurple,
+                testTag = "card_nav_quick_qr",
+                onClick = onOpenQuickUpi,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
         Text(
             text = "ক্যালকুলেটর বিভাগ",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -543,10 +598,11 @@ private fun HisabCategoryBigCard(
     icon: ImageVector,
     accentColor: Color,
     testTag: String,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .clickable { onClick() }
             .testTag(testTag),

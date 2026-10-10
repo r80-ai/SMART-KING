@@ -34,7 +34,9 @@ enum class HisabSubScreen {
     HOME,
     SHOP_HISAB,
     AGE_CALCULATOR,
-    NORMAL_CALCULATOR
+    NORMAL_CALCULATOR,
+    PRINT_BILLING,
+    QUICK_UPI_QR
 }
 
 enum class HisabMainTab(val titleBn: String, val titleEn: String) {

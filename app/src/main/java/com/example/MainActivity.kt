@@ -155,11 +155,14 @@ fun PdfMasterApp(viewModel: PdfMasterViewModel) {
                     NavigationTab.HOME -> HomeScreen(viewModel = viewModel)
                     NavigationTab.TOOLS -> ToolsScreen(viewModel = viewModel)
                     NavigationTab.PHOTO_TOOLS -> PhotoToolsScreen(viewModel = viewModel)
-                    NavigationTab.HISAB_CALCULATOR -> HisabMainScreen(onBack = {
-                        if (!viewModel.popTab()) {
-                            viewModel.setTab(NavigationTab.HOME)
+                    NavigationTab.HISAB_CALCULATOR -> HisabMainScreen(
+                        viewModel = viewModel,
+                        onBack = {
+                            if (!viewModel.popTab()) {
+                                viewModel.setTab(NavigationTab.HOME)
+                            }
                         }
-                    })
+                    )
                     NavigationTab.BANGLA_CALENDAR -> BanglaCalendarScreen(
                         onBack = {
                             if (!viewModel.popTab()) {

@@ -67,7 +67,9 @@ enum class ActiveModal {
     DELETE_CONFIRM,
     PDF_TO_JPG,
     PVC_CARD_MAKER,
-    RESUME_BUILDER
+    RESUME_BUILDER,
+    DOC_ENHANCER,
+    NAME_DATE_PHOTO
 }
 
 data class ToolResultInfo(
