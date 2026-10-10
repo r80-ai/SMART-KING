@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - backup-clean
   workflow_dispatch:
 
 permissions:
@@ -103,7 +104,9 @@ jobs:
           echo "Confirmed ./debug.keystore exists and is valid."
 
       - name: Build debug APK
-        run: gradle :app:assembleDebug --stacktrace --no-daemon
+        run: |
+          gradle --version
+          gradle :app:assembleDebug --stacktrace --no-daemon
 
       - name: Verify APK
         shell: bash
@@ -181,8 +184,8 @@ jobs:
             exit 1
           fi
 
-          RELEASE_TAG="debug-v${GITHUB_RUN_NUMBER}"
-          RELEASE_TITLE="Debug APK Build #${GITHUB_RUN_NUMBER}"
+          RELEASE_TAG="debug-v${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT:-1}"
+          RELEASE_TITLE="Debug APK Build #${GITHUB_RUN_NUMBER} (${GITHUB_REF_NAME})"
 
           echo "Prepared release asset: $RELEASE_ASSET_PATH"
           echo "asset_path=$RELEASE_ASSET_PATH" >> "$GITHUB_OUTPUT"
@@ -219,6 +222,7 @@ jobs:
 
 - **Build Type**: Debug APK
 - **File**: \`${ASSET_NAME}\`
+- **Branch**: \`${GITHUB_REF_NAME}\`
 - **Run Number**: ${GITHUB_RUN_NUMBER}
 - **Run Attempt**: ${GITHUB_RUN_ATTEMPT}
 - **Commit**: ${GITHUB_SHA}
@@ -238,9 +242,11 @@ jobs:
             if ! UPLOAD_OUT=$(gh release upload "$RELEASE_TAG" "$ASSET_PATH" --clobber 2>&1); then
               echo "::error::Failed to upload APK asset to existing release '$RELEASE_TAG':"
               echo "$UPLOAD_OUT"
-              echo "error_message<<EOF" >> "$GITHUB_OUTPUT"
-              echo "$UPLOAD_OUT" >> "$GITHUB_OUTPUT"
-              echo "EOF" >> "$GITHUB_OUTPUT"
+              {
+                echo "error_message<<EOF_ERR"
+                echo "$UPLOAD_OUT"
+                echo "EOF_ERR"
+              } >> "$GITHUB_OUTPUT"
               exit 1
             fi
             echo "$UPLOAD_OUT"
@@ -262,9 +268,11 @@ jobs:
                 --latest 2>&1); then
                 echo "::error::Failed to create GitHub Release '$RELEASE_TAG':"
                 echo "$CREATE_OUT"
-                echo "error_message<<EOF" >> "$GITHUB_OUTPUT"
-                echo "$CREATE_OUT" >> "$GITHUB_OUTPUT"
-                echo "EOF" >> "$GITHUB_OUTPUT"
+                {
+                  echo "error_message<<EOF_ERR"
+                  echo "$CREATE_OUT"
+                  echo "EOF_ERR"
+                } >> "$GITHUB_OUTPUT"
                 exit 1
               fi
             fi
