@@ -71,6 +71,8 @@ fun PhotoToolsScreen(
     }
 
     val tools = listOf(
+        ToolDefinition("name_date_photo", "Name & Date on Photo", "ছবিতে নাম ও তারিখ", "Add candidate name & DOB/DOP on passport photo with auto-scaled bottom white strip", Icons.Default.Badge, CrimsonPrimary, ActiveModal.NAME_DATE_PHOTO),
+        ToolDefinition("doc_enhancer", "Doc Scanner & Auto-Brightness", "ডক স্ক্যানার ও ব্রাইটনেস", "Clean photocopy filter, remove yellow tint, whitening & contrast enhancement", Icons.Default.CameraAlt, ToolBlue, ActiveModal.DOC_ENHANCER),
         ToolDefinition("pvc_smart_card", "PVC Smart Card Maker & Printer", "Standard CR80 300 DPI", "e-Aadhaar, PAN, Voter, Ayushman, Auto-Crop, De-Skew & A4/4×6 Print Sheets", Icons.Default.Badge, CrimsonPrimary, ActiveModal.PVC_CARD_MAKER),
         ToolDefinition("split_camera", "Split Camera", "Live Dual-View Camera", "Interactive split screen comparison with real-time natural enhancement", Icons.Default.CameraAlt, CrimsonPrimary, ActiveModal.SPLIT_CAMERA),
         ToolDefinition("photo_editing", "Photo Editing", "Crop, Adjust, Markup & Pro Tools", "Crop, rotate, resize, brightness, blur, erase, perspective, text & drawing", Icons.Default.Edit, ToolOrange, ActiveModal.PHOTO_EDITING),

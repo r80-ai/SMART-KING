@@ -570,6 +570,8 @@ fun getToolById(id: String): ToolDefinition? {
         "extract_pages" -> ToolDefinition("extract_pages", "Extract Pages", "আলাদা করে নতুন PDF", "Select and export specific pages", Icons.Default.Description, Color(0xFF14B8A6), ActiveModal.EXTRACT_PAGES)
         "jpg_to_pdf" -> ToolDefinition("jpg_to_pdf", "JPG to PDF", "ছবি থেকে সরাসরি PDF তৈরি", "Convert JPG/PNG gallery images to PDF", Icons.Default.PictureAsPdf, CrimsonPrimary, ActiveModal.SCANNER)
         "doc_scanner" -> ToolDefinition("doc_scanner", "Scan Document", "ক্যামেরা দিয়ে ছবি তুলে PDF", "Capture multi-page paper documents", Icons.Default.CameraAlt, ToolBlue, ActiveModal.SCANNER)
+        "name_date_photo" -> ToolDefinition("name_date_photo", "Name & Date on Photo", "ছবিতে নাম ও তারিখ", "Add candidate name & DOB/DOP on photo", Icons.Default.Badge, CrimsonPrimary, ActiveModal.NAME_DATE_PHOTO)
+        "doc_enhancer" -> ToolDefinition("doc_enhancer", "Doc Scanner & Auto-Brightness", "ডক স্ক্যানার ও ব্রাইটনেস", "Clean photocopy & remove yellow tint", Icons.Default.CameraAlt, ToolBlue, ActiveModal.DOC_ENHANCER)
         else -> null
     }
 }

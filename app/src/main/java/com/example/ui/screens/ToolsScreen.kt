@@ -187,6 +187,7 @@ fun ToolsScreen(
                 icon = Icons.Default.Edit,
                 badgeColor = CrimsonPrimary,
                 tools = listOf(
+                    ToolDefinition("doc_enhancer", "Doc Scanner & Auto-Brightness", "ডক স্ক্যানার ও ব্রাইটনেস", "Clean photocopy, remove yellow tint & enhance text", Icons.Default.CameraAlt, ToolBlue, ActiveModal.DOC_ENHANCER),
                     ToolDefinition("jpg_to_pdf", "JPG to PDF", "ছবি থেকে PDF", "Convert JPG/PNG images to PDF", Icons.Default.PictureAsPdf, CrimsonPrimary, ActiveModal.SCANNER),
                     ToolDefinition("edit_pdf", "Edit PDF", "ডকুমেন্ট এডিট", "Full document editor with text and stamps", Icons.Default.Edit, ToolBlue, ActiveModal.EDIT),
                     ToolDefinition("crop_pdf", "Crop PDF", "মার্জিন কাটা", "Trim margins and adjust page dimensions", Icons.Default.Crop, ToolTeal, ActiveModal.CROP),

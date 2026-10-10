@@ -23,6 +23,10 @@ object PdfNavRoutes {
     const val ROUTE_PAGE_NUMBERS = "page_numbers"
     const val ROUTE_PDF_TO_JPG = "pdf_to_jpg"
     const val ROUTE_EDIT_PDF = "edit_pdf"
+    const val ROUTE_NAME_DATE_PHOTO = "name_date_photo"
+    const val ROUTE_DOC_ENHANCER = "doc_enhancer"
+    const val ROUTE_PRINT_BILLING = "print_billing"
+    const val ROUTE_QUICK_UPI_QR = "quick_upi_qr"
 }
 
 /**
@@ -56,5 +60,9 @@ fun routeToActiveModal(route: String): ActiveModal? = when (route) {
     PdfNavRoutes.ROUTE_PAGE_NUMBERS -> ActiveModal.PAGE_NUMBERS
     PdfNavRoutes.ROUTE_PDF_TO_JPG -> ActiveModal.PDF_TO_JPG
     PdfNavRoutes.ROUTE_EDIT_PDF -> ActiveModal.EDIT
+    PdfNavRoutes.ROUTE_NAME_DATE_PHOTO -> ActiveModal.NAME_DATE_PHOTO
+    PdfNavRoutes.ROUTE_DOC_ENHANCER -> ActiveModal.DOC_ENHANCER
+    PdfNavRoutes.ROUTE_PRINT_BILLING -> ActiveModal.PRINT_BILLING
+    PdfNavRoutes.ROUTE_QUICK_UPI_QR -> ActiveModal.QUICK_UPI_QR
     else -> null
 }

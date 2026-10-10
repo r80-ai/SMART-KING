@@ -67,7 +67,11 @@ enum class ActiveModal {
     DELETE_CONFIRM,
     PDF_TO_JPG,
     PVC_CARD_MAKER,
-    RESUME_BUILDER
+    RESUME_BUILDER,
+    NAME_DATE_PHOTO,
+    DOC_ENHANCER,
+    PRINT_BILLING,
+    QUICK_UPI_QR
 }
 
 data class ToolResultInfo(
@@ -353,6 +357,19 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun setSearchQuery(query: String) {
         _searchQuery.value = query
+    }
+
+    var quickUpiAmount: Double = 0.0
+    var quickUpiNote: String = ""
+
+    fun showNotification(msg: String, isSuccess: Boolean = true) {
+        _notification.value = UiNotification(msg, isSuccess)
+    }
+
+    fun openUpiQrWithAmount(amount: Double, note: String = "") {
+        quickUpiAmount = amount
+        quickUpiNote = note
+        openModal(ActiveModal.QUICK_UPI_QR)
     }
 
     fun pinTool(toolId: String) {

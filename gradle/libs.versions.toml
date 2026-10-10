@@ -45,6 +45,7 @@ bouncycastle = "1.78.1"
 mlkitTextRecognition = "16.0.1"
 documentfile = "1.0.1"
 pdfbox = "2.0.27.0"
+zxing = "3.5.3"
 
 
 [libraries]
@@ -107,6 +108,7 @@ bouncycastle-bcpkix = { group = "org.bouncycastle", name = "bcpkix-jdk18on", ver
 mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkitTextRecognition" }
 androidx-documentfile = { group = "androidx.documentfile", name = "documentfile", version.ref = "documentfile" }
 pdfbox-android = { group = "com.tom-roush", name = "pdfbox-android", version.ref = "pdfbox" }
+zxing-core = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 
 [plugins]

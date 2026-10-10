@@ -380,6 +380,35 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
                 )
             }
         }
+        ActiveModal.NAME_DATE_PHOTO -> {
+            com.example.ui.screens.NameDatePhotoScreen(
+                viewModel = viewModel,
+                onBack = { viewModel.closeModal() }
+            )
+        }
+        ActiveModal.DOC_ENHANCER -> {
+            com.example.ui.screens.DocEnhancerScreen(
+                viewModel = viewModel,
+                onBack = { viewModel.closeModal() }
+            )
+        }
+        ActiveModal.PRINT_BILLING -> {
+            com.example.hisab.ui.PrintBillingScreen(
+                onBack = { viewModel.closeModal() },
+                onOpenUpiBillerWithAmount = { amt, note ->
+                    viewModel.openUpiQrWithAmount(amt, note)
+                },
+                onShowSnackbar = { viewModel.showNotification(it) }
+            )
+        }
+        ActiveModal.QUICK_UPI_QR -> {
+            com.example.hisab.ui.QuickUpiQrScreen(
+                initialAmount = viewModel.quickUpiAmount,
+                initialNote = viewModel.quickUpiNote,
+                onBack = { viewModel.closeModal() },
+                onShowSnackbar = { viewModel.showNotification(it) }
+            )
+        }
         ActiveModal.DELETE_CONFIRM -> {
             selectedFile?.let { file ->
                 AlertDialog(

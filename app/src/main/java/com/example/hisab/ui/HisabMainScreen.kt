@@ -51,6 +51,8 @@ fun HisabMainScreen(
 ) {
     var currentSubScreen by remember { mutableStateOf(HisabSubScreen.HOME) }
     var showHistoryDialog by remember { mutableStateOf(false) }
+    var hisabUpiAmount by remember { mutableDoubleStateOf(0.0) }
+    var hisabUpiNote by remember { mutableStateOf("") }
 
     val historyList by HisabHistoryManager.history.collectAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -89,6 +91,8 @@ fun HisabMainScreen(
                                     HisabSubScreen.SHOP_HISAB -> "দোকান হিসাব"
                                     HisabSubScreen.AGE_CALCULATOR -> "বয়স ক্যালকুলেটর"
                                     HisabSubScreen.NORMAL_CALCULATOR -> "সাধারণ ক্যালকুলেটর"
+                                    HisabSubScreen.PRINT_BILLING -> "প্রিন্ট ও জেরক্স বিলিং"
+                                    HisabSubScreen.QUICK_UPI_QR -> "Quick UPI QR Biller"
                                 },
                                 style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurface
@@ -114,6 +118,8 @@ fun HisabMainScreen(
                                 HisabSubScreen.SHOP_HISAB -> "দাম, পরিমাণ, কেজি-গ্রাম, ছাড়, GST ও লাভ-ক্ষতি"
                                 HisabSubScreen.AGE_CALCULATOR -> "বয়স গণনা ও পরবর্তী জন্মদিন"
                                 HisabSubScreen.NORMAL_CALCULATOR -> "মৌলিক পাটিগণিত ও ফলাফল ইতিহাস"
+                                HisabSubScreen.PRINT_BILLING -> "জেরক্স, কালার প্রিন্ট ও ল্যামিনেশন ক্যাশ মেমো"
+                                HisabSubScreen.QUICK_UPI_QR -> "কাউন্টার স্ক্যানের জন্য Bharat UPI কিউআর কোড"
                             },
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -179,6 +185,8 @@ fun HisabMainScreen(
                         onOpenShopHisab = { currentSubScreen = HisabSubScreen.SHOP_HISAB },
                         onOpenAgeCalculator = { currentSubScreen = HisabSubScreen.AGE_CALCULATOR },
                         onOpenNormalCalculator = { currentSubScreen = HisabSubScreen.NORMAL_CALCULATOR },
+                        onOpenPrintBilling = { currentSubScreen = HisabSubScreen.PRINT_BILLING },
+                        onOpenUpiBiller = { currentSubScreen = HisabSubScreen.QUICK_UPI_QR },
                         onOpenHistory = { showHistoryDialog = true }
                     )
                 }
@@ -211,6 +219,25 @@ fun HisabMainScreen(
                     ) {
                         HisabNormalCalculatorSection(onSavedToHistory = { showToast(it) })
                     }
+                }
+                HisabSubScreen.PRINT_BILLING -> {
+                    PrintBillingScreen(
+                        onBack = { currentSubScreen = HisabSubScreen.HOME },
+                        onOpenUpiBillerWithAmount = { amt, note ->
+                            hisabUpiAmount = amt
+                            hisabUpiNote = note
+                            currentSubScreen = HisabSubScreen.QUICK_UPI_QR
+                        },
+                        onShowSnackbar = { showToast(it) }
+                    )
+                }
+                HisabSubScreen.QUICK_UPI_QR -> {
+                    QuickUpiQrScreen(
+                        initialAmount = hisabUpiAmount,
+                        initialNote = hisabUpiNote,
+                        onBack = { currentSubScreen = HisabSubScreen.HOME },
+                        onShowSnackbar = { showToast(it) }
+                    )
                 }
             }
         }
@@ -336,6 +363,8 @@ private fun HisabCalculatorHomeScreen(
     onOpenShopHisab: () -> Unit,
     onOpenAgeCalculator: () -> Unit,
     onOpenNormalCalculator: () -> Unit,
+    onOpenPrintBilling: () -> Unit,
+    onOpenUpiBiller: () -> Unit,
     onOpenHistory: () -> Unit
 ) {
     val historyList by HisabHistoryManager.history.collectAsState()
@@ -395,10 +424,35 @@ private fun HisabCalculatorHomeScreen(
                         )
                     }
                 }
+
+                Spacer(modifier = Modifier.height(14.dp))
+                // Quick Cyber Cafe shortcuts
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilledTonalButton(
+                        onClick = onOpenUpiBiller,
+                        modifier = Modifier.weight(1f).testTag("quick_chip_upi")
+                    ) {
+                        Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("UPI QR", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+
+                    FilledTonalButton(
+                        onClick = onOpenPrintBilling,
+                        modifier = Modifier.weight(1f).testTag("quick_chip_billing")
+                    ) {
+                        Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("প্রিন্ট মেমো", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                    }
+                }
             }
         }
 
-        // 3 LARGE MAIN CATEGORY CARDS
+        // 5 LARGE MAIN CATEGORY CARDS
         Text(
             text = "ক্যালকুলেটর বিভাগ",
             style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
@@ -440,6 +494,30 @@ private fun HisabCalculatorHomeScreen(
             accentColor = ToolOrange,
             testTag = "card_nav_normal_calc",
             onClick = onOpenNormalCalculator
+        )
+
+        // 4. PRINT & XEROX BILLING MEMO (জেরক্স ও প্রিন্ট বিলিং মেমো)
+        HisabCategoryBigCard(
+            categoryNumber = "৪",
+            titleEn = "Print & Xerox Billing Memo",
+            titleBn = "জেরক্স ও প্রিন্ট বিলিং মেমো",
+            description = "B&W জেরক্স, কালার প্রিন্ট, স্ক্যান ও ল্যামিনেশন হিসাব, থার্মাল রসিদ ও WhatsApp শেয়ার",
+            icon = Icons.Default.ReceiptLong,
+            accentColor = CrimsonPrimary,
+            testTag = "card_nav_print_billing",
+            onClick = onOpenPrintBilling
+        )
+
+        // 5. QUICK UPI QR BILLER (দ্রুত UPI QR কোড বিলার)
+        HisabCategoryBigCard(
+            categoryNumber = "৫",
+            titleEn = "Quick UPI QR Biller",
+            titleBn = "দ্রুত UPI QR কোড বিলার",
+            description = "টাকার পরিমাণ লিখে সরাসরি কাউন্টার স্ক্যানের জন্য বড় হাই-কন্ট্রাস্ট Bharat UPI QR কোড",
+            icon = Icons.Default.QrCodeScanner,
+            accentColor = ToolGreen,
+            testTag = "card_nav_quick_upi",
+            onClick = onOpenUpiBiller
         )
 
         // RECENT HISTORY QUICK BAR
