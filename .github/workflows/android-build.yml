@@ -1,0 +1,200 @@
+name: Android Build & Release
+
+on:
+  push:
+    branches:
+      - main
+      - backup-clean
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Publish as a GitHub Release (for testing / manual dispatch)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build Debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Verify Java environment
+        run: |
+          echo "=== Java Environment ==="
+          java -version
+          echo "JAVA_HOME=$JAVA_HOME"
+
+      - name: Set up Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Prepare environment configuration
+        run: |
+          if [ ! -f .env ] && [ -f .env.example ]; then
+            echo "Copying .env.example to .env..."
+            cp .env.example .env
+          elif [ ! -f .env ]; then
+            echo "Creating empty fallback .env..."
+            touch .env
+          fi
+
+      - name: Create temporary debug keystore
+        run: |
+          if [ -f "./debug.keystore" ]; then
+            echo "debug.keystore already exists. Skipping generation."
+          else
+            echo "Generating temporary debug keystore for assembleDebug..."
+            keytool -genkey -v \
+              -keystore ./debug.keystore \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -dname "CN=Android Debug,O=Android,C=US" \
+              -keyalg RSA \
+              -keysize 2048 \
+              -validity 10000
+          fi
+          
+          if [ -f "./debug.keystore" ]; then
+            echo "Confirmed ./debug.keystore exists."
+          else
+            echo "Error: Failed to create ./debug.keystore."
+            exit 1
+          fi
+
+      - name: Verify BiRefNet ONNX Asset
+        run: |
+          MODEL_PATH="app/src/main/assets/birefnet_lite_fp16.onnx"
+          if [ -f "$MODEL_PATH" ]; then
+            FILE_SIZE=$(wc -c < "$MODEL_PATH" | tr -d ' ')
+            echo "BiRefNet model asset exists: $MODEL_PATH ($FILE_SIZE bytes)"
+          else
+            echo "Warning: Model file not found at $MODEL_PATH before Gradle task."
+          fi
+
+      - name: Build debug APK
+        run: gradle :app:assembleDebug --stacktrace --no-daemon
+
+      - name: Verify APK output
+        run: |
+          EXPECTED_APK="app/build/outputs/apk/debug/app-debug.apk"
+          if [ ! -f "$EXPECTED_APK" ]; then
+            echo "Error: Expected debug APK not found at $EXPECTED_APK"
+            echo "Listing files in app/build/outputs/apk/ if available:"
+            find app/build/outputs/apk -name "*.apk" -print || true
+            exit 1
+          fi
+          
+          FILE_SIZE=$(wc -c < "$EXPECTED_APK" | tr -d ' ')
+          echo "Verified APK: $EXPECTED_APK ($FILE_SIZE bytes)"
+
+      - name: Upload debug APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PDF-Master-Debug-APK
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Determine if release should be created
+        id: check_release
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]] || [ "${{ github.event.inputs.create_release }}" = "true" ]; then
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Prepare APK release asset
+        if: steps.check_release.outputs.should_release == 'true'
+        id: prepare_asset
+        run: |
+          TMP_DIR="${RUNNER_TEMP:-/tmp}/release_assets"
+          mkdir -p "$TMP_DIR"
+          
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            TAG_NAME="${GITHUB_REF_NAME}"
+          else
+            TAG_NAME="v1.0-build-${GITHUB_RUN_NUMBER}"
+          fi
+          
+          ASSET_NAME="PDF-Master-${TAG_NAME}-debug.apk"
+          ASSET_PATH="${TMP_DIR}/${ASSET_NAME}"
+          
+          cp "app/build/outputs/apk/debug/app-debug.apk" "$ASSET_PATH"
+          echo "Prepared release asset: $ASSET_PATH"
+          echo "asset_path=$ASSET_PATH" >> "$GITHUB_OUTPUT"
+          echo "asset_name=$ASSET_NAME" >> "$GITHUB_OUTPUT"
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish APK to GitHub Releases
+        if: steps.check_release.outputs.should_release == 'true'
+        id: publish_release
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ steps.prepare_asset.outputs.tag_name }}"
+          ASSET_PATH="${{ steps.prepare_asset.outputs.asset_path }}"
+          ASSET_NAME="${{ steps.prepare_asset.outputs.asset_name }}"
+          TITLE="PDF Master ${TAG}"
+          
+          NOTES=$(cat <<EOF
+          ### PDF Master Debug Build (${TAG})
+          
+          - **Build**: GitHub Actions Run #${GITHUB_RUN_NUMBER} (Attempt #${GITHUB_RUN_ATTEMPT})
+          - **Commit**: ${GITHUB_SHA}
+          - **Branch / Ref**: ${GITHUB_REF}
+          - **APK File**: \`${ASSET_NAME}\`
+          - **Note**: This APK is built with debug signing for testing and distribution.
+          EOF
+          )
+          
+          echo "Checking if release '$TAG' exists..."
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release '$TAG' already exists. Uploading asset '$ASSET_NAME'..."
+            gh release upload "$TAG" "$ASSET_PATH" --clobber
+          else
+            echo "Creating new release '$TAG'..."
+            gh release create "$TAG" "$ASSET_PATH" \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+              --target "$GITHUB_SHA" \
+              --latest
+          fi
+
+      - name: Report Build & Release Result
+        if: always()
+        run: |
+          echo "=== Summary ==="
+          if [ -f "app/build/outputs/apk/debug/app-debug.apk" ]; then
+            echo "APK build succeeded and verified."
+            echo "Artifact 'PDF-Master-Debug-APK' uploaded to GitHub Actions."
+          fi
+          
+          if [ "${{ steps.check_release.outputs.should_release }}" = "true" ]; then
+            if [ "${{ steps.publish_release.outcome }}" = "success" ]; then
+              echo "GitHub Release published successfully for tag: ${{ steps.prepare_asset.outputs.tag_name }}"
+            else
+              echo "Note: Release publishing had an issue, but APK artifact is safely available."
+            fi
+          else
+            echo "Non-tag build completed; APK is available in GitHub Actions Artifacts."
+          fi
