@@ -1,6 +1,7 @@
 {
   "name": "PDF Master",
-  "description": "Professional PDF Tool with Billing Memo and Global Storage",
+  "description": "All PDF Tools in One App: Merge, Split, Compress, Convert, Edit, Scanner, AI Tools, and File Manager",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
+
