@@ -1,885 +1,389 @@
 package com.example.hisab.ui
 
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color as AndroidColor
-import android.graphics.Paint
-import android.graphics.Rect
-import android.graphics.Typeface
-import android.graphics.pdf.PdfDocument
+import android.graphics.Color
 import android.net.Uri
-import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
+import android.widget.Toast
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.content.FileProvider
-import com.example.pdf.PdfEngine
 import com.example.storage.GlobalSaveManager
-import com.example.ui.theme.CrimsonPrimary
-import com.example.ui.theme.ToolBlue
-import com.example.ui.theme.ToolGreen
-import com.example.ui.theme.ToolOrange
-import com.example.ui.theme.ToolPurple
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.File
-import java.io.FileOutputStream
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.MultiFormatWriter
+import com.google.zxing.common.BitMatrix
+import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
-data class BillingItem(
-    val id: String,
-    var name: String,
-    var quantity: Int,
-    var unitRate: Double,
-    val isRemovable: Boolean = false
-) {
-    val total: Double get() = quantity * unitRate
-}
-
-object BillingPreferenceManager {
-    private const val PREFS_NAME = "cyber_billing_prefs"
-    private const val KEY_SHOP_NAME = "pref_shop_name"
-    private const val KEY_SHOP_PHONE = "pref_shop_phone"
-    private const val KEY_SHOP_ADDRESS = "pref_shop_address"
-    private const val KEY_RATE_BW = "rate_bw"
-    private const val KEY_RATE_COLOR = "rate_color"
-    private const val KEY_RATE_SCAN = "rate_scan"
-    private const val KEY_RATE_LAM = "rate_lam"
-
-    fun getShopName(context: Context): String =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SHOP_NAME, "Digital Cyber Point & Studio") ?: "Digital Cyber Point & Studio"
-
-    fun getShopPhone(context: Context): String =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SHOP_PHONE, "9876543210") ?: "9876543210"
-
-    fun getShopAddress(context: Context): String =
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SHOP_ADDRESS, "Station Road, Near Bus Stand") ?: "Station Road, Near Bus Stand"
-
-    fun saveShopConfig(context: Context, name: String, phone: String, address: String) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
-            .putString(KEY_SHOP_NAME, name.trim())
-            .putString(KEY_SHOP_PHONE, phone.trim())
-            .putString(KEY_SHOP_ADDRESS, address.trim())
-            .apply()
-    }
-}
+import java.util.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun PrintBillingScreen(
-    onBack: () -> Unit,
-    onOpenUpiBillerWithAmount: (Double, String) -> Unit,
-    onShowSnackbar: (String) -> Unit = {},
-    modifier: Modifier = Modifier
-) {
+fun PrintBillingScreen() {
     val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
-    val focusManager = LocalFocusManager.current
-
-    var shopName by remember { mutableStateOf(BillingPreferenceManager.getShopName(context)) }
-    var shopPhone by remember { mutableStateOf(BillingPreferenceManager.getShopPhone(context)) }
-    var shopAddress by remember { mutableStateOf(BillingPreferenceManager.getShopAddress(context)) }
-
+    var isBangla by remember { mutableStateOf(true) }
+    
+    // Shop Details
+    val shopName = if (isBangla) "টেলিকম সাইবার ক্যাফ" else "Telecom Cyber Cafe"
+    val shopPhone = "7718489405"
+    val shopAddress = if (isBangla) "চোরগেড়িয়া, সিহড়, কোতুলপুর, বাঁকুড়া, পশ্চিমবঙ্গ ৭২২১৬১" 
+                      else "Chorgeriya, Sihar, Kotulpur, Bankura, West Bengal 722161"
+    
+    val upiId = "7718489@ybl"
+    
     var customerName by remember { mutableStateOf("") }
-    var customerPhone by remember { mutableStateOf("") }
-    var billNo by remember { mutableStateOf("#${(1000..9999).random()}") }
-
-    // Standard service billing items
-    val items = remember {
-        mutableStateListOf(
-            BillingItem("bw_print", "B&W Xerox / Print", 10, 3.0),
-            BillingItem("color_print", "Color Print", 2, 10.0),
-            BillingItem("scanning", "Document Scanning", 0, 5.0),
-            BillingItem("lamination", "Lamination", 0, 20.0),
-            BillingItem("online_form", "Online Form / Apply Fee", 0, 50.0)
-        )
-    }
-
-    var discountAmountText by remember { mutableStateOf("0") }
-    var showShopEditDialog by remember { mutableStateOf(false) }
-    var showAddItemDialog by remember { mutableStateOf(false) }
-    var isSavingPdf by remember { mutableStateOf(false) }
-
-    val subtotal = items.sumOf { it.total }
-    val discount = discountAmountText.toDoubleOrNull() ?: 0.0
-    val grandTotal = (subtotal - discount).coerceAtLeast(0.0)
-
-    BackHandler {
-        onBack()
-    }
+    var items by remember { mutableStateOf(mutableListOf<BillItem>()) }
+    var newItemName by remember { mutableStateOf("") }
+    var newItemQty by remember { mutableStateOf("") }
+    var newItemPrice by remember { mutableStateOf("") }
+    
+    val totalAmount = items.sumOf { it.qty * it.price }
+    
+    var showSuccessDialog by remember { mutableStateOf(false) }
+    var savedFilePath by remember { mutableStateOf("") }
 
     Scaffold(
-        modifier = modifier
-            .fillMaxSize()
-            .testTag("print_billing_screen"),
         topBar = {
             TopAppBar(
-                title = {
-                    Column {
-                        Text(
-                            text = "Print & Xerox Billing Memo",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "$shopName • $billNo",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack, modifier = Modifier.testTag("btn_billing_back")) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = MaterialTheme.colorScheme.onSurface
-                        )
-                    }
-                },
+                title = { Text(if (isBangla) "প্রিন্ট ও জেরক্স বিল" else "Print & Xerox Bill") },
                 actions = {
-                    IconButton(
-                        onClick = { showShopEditDialog = true },
-                        modifier = Modifier.testTag("btn_edit_shop_info")
-                    ) {
-                        Icon(Icons.Default.Storefront, contentDescription = "Shop Details", tint = MaterialTheme.colorScheme.primary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)
-            )
-        }
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            // CUSTOMER DETAILS CARD
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "কাস্টমার তথ্য (Optional)",
-                        style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        OutlinedTextField(
-                            value = customerName,
-                            onValueChange = { customerName = it },
-                            label = { Text("Customer Name") },
-                            placeholder = { Text("e.g. Amit Kumar") },
-                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1.3f)
-                                .testTag("input_customer_name")
-                        )
-
-                        OutlinedTextField(
-                            value = customerPhone,
-                            onValueChange = { customerPhone = it.filter { ch -> ch.isDigit() } },
-                            label = { Text("Mobile") },
-                            placeholder = { Text("98XXXXXXXX") },
-                            leadingIcon = { Icon(Icons.Default.Phone, contentDescription = null) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Phone),
-                            singleLine = true,
-                            modifier = Modifier
-                                .weight(1f)
-                                .testTag("input_customer_phone")
-                        )
-                    }
-                }
-            }
-
-            // BILLING COUNTERS LIST
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "জেরক্স ও সার্ভিসের হিসাব",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-
-                        TextButton(
-                            onClick = { showAddItemDialog = true },
-                            modifier = Modifier.testTag("btn_add_service_row")
-                        ) {
-                            Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("নতুন যোগ করুন", fontWeight = FontWeight.Bold, color = CrimsonPrimary)
-                        }
-                    }
-
-                    // Table Header
                     Row(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(8.dp)
+                            .background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(20.dp))
                     ) {
-                        Text("আইটেম", modifier = Modifier.weight(1.6f), style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                        Text("সংখ্যা", modifier = Modifier.weight(1.2f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                        Text("দর (₹)", modifier = Modifier.weight(1.0f), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                        Text("মোট", modifier = Modifier.weight(1.0f), textAlign = TextAlign.End, style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-
-                    // Rows
-                    items.forEachIndexed { index, item ->
-                        BillingItemRow(
-                            item = item,
-                            onQuantityChanged = { newQty ->
-                                items[index] = item.copy(quantity = newQty)
-                            },
-                            onRateChanged = { newRate ->
-                                items[index] = item.copy(unitRate = newRate)
-                            },
-                            onRemove = {
-                                items.removeAt(index)
-                            }
-                        )
-                        if (index < items.size - 1) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.15f))
+                        Button(
+                            onClick = { isBangla = true },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (isBangla) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                                contentColor = if (isBangla) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.height(36.sp.value.dp * 1.5f),
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Text("বাংলা")
+                        }
+                        Button(
+                            onClick = { isBangla = false },
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = if (!isBangla) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent,
+                                contentColor = if (!isBangla) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant
+                            ),
+                            modifier = Modifier.height(36.sp.value.dp * 1.5f),
+                            shape = RoundedCornerShape(20.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp)
+                        ) {
+                            Text("English")
                         }
                     }
                 }
-            }
-
-            // SUMMARY & GRAND TOTAL CARD
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize()
+                .padding(16.dp)
+        ) {
+            // Customer Details
+            OutlinedTextField(
+                value = customerName,
+                onValueChange = { customerName = it },
+                label = { Text(if (isBangla) "গ্রাহকের নাম" else "Customer Name") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+            
+            Spacer(modifier = Modifier.height(16.dp))
+            
+            // Add Item Row
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.3f))
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text("মোট মূল্য (Subtotal):", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("₹${String.format(Locale.US, "%.2f", subtotal)}", style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold))
-                    }
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("ছাড় (Discount ₹):", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(modifier = Modifier.padding(8.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
-                            value = discountAmountText,
-                            onValueChange = { discountAmountText = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                            modifier = Modifier.width(110.dp).height(48.dp),
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                            value = newItemName,
+                            onValueChange = { newItemName = it },
+                            label = { Text(if (isBangla) "বিবরণ (উদাঃ প্রিন্ট)" else "Item (e.g. Print)") },
+                            modifier = Modifier.weight(2f),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = newItemQty,
+                            onValueChange = { if (it.isEmpty() || it.toIntOrNull() != null) newItemQty = it },
+                            label = { Text(if (isBangla) "পরিমাণ" else "Qty") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = newItemPrice,
+                            onValueChange = { if (it.isEmpty() || it.toDoubleOrNull() != null) newItemPrice = it },
+                            label = { Text(if (isBangla) "দর" else "Rate") },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true
                         )
                     }
-
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Button(
+                        onClick = {
+                            if (newItemName.isNotBlank() && newItemQty.isNotBlank() && newItemPrice.isNotBlank()) {
+                                items.add(BillItem(newItemName, newItemQty.toInt(), newItemPrice.toDouble()))
+                                newItemName = ""; newItemQty = ""; newItemPrice = ""
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                     ) {
-                        Text(
-                            text = "সর্বমোট দেয় (Grand Total):",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Text(
-                            text = "₹${String.format(Locale.US, "%.2f", grandTotal)}",
-                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold),
-                            color = ToolGreen
-                        )
+                        Icon(Icons.Default.Add, contentDescription = null)
+                        Text(if (isBangla) "আইটেম যোগ করুন" else "Add Item")
                     }
                 }
             }
 
-            // ACTION 1: INSTANT BHARAT UPI QR BUTTON
-            Button(
-                onClick = {
-                    onOpenUpiBillerWithAmount(grandTotal, "Bill $billNo: Xerox & Print")
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = ToolGreen),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(52.dp)
-                    .testTag("btn_pay_via_upi_qr")
-            ) {
-                Icon(Icons.Default.QrCodeScanner, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text("UPI QR কোডে পেমেন্ট নিন (₹${String.format(Locale.US, "%.0f", grandTotal)})", fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // Items List
+            Text(if (isBangla) "আইটেম তালিকা:" else "Items List:", fontWeight = FontWeight.Bold)
+            LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                itemsIndexed(items) { index, item ->
+                    ListItem(
+                        headlineContent = { Text("${item.name} (${item.qty} x ${item.price})") },
+                        trailingContent = {
+                            Row {
+                                Text("₹${item.qty * item.price}", fontWeight = FontWeight.Bold)
+                                IconButton(onClick = { items.removeAt(index) }) {
+                                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    )
+                    HorizontalDivider()
+                }
             }
 
-            // ACTION 2 & 3: PRINT / SAVE PDF RECEIPT & SHARE VIA WHATSAPP
-            Row(
+            // Total and Save
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
             ) {
-                // PRINT & SAVE PDF RECEIPT
-                Button(
-                    onClick = {
-                        if (isSavingPdf) return@Button
-                        isSavingPdf = true
-                        coroutineScope.launch {
-                            try {
-                                val activeItems = items.filter { it.quantity > 0 }
-                                val pdfFile = generateThermalReceiptPdf(
-                                    context = context,
-                                    shopName = shopName,
-                                    shopPhone = shopPhone,
-                                    shopAddress = shopAddress,
-                                    billNo = billNo,
-                                    customerName = customerName,
-                                    customerPhone = customerPhone,
-                                    items = activeItems,
-                                    subtotal = subtotal,
-                                    discount = discount,
-                                    grandTotal = grandTotal
-                                )
-
-                                val time = System.currentTimeMillis()
-                                val saveResult = GlobalSaveManager.saveProcessedFile(
-                                    context = context,
-                                    tempSourceFile = pdfFile,
-                                    desiredFileName = "Bill_Memo_${billNo.replace("#", "")}_$time.pdf",
-                                    mimeType = "application/pdf",
-                                    category = "created",
-                                    tag = "Print Billing"
-                                )
-                                onShowSnackbar("রসিদ PDF সংরক্ষিত হয়েছে: ${saveResult.displayLocation}")
-                            } catch (e: Exception) {
-                                onShowSnackbar("PDF তৈরি ব্যর্থ: ${e.message}")
-                            } finally {
-                                isSavingPdf = false
-                            }
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
-                    enabled = !isSavingPdf,
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .testTag("btn_save_pdf_receipt")
-                ) {
-                    if (isSavingPdf) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp))
-                    } else {
-                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Save PDF Bill", fontWeight = FontWeight.Bold)
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(if (isBangla) "মোট টাকা:" else "Total Amount:", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                        Text("₹$totalAmount", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
                     }
-                }
-
-                // SHARE VIA WHATSAPP / TEXT
-                OutlinedButton(
-                    onClick = {
-                        val activeItems = items.filter { it.quantity > 0 }
-                        val textSlip = StringBuilder().apply {
-                            appendLine("🧾 *--- $shopName ---*")
-                            if (shopAddress.isNotBlank()) appendLine("📍 $shopAddress")
-                            if (shopPhone.isNotBlank()) appendLine("📞 Ph: $shopPhone")
-                            appendLine("--------------------------------")
-                            appendLine("Bill No: $billNo | Date: ${SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date())}")
-                            if (customerName.isNotBlank()) appendLine("Customer: $customerName")
-                            if (customerPhone.isNotBlank()) appendLine("Mobile: $customerPhone")
-                            appendLine("--------------------------------")
-                            activeItems.forEach {
-                                appendLine("• ${it.name}: ${it.quantity} × ₹${it.unitRate.toInt()} = ₹${String.format(Locale.US, "%.0f", it.total)}")
+                    
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Button(
+                        onClick = {
+                            if (items.isEmpty()) {
+                                Toast.makeText(context, if (isBangla) "দয়া করে আইটেম যোগ করুন" else "Please add items", Toast.LENGTH_SHORT).show()
+                                return@Button
                             }
-                            appendLine("--------------------------------")
-                            appendLine("Subtotal: ₹${String.format(Locale.US, "%.2f", subtotal)}")
-                            if (discount > 0) appendLine("Discount: -₹${String.format(Locale.US, "%.2f", discount)}")
-                            appendLine("*GRAND TOTAL: ₹${String.format(Locale.US, "%.2f", grandTotal)}*")
-                            appendLine("--------------------------------")
-                            appendLine("🙏 Thank you for visiting!")
-                        }.toString()
-
-                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                            type = "text/plain"
-                            putExtra(Intent.EXTRA_TEXT, textSlip)
-                        }
-                        context.startActivity(Intent.createChooser(shareIntent, "Share Bill via WhatsApp"))
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(48.dp)
-                        .testTag("btn_share_bill_text")
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("WhatsApp Share", fontWeight = FontWeight.Bold)
+                            // Generate Receipt
+                            val bitmap = generateReceiptBitmap(
+                                context, shopName, shopPhone, shopAddress, 
+                                customerName, items, totalAmount, upiId, isBangla
+                            )
+                            val fileName = "Bill_${System.currentTimeMillis()}.jpg"
+                            val stream = ByteArrayOutputStream()
+                            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+                            val result = GlobalSaveManager.saveFile(context, fileName, stream.toByteArray())
+                            
+                            if (result.success) {
+                                savedFilePath = result.filePath ?: ""
+                                showSuccessDialog = true
+                            } else {
+                                Toast.makeText(context, "Error: ${result.error}", Toast.LENGTH_LONG).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(if (isBangla) "বিল সেভ করুন" else "Save Bill")
+                    }
                 }
             }
         }
     }
 
-    // DIALOG: EDIT SHOP DETAILS
-    if (showShopEditDialog) {
-        var tempName by remember { mutableStateOf(shopName) }
-        var tempPhone by remember { mutableStateOf(shopPhone) }
-        var tempAddress by remember { mutableStateOf(shopAddress) }
-
+    if (showSuccessDialog) {
         AlertDialog(
-            onDismissRequest = { showShopEditDialog = false },
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Storefront, contentDescription = null, tint = CrimsonPrimary)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("দোকানের তথ্য পরিবর্তন")
-                }
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = tempName,
-                        onValueChange = { tempName = it },
-                        label = { Text("দোকানের নাম") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = tempPhone,
-                        onValueChange = { tempPhone = it },
-                        label = { Text("ফোন নম্বর") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    OutlinedTextField(
-                        value = tempAddress,
-                        onValueChange = { tempAddress = it },
-                        label = { Text("ঠিকানা") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
+            onDismissRequest = { showSuccessDialog = false },
+            title = { Text(if (isBangla) "সফল!" else "Success!") },
+            text = { 
+                Column {
+                    Text(if (isBangla) "বিলটি সফলভাবে সেভ করা হয়েছে।" else "Bill saved successfully.")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(savedFilePath, fontSize = 12.sp, color = MaterialTheme.colorScheme.outline)
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        shopName = tempName.ifBlank { "Cyber Cafe" }
-                        shopPhone = tempPhone
-                        shopAddress = tempAddress
-                        BillingPreferenceManager.saveShopConfig(context, shopName, shopPhone, shopAddress)
-                        showShopEditDialog = false
-                        onShowSnackbar("দোকানের তথ্য আপডেট করা হয়েছে!")
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
-                ) {
-                    Text("সংরক্ষণ")
+                TextButton(onClick = { 
+                    showSuccessDialog = false
+                    // Simple logic to "view" file - usually would use Intent
+                    Toast.makeText(context, "File at: $savedFilePath", Toast.LENGTH_LONG).show()
+                }) {
+                    Text(if (isBangla) "ফাইল দেখুন" else "View File")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showShopEditDialog = false }) {
-                    Text("বাতিল")
-                }
-            }
-        )
-    }
-
-    // DIALOG: ADD CUSTOM SERVICE ITEM
-    if (showAddItemDialog) {
-        var customName by remember { mutableStateOf("") }
-        var customQty by remember { mutableStateOf("1") }
-        var customRate by remember { mutableStateOf("10") }
-
-        AlertDialog(
-            onDismissRequest = { showAddItemDialog = false },
-            title = { Text("নতুন সার্ভিস আইটেম যোগ করুন") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedTextField(
-                        value = customName,
-                        onValueChange = { customName = it },
-                        label = { Text("সার্ভিসের নাম (e.g. PVC Card, Photo)") },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        OutlinedTextField(
-                            value = customQty,
-                            onValueChange = { customQty = it.filter { ch -> ch.isDigit() } },
-                            label = { Text("সংখ্যা") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                        )
-                        OutlinedTextField(
-                            value = customRate,
-                            onValueChange = { customRate = it.filter { ch -> ch.isDigit() || ch == '.' } },
-                            label = { Text("দর (₹)") },
-                            modifier = Modifier.weight(1f),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (customName.isNotBlank()) {
-                            val q = customQty.toIntOrNull() ?: 1
-                            val r = customRate.toDoubleOrNull() ?: 10.0
-                            items.add(BillingItem("custom_${System.currentTimeMillis()}", customName.trim(), q, r, isRemovable = true))
-                            showAddItemDialog = false
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
-                ) {
-                    Text("যোগ করুন")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showAddItemDialog = false }) {
-                    Text("বাতিল")
+                TextButton(onClick = { showSuccessDialog = false }) {
+                    Text(if (isBangla) "ঠিক আছে" else "OK")
                 }
             }
         )
     }
 }
 
-@Composable
-private fun BillingItemRow(
-    item: BillingItem,
-    onQuantityChanged: (Int) -> Unit,
-    onRateChanged: (Double) -> Unit,
-    onRemove: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        // Item Name
-        Column(modifier = Modifier.weight(1.6f)) {
-            Text(
-                text = item.name,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            if (item.isRemovable) {
-                Text(
-                    text = "মুছুন",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = CrimsonPrimary,
-                    modifier = Modifier.clickable { onRemove() }
-                )
-            }
-        }
+data class BillItem(val name: String, val qty: Int, val price: Double)
 
-        // Quantity counter (- count +)
-        Row(
-            modifier = Modifier.weight(1.2f),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            IconButton(
-                onClick = { if (item.quantity > 0) onQuantityChanged(item.quantity - 1) },
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(Icons.Default.Remove, contentDescription = "Decrease", modifier = Modifier.size(16.dp))
-            }
-            Text(
-                text = "${item.quantity}",
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                modifier = Modifier.padding(horizontal = 4.dp)
-            )
-            IconButton(
-                onClick = { onQuantityChanged(item.quantity + 1) },
-                modifier = Modifier.size(28.dp)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = "Increase", modifier = Modifier.size(16.dp))
-            }
-        }
-
-        // Unit Rate
-        Text(
-            text = "₹${String.format(Locale.US, "%.0f", item.unitRate)}",
-            modifier = Modifier.weight(1.0f),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-
-        // Row Total
-        Text(
-            text = "₹${String.format(Locale.US, "%.0f", item.total)}",
-            modifier = Modifier.weight(1.0f),
-            textAlign = TextAlign.End,
-            style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface
-        )
-    }
-}
-
-/**
- * Creates an authentic, thermal-receipt style PDF slip (58mm/80mm width standard).
- */
-private suspend fun generateThermalReceiptPdf(
+fun generateReceiptBitmap(
     context: Context,
     shopName: String,
     shopPhone: String,
     shopAddress: String,
-    billNo: String,
     customerName: String,
-    customerPhone: String,
-    items: List<BillingItem>,
-    subtotal: Double,
-    discount: Double,
-    grandTotal: Double
-): File = withContext(Dispatchers.IO) {
-    val pageWidth = 384 // 80mm thermal receipt width in points
-    val estimatedHeight = 520 + (items.size * 30)
-    val pageHeight = estimatedHeight.coerceAtLeast(600)
-
-    val doc = PdfDocument()
-    val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
-    val page = doc.startPage(pageInfo)
-    val canvas = page.canvas
-
-    canvas.drawColor(AndroidColor.WHITE)
-
-    var currentY = 40f
-
-    val centerPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textSize = 20f
-        textAlign = Paint.Align.CENTER
-        isAntiAlias = true
-    }
-    canvas.drawText(shopName, pageWidth / 2f, currentY, centerPaint)
-    currentY += 22f
-
-    if (shopAddress.isNotBlank()) {
-        val addrPaint = Paint().apply {
-            color = AndroidColor.DKGRAY
-            textSize = 12f
-            textAlign = Paint.Align.CENTER
-            isAntiAlias = true
-        }
-        canvas.drawText(shopAddress, pageWidth / 2f, currentY, addrPaint)
-        currentY += 18f
-    }
-
-    if (shopPhone.isNotBlank()) {
-        val phonePaint = Paint().apply {
-            color = AndroidColor.DKGRAY
-            textSize = 12f
-            textAlign = Paint.Align.CENTER
-            isAntiAlias = true
-        }
-        canvas.drawText("Phone: $shopPhone", pageWidth / 2f, currentY, phonePaint)
-        currentY += 22f
-    }
-
-    // Divider Line
-    val linePaint = Paint().apply {
-        color = AndroidColor.BLACK
-        strokeWidth = 1.5f
-        style = Paint.Style.STROKE
-    }
-    canvas.drawLine(20f, currentY, pageWidth - 20f, currentY, linePaint)
-    currentY += 20f
-
-    // Metadata: Bill No & Date
-    val metaPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        textSize = 12f
-        isAntiAlias = true
-    }
-    val rightMetaPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        textSize = 12f
-        textAlign = Paint.Align.RIGHT
-        isAntiAlias = true
-    }
-
-    canvas.drawText("Memo: $billNo", 20f, currentY, metaPaint)
-    val sdf = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault())
-    canvas.drawText(sdf.format(Date()), pageWidth - 20f, currentY, rightMetaPaint)
-    currentY += 18f
-
-    if (customerName.isNotBlank()) {
-        canvas.drawText("Customer: $customerName", 20f, currentY, metaPaint)
-        if (customerPhone.isNotBlank()) {
-            canvas.drawText("Ph: $customerPhone", pageWidth - 20f, currentY, rightMetaPaint)
-        }
-        currentY += 18f
-    }
-
-    // Divider Line
-    canvas.drawLine(20f, currentY, pageWidth - 20f, currentY, linePaint)
-    currentY += 20f
-
-    // Table Header
-    val headerPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textSize = 12f
-        isAntiAlias = true
-    }
-    canvas.drawText("ITEM DESCRIPTION", 20f, currentY, headerPaint)
-    canvas.drawText("QTY", 210f, currentY, headerPaint)
-    canvas.drawText("RATE", 270f, currentY, headerPaint)
-    canvas.drawText("AMOUNT", pageWidth - 20f, currentY, Paint(headerPaint).apply { textAlign = Paint.Align.RIGHT })
-    currentY += 12f
-
-    canvas.drawLine(20f, currentY, pageWidth - 20f, currentY, linePaint)
-    currentY += 18f
-
-    // Item Rows
-    val rowPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        textSize = 11.5f
-        isAntiAlias = true
-    }
-    val rightRowPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        textSize = 11.5f
-        textAlign = Paint.Align.RIGHT
-        isAntiAlias = true
-    }
-
-    items.forEach { item ->
-        canvas.drawText(item.name.take(24), 20f, currentY, rowPaint)
-        canvas.drawText("${item.quantity}", 215f, currentY, rowPaint)
-        canvas.drawText("₹${item.unitRate.toInt()}", 270f, currentY, rowPaint)
-        canvas.drawText("₹${String.format(Locale.US, "%.0f", item.total)}", pageWidth - 20f, currentY, rightRowPaint)
+    items: List<BillItem>,
+    totalAmount: Double,
+    upiId: String,
+    isBangla: Boolean
+): Bitmap {
+    val width = 500
+    val headerHeight = 200
+    val itemHeight = 40
+    val footerHeight = 350
+    val totalHeight = headerHeight + (items.size * itemHeight) + footerHeight
+    
+    val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val paint = android.graphics.Paint()
+    
+    // Background
+    canvas.drawColor(Color.WHITE)
+    
+    // Header
+    paint.color = Color.BLACK
+    paint.textAlign = android.graphics.Paint.Align.CENTER
+    paint.textSize = 32f
+    paint.isFakeBoldText = true
+    canvas.drawText(shopName, (width / 2).toFloat(), 50f, paint)
+    
+    paint.textSize = 20f
+    paint.isFakeBoldText = false
+    canvas.drawText("${if (isBangla) "ফোন" else "Mob"}: $shopPhone", (width / 2).toFloat(), 85f, paint)
+    
+    paint.textSize = 16f
+    // Simple word wrap for address
+    val addressParts = shopAddress.chunked(40)
+    var currentY = 110f
+    addressParts.forEach {
+        canvas.drawText(it, (width / 2).toFloat(), currentY, paint)
         currentY += 20f
     }
-
-    // Divider
-    currentY += 6f
-    canvas.drawLine(20f, currentY, pageWidth - 20f, currentY, linePaint)
+    
+    canvas.drawLine(20f, currentY + 10, (width - 20).toFloat(), currentY + 10, paint)
+    currentY += 40f
+    
+    // Customer Info
+    paint.textAlign = android.graphics.Paint.Align.LEFT
+    paint.textSize = 22f
+    canvas.drawText("${if (isBangla) "গ্রাহক" else "Cust"}: $customerName", 30f, currentY, paint)
+    
+    val date = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault()).format(Date())
+    paint.textAlign = android.graphics.Paint.Align.RIGHT
+    paint.textSize = 18f
+    canvas.drawText(date, (width - 30).toFloat(), currentY, paint)
+    
+    currentY += 40f
+    canvas.drawLine(20f, currentY, (width - 20).toFloat(), currentY, paint)
+    currentY += 30f
+    
+    // Table Header
+    paint.textAlign = android.graphics.Paint.Align.LEFT
+    paint.isFakeBoldText = true
+    canvas.drawText(if (isBangla) "আইটেম" else "Item", 30f, currentY, paint)
+    canvas.drawText(if (isBangla) "পরিমাণ" else "Qty", 250f, currentY, paint)
+    canvas.drawText(if (isBangla) "মোট" else "Total", 400f, currentY, paint)
+    
     currentY += 20f
-
-    // Subtotal & Grand Total
-    val totalLabelPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        textSize = 12f
-        isAntiAlias = true
+    canvas.drawLine(20f, currentY, (width - 20).toFloat(), currentY, paint)
+    currentY += 30f
+    
+    // Items
+    paint.isFakeBoldText = false
+    items.forEach { item ->
+        canvas.drawText(item.name, 30f, currentY, paint)
+        canvas.drawText(item.qty.toString(), 250f, currentY, paint)
+        canvas.drawText("₹${item.qty * item.price}", 400f, currentY, paint)
+        currentY += 40f
     }
-    canvas.drawText("Subtotal:", 160f, currentY, totalLabelPaint)
-    canvas.drawText("₹${String.format(Locale.US, "%.2f", subtotal)}", pageWidth - 20f, currentY, rightRowPaint)
-    currentY += 18f
-
-    if (discount > 0) {
-        canvas.drawText("Discount:", 160f, currentY, totalLabelPaint)
-        canvas.drawText("-₹${String.format(Locale.US, "%.2f", discount)}", pageWidth - 20f, currentY, rightRowPaint)
-        currentY += 18f
+    
+    canvas.drawLine(20f, currentY, (width - 20).toFloat(), currentY, paint)
+    currentY += 40f
+    
+    // Total
+    paint.textSize = 28f
+    paint.isFakeBoldText = true
+    canvas.drawText(if (isBangla) "সর্বমোট:" else "Grand Total:", 30f, currentY, paint)
+    canvas.drawText("₹$totalAmount", 350f, currentY, paint)
+    
+    currentY += 60f
+    
+    // UPI QR Code
+    val upiPayload = "upi://pay?pa=$upiId&pn=${shopName.replace(" ", "%20")}&am=$totalAmount&cu=INR"
+    val qrBitmap = generateQrCode(upiPayload, 200)
+    if (qrBitmap != null) {
+        canvas.drawBitmap(qrBitmap, 30f, currentY, paint)
+        
+        paint.textSize = 18f
+        paint.isFakeBoldText = false
+        paint.textAlign = android.graphics.Paint.Align.LEFT
+        canvas.drawText(if (isBangla) "স্ক্যান করে পেমেন্ট করুন" else "Scan to Pay", 250f, currentY + 80, paint)
+        canvas.drawText(upiId, 250f, currentY + 110, paint)
     }
+    
+    currentY += 220f
+    paint.textAlign = android.graphics.Paint.Align.CENTER
+    paint.textSize = 20f
+    canvas.drawText(if (isBangla) "--- ধন্যবাদ, আবার আসবেন ---" else "--- Thank You, Visit Again ---", (width / 2).toFloat(), currentY, paint)
 
-    val grandTotalPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textSize = 16f
-        isAntiAlias = true
+    return bitmap
+}
+
+fun generateQrCode(text: String, size: Int): Bitmap? {
+    return try {
+        val bitMatrix: BitMatrix = MultiFormatWriter().encode(text, BarcodeFormat.QR_CODE, size, size)
+        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.RGB_565)
+        for (x in 0 until size) {
+            for (y in 0 until size) {
+                bitmap.setPixel(x, y, if (bitMatrix.get(x, y)) Color.BLACK else Color.WHITE)
+            }
+        }
+        bitmap
+    } catch (e: Exception) {
+        null
     }
-    val rightGrandPaint = Paint().apply {
-        color = AndroidColor.BLACK
-        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        textSize = 16f
-        textAlign = Paint.Align.RIGHT
-        isAntiAlias = true
-    }
-    canvas.drawText("TOTAL PAID:", 160f, currentY + 4f, grandTotalPaint)
-    canvas.drawText("₹${String.format(Locale.US, "%.2f", grandTotal)}", pageWidth - 20f, currentY + 4f, rightGrandPaint)
-    currentY += 32f
-
-    // Footer
-    canvas.drawLine(20f, currentY, pageWidth - 20f, currentY, linePaint)
-    currentY += 24f
-
-    val footerPaint = Paint().apply {
-        color = AndroidColor.DKGRAY
-        textSize = 12f
-        textAlign = Paint.Align.CENTER
-        isAntiAlias = true
-    }
-    canvas.drawText("Thank you for visiting! Please visit again.", pageWidth / 2f, currentY, footerPaint)
-
-    doc.finishPage(page)
-
-    val tempFile = File(context.cacheDir, "thermal_receipt_${System.currentTimeMillis()}.pdf")
-    FileOutputStream(tempFile).use { out ->
-        doc.writeTo(out)
-        out.flush()
-    }
-    doc.close()
-    tempFile
 }
