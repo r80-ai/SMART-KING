@@ -59,10 +59,18 @@ object AmarDokanCashMemoGenerator {
         val subtotal: Double,
         val discount: Double = 0.0,
         val grandTotal: Double,
-        val notes: String = ""
+        val notes: String = "",
+        val language: String = "BN" // "BN" or "EN"
     ) {
         companion object {
             fun fromBill(bill: Bill, items: List<BillItem>): MemoData {
+                val detectedLang = if (bill.language.isNotBlank()) {
+                    bill.language
+                } else if (bill.billNumber.startsWith("BILL-", ignoreCase = true)) {
+                    "EN"
+                } else {
+                    "BN"
+                }
                 return MemoData(
                     billNumber = bill.billNumber,
                     dateFormatted = bill.dateFormatted,
@@ -80,7 +88,8 @@ object AmarDokanCashMemoGenerator {
                     subtotal = bill.subtotal,
                     discount = bill.discount,
                     grandTotal = bill.grandTotal,
-                    notes = bill.notes
+                    notes = bill.notes,
+                    language = detectedLang
                 )
             }
 
@@ -93,7 +102,8 @@ object AmarDokanCashMemoGenerator {
                 subtotal: Double,
                 discount: Double,
                 grandTotal: Double,
-                paymentType: String
+                paymentType: String,
+                language: String = "BN"
             ): MemoData {
                 return MemoData(
                     billNumber = billNumber,
@@ -111,7 +121,8 @@ object AmarDokanCashMemoGenerator {
                     },
                     subtotal = subtotal,
                     discount = discount,
-                    grandTotal = grandTotal
+                    grandTotal = grandTotal,
+                    language = language
                 )
             }
         }
@@ -125,9 +136,20 @@ object AmarDokanCashMemoGenerator {
     )
 
     /**
-     * Generates a high-resolution Bitmap of the complete Bengali Cash Memo.
+     * Generates a high-resolution Bitmap of the cash memo using the selected template (Bengali or English).
      */
     fun generateMemoBitmap(data: MemoData): Bitmap {
+        return if (data.language.uppercase() == "EN") {
+            generateEnglishMemoBitmap(data)
+        } else {
+            generateBengaliMemoBitmap(data)
+        }
+    }
+
+    /**
+     * Generates a high-resolution Bitmap of the complete Bengali Cash Memo.
+     */
+    fun generateBengaliMemoBitmap(data: MemoData): Bitmap {
         val bitmap = Bitmap.createBitmap(MEMO_WIDTH, MEMO_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
@@ -587,6 +609,456 @@ object AmarDokanCashMemoGenerator {
         return bitmap
     }
 
+    /**
+     * Generates a high-resolution Bitmap of the complete English Cash Memo.
+     */
+    fun generateEnglishMemoBitmap(data: MemoData): Bitmap {
+        val bitmap = Bitmap.createBitmap(MEMO_WIDTH, MEMO_HEIGHT, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        // 1. Clean Background
+        canvas.drawColor(Color.WHITE)
+
+        val navyDark = Color.rgb(15, 32, 66)
+        val blueHeader = Color.rgb(21, 101, 192)
+        val crimsonRed = Color.rgb(178, 34, 34)
+        val borderDark = Color.rgb(30, 41, 59)
+        val tableBgHeader = Color.rgb(241, 245, 249)
+        val lightGrayLine = Color.rgb(203, 213, 225)
+        val cashGreen = Color.rgb(46, 125, 50)
+
+        val paint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+        }
+
+        // 2. DOUBLE ORNAMENTAL BORDER
+        paint.style = Paint.Style.STROKE
+        paint.color = navyDark
+        paint.strokeWidth = 3.5f
+        canvas.drawRect(24f, 24f, MEMO_WIDTH - 24f, MEMO_HEIGHT - 24f, paint)
+
+        paint.strokeWidth = 1.2f
+        canvas.drawRect(32f, 32f, MEMO_WIDTH - 32f, MEMO_HEIGHT - 32f, paint)
+
+        // Corner decorative ornaments
+        val cornerSize = 20f
+        paint.strokeWidth = 2.5f
+        paint.color = crimsonRed
+        canvas.drawLine(24f, 24f + cornerSize, 24f + cornerSize, 24f, paint)
+        canvas.drawLine(MEMO_WIDTH - 24f - cornerSize, 24f, MEMO_WIDTH - 24f, 24f + cornerSize, paint)
+        canvas.drawLine(24f, MEMO_HEIGHT - 24f - cornerSize, 24f + cornerSize, MEMO_HEIGHT - 24f, paint)
+        canvas.drawLine(MEMO_WIDTH - 24f - cornerSize, MEMO_HEIGHT - 24f, MEMO_WIDTH - 24f, MEMO_HEIGHT - 24f - cornerSize, paint)
+
+        // 3. TOP INVOCATION & CONTACT BAR
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.CENTER
+        paint.color = crimsonRed
+        paint.textSize = 21f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("॥ SRI SRI GANESHAYA NAMAHA ॥", MEMO_WIDTH / 2f, 62f, paint)
+
+        // Top Contact on Right and Proprietor on Left
+        paint.textSize = 17f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.color = Color.rgb(71, 85, 105)
+
+        paint.textAlign = Paint.Align.LEFT
+        canvas.drawText("Proprietor: Rafikul Gayen", 45f, 62f, paint)
+
+        paint.textAlign = Paint.Align.RIGHT
+        canvas.drawText("Mobile: 7718489405", MEMO_WIDTH - 45f, 62f, paint)
+
+        // Thin separator
+        paint.color = lightGrayLine
+        paint.strokeWidth = 1.2f
+        canvas.drawLine(45f, 76f, MEMO_WIDTH - 45f, 76f, paint)
+
+        // 4. MAIN SHOP BANNER
+        paint.textAlign = Paint.Align.CENTER
+        paint.color = navyDark
+        paint.textSize = 46f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("TELECOM CYBER CAFE & XEROX", MEMO_WIDTH / 2f, 126f, paint)
+
+        paint.textSize = 20f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = blueHeader
+        canvas.drawText("CYBER CAFE, MULTI-SERVICE & DIGITAL CSC KENDRA", MEMO_WIDTH / 2f, 156f, paint)
+
+        // Shop Sub-services banner
+        val bannerRect = RectF(60f, 172f, MEMO_WIDTH - 60f, 206f)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(238, 242, 255)
+        canvas.drawRoundRect(bannerRect, 8f, 8f, paint)
+
+        paint.color = Color.rgb(30, 58, 138)
+        paint.textSize = 17f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("XEROX • COLOUR PRINT • LAMINATION • ONLINE FORM FILL-UP • PHOTO • PASSPORT • PAN CARD", MEMO_WIDTH / 2f, 195f, paint)
+
+        // Address
+        paint.color = Color.rgb(51, 65, 85)
+        paint.textSize = 19f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Vill - Chorgeriya, P.O. - Sihar, P.S. - Kotulpur, Dist - Bankura (West Bengal)", MEMO_WIDTH / 2f, 233f, paint)
+
+        // 5. "CASH MEMO / RETAIL INVOICE" BADGE
+        val memoBadge = RectF(MEMO_WIDTH / 2f - 160f, 252f, MEMO_WIDTH / 2f + 160f, 290f)
+        paint.style = Paint.Style.FILL
+        paint.color = navyDark
+        canvas.drawRoundRect(memoBadge, 19f, 19f, paint)
+
+        paint.color = Color.WHITE
+        paint.textSize = 20f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("CASH MEMO / RETAIL INVOICE", MEMO_WIDTH / 2f, 279f, paint)
+
+        // 6. CUSTOMER & BILL INFO BOX
+        val metaBox = RectF(45f, 305f, MEMO_WIDTH - 45f, 400f)
+        paint.style = Paint.Style.STROKE
+        paint.color = borderDark
+        paint.strokeWidth = 1.5f
+        canvas.drawRoundRect(metaBox, 6f, 6f, paint)
+
+        // Mid vertical line in info box
+        canvas.drawLine(MEMO_WIDTH / 2f + 50f, 305f, MEMO_WIDTH / 2f + 50f, 400f, paint)
+
+        // Inside Customer Details (Left)
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.LEFT
+        paint.color = Color.rgb(30, 41, 59)
+        paint.textSize = 20f
+
+        val custNameLabel = "Customer Name: "
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText(custNameLabel, 60f, 340f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        val maxCustWidth = (MEMO_WIDTH / 2f + 30f) - (60f + paint.measureText(custNameLabel))
+        val truncatedCustName = truncateText(data.customerName, paint, maxCustWidth)
+        canvas.drawText(truncatedCustName, 60f + paint.measureText(custNameLabel), 340f, paint)
+
+        val phoneLabel = "Mobile Number: "
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText(phoneLabel, 60f, 378f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        val phoneText = if (data.customerPhone.isNotBlank()) data.customerPhone else "N/A"
+        canvas.drawText(phoneText, 60f + paint.measureText(phoneLabel), 378f, paint)
+
+        // Inside Bill Meta (Right)
+        val rightX = MEMO_WIDTH / 2f + 65f
+        val billNoLabel = "Bill No: "
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText(billNoLabel, rightX, 338f, paint)
+        paint.color = crimsonRed
+        canvas.drawText(data.billNumber, rightX + paint.measureText(billNoLabel), 338f, paint)
+
+        paint.color = Color.rgb(30, 41, 59)
+        val dateLabel = "Date: "
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText(dateLabel, rightX, 368f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText(data.dateFormatted, rightX + paint.measureText(dateLabel), 368f, paint)
+
+        val modeLabel = "Payment: "
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText(modeLabel, rightX, 394f, paint)
+        if (data.paymentType == "CASH") {
+            paint.color = cashGreen
+            canvas.drawText("CASH (PAID)", rightX + paint.measureText(modeLabel), 394f, paint)
+        } else {
+            paint.color = crimsonRed
+            canvas.drawText("CREDIT (DUE)", rightX + paint.measureText(modeLabel), 394f, paint)
+        }
+
+        // 7. THE ITEMIZED TABLE
+        val tableTop = 415f
+        val tableBottom = 960f
+        val tableLeft = 45f
+        val tableRight = MEMO_WIDTH - 45f
+
+        val colSl = 115f
+        val colDesc = 600f
+        val colQty = 710f
+        val colRate = 820f
+
+        // Table Outer Border
+        paint.style = Paint.Style.STROKE
+        paint.color = borderDark
+        paint.strokeWidth = 2f
+        canvas.drawRect(tableLeft, tableTop, tableRight, tableBottom, paint)
+
+        // Header Background
+        val headerH = 46f
+        val headerRect = RectF(tableLeft, tableTop, tableRight, tableTop + headerH)
+        paint.style = Paint.Style.FILL
+        paint.color = tableBgHeader
+        canvas.drawRect(headerRect, paint)
+
+        // Header Line
+        paint.style = Paint.Style.STROKE
+        paint.color = borderDark
+        paint.strokeWidth = 1.8f
+        canvas.drawLine(tableLeft, tableTop + headerH, tableRight, tableTop + headerH, paint)
+
+        // Header Vertical Column Lines
+        canvas.drawLine(colSl, tableTop, colSl, tableBottom, paint)
+        canvas.drawLine(colDesc, tableTop, colDesc, tableBottom, paint)
+        canvas.drawLine(colQty, tableTop, colQty, tableBottom, paint)
+        canvas.drawLine(colRate, tableTop, colRate, tableBottom, paint)
+
+        // Header Column Labels
+        paint.style = Paint.Style.FILL
+        paint.color = navyDark
+        paint.textSize = 19f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText("Sl. No.", (tableLeft + colSl) / 2f, tableTop + 31f, paint)
+
+        paint.textAlign = Paint.Align.LEFT
+        canvas.drawText("Description / Particulars", tableSlPad(colSl), tableTop + 31f, paint)
+
+        paint.textAlign = Paint.Align.CENTER
+        canvas.drawText("Qty", (colDesc + colQty) / 2f, tableTop + 31f, paint)
+        canvas.drawText("Rate (₹)", (colQty + colRate) / 2f, tableTop + 31f, paint)
+        canvas.drawText("Amount (₹)", (colRate + tableRight) / 2f, tableTop + 31f, paint)
+
+        // 8. DATA ROWS
+        val rowHeight = 49f
+        val maxRows = 10
+        var currentY = tableTop + headerH
+
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.textSize = 18.5f
+        paint.color = Color.rgb(15, 23, 42)
+
+        val dividerPaint = Paint().apply {
+            color = lightGrayLine
+            strokeWidth = 1f
+            style = Paint.Style.STROKE
+        }
+
+        for (i in 0 until maxRows) {
+            val item = data.items.getOrNull(i)
+            val textY = currentY + 32f
+
+            if (item != null) {
+                // Sl No
+                paint.textAlign = Paint.Align.CENTER
+                val slNoStr = (i + 1).toString()
+                canvas.drawText(slNoStr, (tableLeft + colSl) / 2f, textY, paint)
+
+                // Description
+                paint.textAlign = Paint.Align.LEFT
+                val maxDescW = colDesc - colSl - 20f
+                val descText = truncateText(item.serviceName, paint, maxDescW)
+                canvas.drawText(descText, colSl + 12f, textY, paint)
+
+                // Qty
+                paint.textAlign = Paint.Align.CENTER
+                val qtyStr = if (item.quantity % 1.0 == 0.0) {
+                    item.quantity.toInt().toString()
+                } else {
+                    String.format(Locale.ENGLISH, "%.1f", item.quantity)
+                }
+                canvas.drawText(qtyStr, (colDesc + colQty) / 2f, textY, paint)
+
+                // Rate
+                paint.textAlign = Paint.Align.RIGHT
+                val rateStr = "₹" + item.unitRate.toInt().toString()
+                canvas.drawText(rateStr, colRate - 12f, textY, paint)
+
+                // Line Total
+                paint.textAlign = Paint.Align.RIGHT
+                val totalStr = "₹" + item.lineTotal.toInt().toString()
+                canvas.drawText(totalStr, tableRight - 14f, textY, paint)
+            }
+
+            // Draw horizontal row line
+            currentY += rowHeight
+            if (i < maxRows - 1) {
+                canvas.drawLine(tableLeft, currentY, tableRight, currentY, dividerPaint)
+            }
+        }
+
+        // 9. TOTALS & SUMMARY SECTION (y=970 to 1100)
+        val summaryTop = 970f
+        val summaryBox = RectF(tableLeft, summaryTop, tableRight, 1100f)
+
+        // Draw Summary Box Border
+        paint.style = Paint.Style.STROKE
+        paint.color = borderDark
+        paint.strokeWidth = 1.5f
+        canvas.drawRoundRect(summaryBox, 6f, 6f, paint)
+
+        // In Words on Left (45 to 580)
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.LEFT
+        paint.color = Color.rgb(30, 41, 59)
+        paint.textSize = 18f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+
+        canvas.drawText("In Words:", 60f, summaryTop + 36f, paint)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.color = Color.rgb(71, 85, 105)
+        val inWordsEn = convertAmountToEnglishWords(data.grandTotal.toLong())
+        canvas.drawText(inWordsEn, 60f, summaryTop + 68f, paint)
+
+        // Notes / Payment mode reminder
+        paint.textSize = 16f
+        if (data.notes.isNotBlank()) {
+            canvas.drawText("Notes: ${data.notes}", 60f, summaryTop + 104f, paint)
+        } else {
+            val statusNote = if (data.paymentType == "CASH") "✓ Cash payment received in full." else "⚠ Credit Bill - Outstanding balance due."
+            paint.color = if (data.paymentType == "CASH") cashGreen else crimsonRed
+            paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            canvas.drawText(statusNote, 60f, summaryTop + 104f, paint)
+        }
+
+        // Mid vertical separator in summary
+        val sumMidX = 580f
+        paint.style = Paint.Style.STROKE
+        paint.color = lightGrayLine
+        canvas.drawLine(sumMidX, summaryTop, sumMidX, 1100f, paint)
+
+        // Right side: Subtotal, Discount, Grand Total
+        paint.style = Paint.Style.FILL
+        paint.textSize = 19f
+
+        // Subtotal
+        paint.textAlign = Paint.Align.LEFT
+        paint.color = Color.rgb(71, 85, 105)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Subtotal:", sumMidX + 20f, summaryTop + 32f, paint)
+        paint.textAlign = Paint.Align.RIGHT
+        paint.color = Color.rgb(30, 41, 59)
+        canvas.drawText("₹" + data.subtotal.toInt().toString(), tableRight - 20f, summaryTop + 32f, paint)
+
+        // Discount (if any)
+        if (data.discount > 0.0) {
+            paint.textAlign = Paint.Align.LEFT
+            paint.color = cashGreen
+            canvas.drawText("Discount:", sumMidX + 20f, summaryTop + 62f, paint)
+            paint.textAlign = Paint.Align.RIGHT
+            canvas.drawText("- ₹" + data.discount.toInt().toString(), tableRight - 20f, summaryTop + 62f, paint)
+        }
+
+        // Grand Total Row (Highlighted Badge)
+        val totalBadge = RectF(sumMidX + 10f, summaryTop + 76f, tableRight - 10f, 1092f)
+        paint.style = Paint.Style.FILL
+        paint.color = if (data.paymentType == "CASH") Color.rgb(240, 253, 244) else Color.rgb(254, 242, 242)
+        canvas.drawRoundRect(totalBadge, 6f, 6f, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.color = if (data.paymentType == "CASH") cashGreen else crimsonRed
+        paint.strokeWidth = 2f
+        canvas.drawRoundRect(totalBadge, 6f, 6f, paint)
+
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.LEFT
+        paint.textSize = 21f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = navyDark
+        canvas.drawText("Grand Total:", sumMidX + 22f, summaryTop + 108f, paint)
+
+        paint.textAlign = Paint.Align.RIGHT
+        paint.textSize = 24f
+        paint.color = if (data.paymentType == "CASH") cashGreen else crimsonRed
+        canvas.drawText("₹ " + data.grandTotal.toInt().toString(), tableRight - 22f, summaryTop + 108f, paint)
+
+        // 10. DYNAMIC SCANNABLE UPI QR CODE BOX (y=1115 to 1365)
+        val qrBox = RectF(tableLeft, 1115f, 440f, 1365f)
+        paint.style = Paint.Style.FILL
+        paint.color = Color.rgb(248, 250, 252)
+        canvas.drawRoundRect(qrBox, 8f, 8f, paint)
+
+        paint.style = Paint.Style.STROKE
+        paint.color = Color.rgb(203, 213, 225)
+        paint.strokeWidth = 1.2f
+        canvas.drawRoundRect(qrBox, 8f, 8f, paint)
+
+        // Generate genuine UPI QR
+        val upiAmountStr = String.format(Locale.ENGLISH, "%.2f", data.grandTotal)
+        val billEncoded = Uri.encode(data.billNumber)
+        val upiUri = "upi://pay?pa=$MERCHANT_UPI_ID&pn=Telecom%20Cyber%20Cafe&am=$upiAmountStr&cu=INR&tn=Bill%20$billEncoded"
+
+        val qrSize = 170
+        val qrBitmap = QrCodeGenerator.generateUpiQr(upiUri, qrSize)
+
+        if (qrBitmap != null) {
+            val qrLeft = tableLeft + (440f - tableLeft - qrSize) / 2f
+            canvas.drawBitmap(qrBitmap, qrLeft, 1128f, null)
+        }
+
+        // Under QR label
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = 16f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.color = navyDark
+        canvas.drawText("Scan & Pay via Any UPI App", (tableLeft + 440f) / 2f, 1318f, paint)
+
+        paint.textSize = 14.5f
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.color = Color.rgb(71, 85, 105)
+        canvas.drawText("UPI ID: $MERCHANT_UPI_ID", (tableLeft + 440f) / 2f, 1342f, paint)
+
+        // Status Stamp next to / above QR
+        if (data.paymentType == "CASH") {
+            drawStamp(canvas, "PAID", cashGreen, 320f, 1170f, -12f)
+        } else {
+            drawStamp(canvas, "DUE", crimsonRed, 320f, 1170f, -12f)
+        }
+
+        // 11. SIGNATURES & AUTHORIZATION (Right side, y=1115 to 1365)
+        // Customer Signature Line
+        paint.style = Paint.Style.STROKE
+        paint.color = lightGrayLine
+        paint.strokeWidth = 1.2f
+        canvas.drawLine(520f, 1220f, 700f, 1220f, paint)
+
+        paint.style = Paint.Style.FILL
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = 16f
+        paint.color = Color.rgb(71, 85, 105)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Customer's Signature", 610f, 1242f, paint)
+
+        // Shop Authorized Signatory Line
+        canvas.drawLine(780f, 1310f, tableRight - 20f, 1310f, paint)
+
+        paint.color = navyDark
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        paint.textSize = 16.5f
+        canvas.drawText("For Telecom Cyber Cafe", (780f + tableRight - 20f) / 2f, 1332f, paint)
+
+        paint.color = Color.rgb(100, 116, 139)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.textSize = 14f
+        canvas.drawText("(Authorized Signatory)", (780f + tableRight - 20f) / 2f, 1352f, paint)
+
+        // 12. FOOTER LEGAL & SHOP WISHES
+        paint.textAlign = Paint.Align.LEFT
+        paint.textSize = 14f
+        paint.color = Color.rgb(100, 116, 139)
+        canvas.drawText("* Errors & Omissions Excepted (E. & O.E.)", 45f, 1395f, paint)
+
+        paint.textAlign = Paint.Align.CENTER
+        paint.textSize = 16f
+        paint.color = navyDark
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        canvas.drawText("★ Thank You For Your Visit! Have A Great Day ★", MEMO_WIDTH / 2f, 1400f, paint)
+
+        paint.textAlign = Paint.Align.RIGHT
+        paint.textSize = 13f
+        paint.color = Color.rgb(148, 163, 184)
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        canvas.drawText("Amar Dokan Xerox & Service Hisab", MEMO_WIDTH - 45f, 1395f, paint)
+
+        return bitmap
+    }
+
     private fun tableSlPad(colSl: Float): Float = colSl + 12f
 
     private fun truncateText(text: String, paint: Paint, maxWidth: Float): String {
@@ -673,6 +1145,52 @@ object AmarDokanCashMemoGenerator {
         if (num > 0) words += convertLessThanThousand(num.toInt())
 
         return "${words.trim()} টাকা মাত্র"
+    }
+
+    /**
+     * Converts integer amount to English words.
+     */
+    fun convertAmountToEnglishWords(amount: Long): String {
+        if (amount == 0L) return "Zero Rupees Only"
+
+        val ones = arrayOf("", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen")
+        val tens = arrayOf("", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety")
+
+        fun convertLessThanThousand(n: Int): String {
+            if (n == 0) return ""
+            val hundred = n / 100
+            val rem = n % 100
+            var s = ""
+            if (hundred > 0) s += "${ones[hundred]} Hundred "
+            if (rem in 1..19) {
+                s += ones[rem]
+            } else if (rem >= 20) {
+                val t = rem / 10
+                val o = rem % 10
+                s += tens[t] + (if (o > 0) " ${ones[o]}" else "")
+            }
+            return s.trim()
+        }
+
+        var num = amount
+        var words = ""
+
+        val crore = num / 10000000
+        num %= 10000000
+
+        val lakh = num / 100000
+        num %= 100000
+
+        val thousand = num / 1000
+        num %= 1000
+
+        if (crore > 0) words += "${convertLessThanThousand(crore.toInt())} Crore "
+        if (lakh > 0) words += "${convertLessThanThousand(lakh.toInt())} Lakh "
+        if (thousand > 0) words += "${convertLessThanThousand(thousand.toInt())} Thousand "
+        if (num > 0) words += convertLessThanThousand(num.toInt())
+
+        return "${words.trim()} Rupees Only"
     }
 
     /**
@@ -798,24 +1316,38 @@ object AmarDokanCashMemoGenerator {
                 file
             )
 
+            val isEn = data.language.uppercase() == "EN"
             val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = if (asPdf) "application/pdf" else "image/jpeg"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "টেলিকম সাইবার ক্যাফে - ক্যাশ মেমো (${data.billNumber})")
+                putExtra(
+                    Intent.EXTRA_SUBJECT,
+                    if (isEn) "Telecom Cyber Cafe - Cash Memo (${data.billNumber})" else "টেলিকম সাইবার ক্যাফে - ক্যাশ মেমো (${data.billNumber})"
+                )
                 putExtra(
                     Intent.EXTRA_TEXT,
-                    "🧾 *টেলিকম সাইবার ক্যাফে ও জেরক্স*\n" +
-                            "বিল নং: ${data.billNumber}\n" +
-                            "গ্রাহক: ${data.customerName}\n" +
-                            "তারিখ: ${data.dateFormatted}\n" +
-                            "সর্বমোট বিল: ₹${data.grandTotal.toInt()}\n" +
-                            "পেমেন্ট: ${if (data.paymentType == "CASH") "পরিশোধিত" else "বকেয়া"}\n" +
-                            "ধন্যবাদ! আবার আসবেন।"
+                    if (isEn) {
+                        "🧾 *TELECOM CYBER CAFE & XEROX*\n" +
+                                "Bill No: ${data.billNumber}\n" +
+                                "Customer: ${data.customerName}\n" +
+                                "Date: ${data.dateFormatted}\n" +
+                                "Total Bill: ₹${data.grandTotal.toInt()}\n" +
+                                "Payment: ${if (data.paymentType == "CASH") "PAID (Cash)" else "DUE (Credit)"}\n" +
+                                "Thank you! Visit again."
+                    } else {
+                        "🧾 *টেলিকম সাইবার ক্যাফে ও জেরক্স*\n" +
+                                "বিল নং: ${data.billNumber}\n" +
+                                "গ্রাহক: ${data.customerName}\n" +
+                                "তারিখ: ${data.dateFormatted}\n" +
+                                "সর্বমোট বিল: ₹${data.grandTotal.toInt()}\n" +
+                                "পেমেন্ট: ${if (data.paymentType == "CASH") "পরিশোধিত" else "বকেয়া"}\n" +
+                                "ধন্যবাদ! আবার আসবেন।"
+                    }
                 )
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
 
-            val chooser = Intent.createChooser(shareIntent, "ক্যাশ মেমো শেয়ার করুন")
+            val chooser = Intent.createChooser(shareIntent, if (isEn) "Share Cash Memo" else "ক্যাশ মেমো শেয়ার করুন")
             context.startActivity(chooser)
         } catch (e: Exception) {
             e.printStackTrace()

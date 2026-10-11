@@ -83,6 +83,11 @@ fun Screen2NewBill(
     // Customer selection dropdown expanded
     var customerMenuExpanded by remember { mutableStateOf(false) }
 
+    // Bill Template Language
+    val initialLang by viewModel.selectedBillLanguage.collectAsState()
+    var billLanguage by remember(initialLang) { mutableStateOf(initialLang) }
+    val isEn = billLanguage.uppercase() == "EN"
+
     // Cash memo preview dialog state
     var activeCashMemoData by remember { mutableStateOf<AmarDokanCashMemoGenerator.MemoData?>(null) }
     var shouldExitAfterMemoDismiss by remember { mutableStateOf(false) }
@@ -124,12 +129,72 @@ fun Screen2NewBill(
                         )
                     }
                     Text(
-                        text = "নতুন বিল তৈরি করুন (হিসাব)",
+                        text = if (isEn) "Create New English Bill" else "নতুন বিল তৈরি করুন (হিসাব)",
                         color = Color.White,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )
+                }
+            }
+        }
+
+        // ---------------- LANGUAGE TEMPLATE SELECTION ----------------
+        item {
+            Surface(
+                color = Color.White,
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            billLanguage = "BN"
+                            viewModel.setNewBillLanguage("BN")
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .testTag("tab_bengali_bill"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (!isEn) AmarDokanColors.PrimaryBlue else Color(0xFFF1F5F9),
+                            contentColor = if (!isEn) Color.White else Color(0xFF334155)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "বাংলা বিল (Bengali)",
+                            fontSize = 13.sp,
+                            fontWeight = if (!isEn) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            billLanguage = "EN"
+                            viewModel.setNewBillLanguage("EN")
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(42.dp)
+                            .testTag("tab_english_bill"),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = if (isEn) Color(0xFF0F2042) else Color(0xFFF1F5F9),
+                            contentColor = if (isEn) Color.White else Color(0xFF334155)
+                        ),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            text = "English Bill",
+                            fontSize = 13.sp,
+                            fontWeight = if (isEn) FontWeight.Bold else FontWeight.Medium
+                        )
+                    }
                 }
             }
         }
@@ -617,7 +682,8 @@ fun Screen2NewBill(
                         }
 
                         val custId = if (isCashCustomer) null else selectedCustomer?.id
-                        val custName = if (isCashCustomer) "নগদ কাউন্টার খদ্দের" else (selectedCustomer?.name ?: "নগদ খদ্দের")
+                        val defaultCashName = if (isEn) "Cash Customer" else "নগদ কাউন্টার খদ্দের"
+                        val custName = if (isCashCustomer) defaultCashName else (selectedCustomer?.name ?: (if (isEn) "Cash Customer" else "নগদ খদ্দের"))
                         val custPhone = selectedCustomer?.phone ?: ""
 
                         val billItems = draftItems.map {
@@ -631,7 +697,8 @@ fun Screen2NewBill(
                         }
 
                         val newBillCount = viewModel.bills.value.size + 1
-                        val billNumber = "বিল-${newBillCount + 1000}"
+                        val prefix = if (isEn) "BILL" else "বিল"
+                        val billNumber = "$prefix-${newBillCount + 1000}"
 
                         viewModel.createBill(
                             dateMillis = selectedDateMillis,
@@ -643,7 +710,8 @@ fun Screen2NewBill(
                             discount = discount,
                             grandTotal = grandTotal,
                             notes = notesInput,
-                            items = billItems
+                            items = billItems,
+                            language = billLanguage
                         ) {
                             activeCashMemoData = AmarDokanCashMemoGenerator.MemoData.fromDraft(
                                 billNumber = billNumber,
@@ -654,7 +722,8 @@ fun Screen2NewBill(
                                 subtotal = subtotal,
                                 discount = discount,
                                 grandTotal = grandTotal,
-                                paymentType = paymentType
+                                paymentType = paymentType,
+                                language = billLanguage
                             )
                             shouldExitAfterMemoDismiss = true
                         }
@@ -663,13 +732,13 @@ fun Screen2NewBill(
                         .fillMaxWidth()
                         .height(52.dp)
                         .testTag("btn_save_bill"),
-                    colors = ButtonDefaults.buttonColors(containerColor = AmarDokanColors.PrimaryBlue),
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isEn) Color(0xFF0F2042) else AmarDokanColors.PrimaryBlue),
                     shape = RoundedCornerShape(10.dp)
                 ) {
                     Icon(Icons.Default.Save, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "বিল সেভ করুন (Save Bill)",
+                        text = if (isEn) "Save Bill (English)" else "বিল সেভ করুন (Save Bill)",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -679,13 +748,15 @@ fun Screen2NewBill(
                 OutlinedButton(
                     onClick = {
                         if (draftItems.isEmpty()) {
-                            viewModel.showMessage("❌ বিলে কোনো আইটেম নেই")
+                            viewModel.showMessage(if (isEn) "❌ No items in bill" else "❌ বিলে কোনো আইটেম নেই")
                             return@OutlinedButton
                         }
-                        val custName = if (isCashCustomer) "নগদ কাউন্টার খদ্দের" else (selectedCustomer?.name ?: "নগদ খদ্দের")
+                        val defaultCashName = if (isEn) "Cash Customer" else "নগদ কাউন্টার খদ্দের"
+                        val custName = if (isCashCustomer) defaultCashName else (selectedCustomer?.name ?: (if (isEn) "Cash Customer" else "নগদ খদ্দের"))
                         val custPhone = selectedCustomer?.phone ?: ""
+                        val previewBillNo = if (isEn) "NEW-BILL" else "নতুন বিল"
                         activeCashMemoData = AmarDokanCashMemoGenerator.MemoData.fromDraft(
-                            billNumber = "নতুন বিল",
+                            billNumber = previewBillNo,
                             customerName = custName,
                             customerPhone = custPhone,
                             dateStr = dateFormatted,
@@ -693,7 +764,8 @@ fun Screen2NewBill(
                             subtotal = subtotal,
                             discount = discount,
                             grandTotal = grandTotal,
-                            paymentType = paymentType
+                            paymentType = paymentType,
+                            language = billLanguage
                         )
                         shouldExitAfterMemoDismiss = false
                     },
@@ -703,13 +775,13 @@ fun Screen2NewBill(
                         .testTag("btn_print_bill"),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = AmarDokanColors.PrimaryBlue)
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = if (isEn) Color(0xFF0F2042) else AmarDokanColors.PrimaryBlue)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "ক্যাশ মেমো দেখুন ও প্রিন্ট করুন",
+                        text = if (isEn) "View & Print English Cash Memo" else "ক্যাশ মেমো দেখুন ও প্রিন্ট করুন",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        color = AmarDokanColors.PrimaryBlue
+                        color = if (isEn) Color(0xFF0F2042) else AmarDokanColors.PrimaryBlue
                     )
                 }
             }

@@ -230,13 +230,16 @@ fun Screen1HomeDashboard(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // Primary Big Action: New Bill
+                // Action 1: Bengali Bill Button
                 Button(
-                    onClick = { viewModel.navigateTo(AmarDokanScreenType.NEW_BILL) },
+                    onClick = {
+                        viewModel.setNewBillLanguage("BN")
+                        viewModel.navigateTo(AmarDokanScreenType.NEW_BILL)
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(58.dp)
-                        .testTag("btn_new_bill"),
+                        .height(54.dp)
+                        .testTag("btn_bengali_bill"),
                     colors = ButtonDefaults.buttonColors(containerColor = AmarDokanColors.PrimaryBlue),
                     shape = RoundedCornerShape(12.dp),
                     elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
@@ -244,13 +247,42 @@ fun Screen1HomeDashboard(
                     Icon(
                         imageVector = Icons.Default.ReceiptLong,
                         contentDescription = null,
-                        modifier = Modifier.size(26.dp)
+                        modifier = Modifier.size(24.dp)
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "নতুন বিল / হিসাব করুন",
-                        fontSize = 18.sp,
+                        text = "বাংলা বিল তৈরি করুন (Bengali Bill)",
+                        fontSize = 17.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+
+                // Action 2: English Bill Button
+                Button(
+                    onClick = {
+                        viewModel.setNewBillLanguage("EN")
+                        viewModel.navigateTo(AmarDokanScreenType.NEW_BILL)
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp)
+                        .testTag("btn_english_bill"),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F2042)),
+                    shape = RoundedCornerShape(12.dp),
+                    elevation = ButtonDefaults.buttonElevation(defaultElevation = 2.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Receipt,
+                        contentDescription = null,
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.White
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "English Bill",
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
                     )
                 }
 

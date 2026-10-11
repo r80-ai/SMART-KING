@@ -55,6 +55,7 @@ data class Bill(
     val grandTotal: Double,
     val cashReceived: Double = 0.0, // For CASH bills = grandTotal; for CREDIT bills = initial cash paid (usually 0)
     val notes: String = "",
+    val language: String = "BN", // "BN" or "EN"
     val createdAt: Long = System.currentTimeMillis()
 )
 

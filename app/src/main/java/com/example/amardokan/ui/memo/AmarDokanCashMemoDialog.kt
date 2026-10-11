@@ -60,6 +60,7 @@ fun AmarDokanCashMemoDialog(
     var memoBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var isSavingPdf by remember { mutableStateOf(false) }
     var showUpiQrDialog by remember { mutableStateOf(false) }
+    val isEn = memoData.language.uppercase() == "EN"
 
     LaunchedEffect(memoData) {
         memoBitmap = withContext(Dispatchers.Default) {
@@ -85,14 +86,14 @@ fun AmarDokanCashMemoDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(AmarDokanColors.NavyDarkHeader)
+                        .background(if (isEn) Color(0xFF0F2042) else AmarDokanColors.NavyDarkHeader)
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
                         Text(
-                            text = "ক্যাশ মেমো (Cash Memo)",
+                            text = if (isEn) "English Cash Memo (Bill)" else "ক্যাশ মেমো (Cash Memo)",
                             color = Color.White,
                             fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
@@ -193,7 +194,7 @@ fun AmarDokanCashMemoDialog(
                             ) {
                                 Icon(Icons.Default.Print, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("প্রিন্ট (Print)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(if (isEn) "Print" else "প্রিন্ট (Print)", fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
 
                             // Share WhatsApp Button
@@ -210,7 +211,7 @@ fun AmarDokanCashMemoDialog(
                             ) {
                                 Icon(Icons.Default.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("হোয়াটসঅ্যাপ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                                Text(if (isEn) "WhatsApp" else "হোয়াটসঅ্যাপ", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                             }
                         }
 
@@ -239,7 +240,8 @@ fun AmarDokanCashMemoDialog(
                                                 category = "created",
                                                 tag = "AmarDokan"
                                             )
-                                            Toast.makeText(context, "✅ সেভ হয়েছে: ${result.fileName}", Toast.LENGTH_LONG).show()
+                                            val saveMsg = if (isEn) "✅ Saved: ${result.fileName}" else "✅ সেভ হয়েছে: ${result.fileName}"
+                                            Toast.makeText(context, saveMsg, Toast.LENGTH_LONG).show()
                                         } catch (e: Exception) {
                                             Toast.makeText(context, "ত্রুটি: ${e.message}", Toast.LENGTH_SHORT).show()
                                         } finally {
@@ -258,7 +260,7 @@ fun AmarDokanCashMemoDialog(
                                 } else {
                                     Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = AmarDokanColors.PrimaryBlue, modifier = Modifier.size(18.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("সেভ PDF", fontSize = 13.sp, color = AmarDokanColors.PrimaryBlue, fontWeight = FontWeight.SemiBold)
+                                    Text(if (isEn) "Save PDF" else "সেভ PDF", fontSize = 13.sp, color = AmarDokanColors.PrimaryBlue, fontWeight = FontWeight.SemiBold)
                                 }
                             }
 
@@ -273,7 +275,7 @@ fun AmarDokanCashMemoDialog(
                             ) {
                                 Icon(Icons.Default.QrCode2, contentDescription = null, tint = AmarDokanColors.NavyDarkHeader, modifier = Modifier.size(18.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("UPI কিউআর", fontSize = 13.sp, color = AmarDokanColors.NavyDarkHeader, fontWeight = FontWeight.SemiBold)
+                                Text(if (isEn) "UPI QR (Pay)" else "UPI কিউআর", fontSize = 13.sp, color = AmarDokanColors.NavyDarkHeader, fontWeight = FontWeight.SemiBold)
                             }
                         }
                     }

@@ -90,7 +90,8 @@ class AmarDokanRepository(private val context: Context) {
         discount: Double,
         grandTotal: Double,
         notes: String,
-        items: List<BillItem>
+        items: List<BillItem>,
+        language: String = "BN"
     ): Long = withContext(Dispatchers.IO) {
         val cashReceived = if (paymentType == "CASH") grandTotal else 0.0
         val bill = Bill(
@@ -105,7 +106,8 @@ class AmarDokanRepository(private val context: Context) {
             discount = discount,
             grandTotal = grandTotal,
             cashReceived = cashReceived,
-            notes = notes
+            notes = notes,
+            language = language
         )
         dao.saveBillWithItems(bill, items)
     }

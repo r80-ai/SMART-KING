@@ -105,6 +105,14 @@ class AmarDokanViewModel(application: Application) : AndroidViewModel(applicatio
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage.asStateFlow()
 
+    // Bill Template Language ("BN" or "EN")
+    private val _selectedBillLanguage = MutableStateFlow("BN")
+    val selectedBillLanguage: StateFlow<String> = _selectedBillLanguage.asStateFlow()
+
+    fun setNewBillLanguage(lang: String) {
+        _selectedBillLanguage.value = lang
+    }
+
     init {
         viewModelScope.launch {
             repository.initDefaultServicesIfEmpty()
@@ -385,13 +393,15 @@ class AmarDokanViewModel(application: Application) : AndroidViewModel(applicatio
         grandTotal: Double,
         notes: String,
         items: List<BillItem>,
+        language: String = _selectedBillLanguage.value,
         onSuccess: (Long) -> Unit
     ) {
         viewModelScope.launch {
             val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
             val dateFormatted = sdf.format(Date(dateMillis))
             val billCount = bills.value.size + 1
-            val billNumber = "বিল-${billCount + 1000}"
+            val prefix = if (language.uppercase() == "EN") "BILL" else "বিল"
+            val billNumber = "$prefix-${billCount + 1000}"
 
             val billId = repository.createBill(
                 billNumber = billNumber,
@@ -405,9 +415,15 @@ class AmarDokanViewModel(application: Application) : AndroidViewModel(applicatio
                 discount = discount,
                 grandTotal = grandTotal,
                 notes = notes,
-                items = items
+                items = items,
+                language = language
             )
-            showMessage("✅ বিল সফলভাবে সেভ হয়েছে! ($billNumber)")
+            val msg = if (language.uppercase() == "EN") {
+                "✅ Bill saved successfully! ($billNumber)"
+            } else {
+                "✅ বিল সফলভাবে সেভ হয়েছে! ($billNumber)"
+            }
+            showMessage(msg)
             onSuccess(billId)
         }
     }
