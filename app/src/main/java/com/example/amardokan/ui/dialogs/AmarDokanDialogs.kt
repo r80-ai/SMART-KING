@@ -34,6 +34,8 @@ import com.example.amardokan.data.Customer
 import com.example.amardokan.ui.AmarDokanColors
 import com.example.amardokan.ui.AmarDokanViewModel
 import com.example.amardokan.ui.BanglaNumberUtil
+import com.example.amardokan.ui.memo.AmarDokanCashMemoDialog
+import com.example.amardokan.ui.memo.AmarDokanCashMemoGenerator
 import com.example.amardokan.ui.screens.DraftBillItem
 import kotlinx.coroutines.launch
 
@@ -114,6 +116,7 @@ fun BillDetailDialog(
     val context = LocalContext.current
     var billItems by remember { mutableStateOf<List<BillItem>>(emptyList()) }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    var showFullCashMemo by remember { mutableStateOf(false) }
 
     LaunchedEffect(bill.id) {
         billItems = viewModel.getBillItems(bill.id)
@@ -220,7 +223,23 @@ fun BillDetailDialog(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // Action buttons inside dialog: Print & Share
+                // Primary Action: Open Authentic Cash Memo (Print / PDF / Share / QR)
+                Button(
+                    onClick = { showFullCashMemo = true },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AmarDokanColors.NavyDarkHeader),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("অরিজিনাল ক্যাশ মেমো দেখুন ও প্রিন্ট করুন", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Secondary Action buttons: Text Share & Delete
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -252,7 +271,7 @@ fun BillDetailDialog(
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("রসিদ শেয়ার", fontSize = 12.sp)
+                        Text("টেক্সট রসিদ", fontSize = 12.sp)
                     }
 
                     OutlinedButton(
@@ -271,6 +290,15 @@ fun BillDetailDialog(
             TextButton(onClick = onDismiss) { Text("বন্ধ করুন") }
         }
     )
+
+    // Full Authentic Cash Memo Dialog
+    if (showFullCashMemo) {
+        val memoData = AmarDokanCashMemoGenerator.MemoData.fromBill(bill, billItems)
+        AmarDokanCashMemoDialog(
+            memoData = memoData,
+            onDismiss = { showFullCashMemo = false }
+        )
+    }
 
     if (showDeleteConfirm) {
         AlertDialog(

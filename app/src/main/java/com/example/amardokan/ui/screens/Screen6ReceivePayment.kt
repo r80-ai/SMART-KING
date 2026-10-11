@@ -29,6 +29,7 @@ import com.example.amardokan.data.Customer
 import com.example.amardokan.ui.AmarDokanColors
 import com.example.amardokan.ui.AmarDokanViewModel
 import com.example.amardokan.ui.BanglaNumberUtil
+import com.example.amardokan.ui.memo.UpiPaymentQrDialog
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -55,6 +56,7 @@ fun Screen6ReceivePayment(
     var paymentMode by remember { mutableStateOf("CASH") } // "CASH" or "UPI"
     var notesInput by remember { mutableStateOf("") }
     var customerMenuExpanded by remember { mutableStateOf(false) }
+    var showUpiQrDialog by remember { mutableStateOf(false) }
 
     val dateFormatted = remember(selectedDateMillis) {
         val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
@@ -345,6 +347,21 @@ fun Screen6ReceivePayment(
                         )
                     }
 
+                    // UPI QR Code Generator Button
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { showUpiQrDialog = true },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(42.dp),
+                        shape = RoundedCornerShape(8.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, AmarDokanColors.NavyDarkHeader)
+                    ) {
+                        Icon(Icons.Default.QrCode2, contentDescription = null, tint = AmarDokanColors.NavyDarkHeader, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("ইউপিআই কিউআর কোড স্ক্যান করান (QR Code)", fontSize = 12.sp, color = AmarDokanColors.NavyDarkHeader, fontWeight = FontWeight.Bold)
+                    }
+
                     Spacer(modifier = Modifier.height(14.dp))
 
                     // Note / Memo Field
@@ -455,5 +472,16 @@ fun Screen6ReceivePayment(
                 )
             }
         }
+    }
+
+    if (showUpiQrDialog && selectedCustomer != null) {
+        val payAmount = if (payingAmount > 0.0) payingAmount else currentDue
+        UpiPaymentQrDialog(
+            billNumber = "বকেয়া পেমেন্ট",
+            customerName = selectedCustomer!!.name,
+            payableAmount = if (payAmount > 0.0) payAmount else 100.0,
+            isCreditBill = true,
+            onDismiss = { showUpiQrDialog = false }
+        )
     }
 }

@@ -3,6 +3,7 @@ package com.example.amardokan.ui.screens
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -27,6 +28,9 @@ import com.example.amardokan.data.LedgerEntryType
 import com.example.amardokan.ui.AmarDokanColors
 import com.example.amardokan.ui.AmarDokanViewModel
 import com.example.amardokan.ui.BanglaNumberUtil
+import com.example.amardokan.ui.memo.AmarDokanCashMemoDialog
+import com.example.amardokan.ui.memo.AmarDokanCashMemoGenerator
+import com.example.amardokan.ui.memo.UpiPaymentQrDialog
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -52,6 +56,8 @@ fun Screen5CustomerLedger(
 
     var ledgerEntries by remember { mutableStateOf<List<LedgerEntry>>(emptyList()) }
     var filterMode by remember { mutableStateOf(0) } // 0 = সব, 1 = শুধু কাজ/বিল, 2 = শুধু জমা/পেমেন্ট
+    var showUpiQrDialog by remember { mutableStateOf(false) }
+    var selectedMemoData by remember { mutableStateOf<AmarDokanCashMemoGenerator.MemoData?>(null) }
 
     LaunchedEffect(customerId) {
         if (customerId != null) {
@@ -273,6 +279,45 @@ fun Screen5CustomerLedger(
                                 )
                             }
                         }
+
+                        // Outstanding Action Buttons (UPI QR & Receive Payment)
+                        if ((customerSummary?.outstandingBalance ?: 0.0) > 0.0) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { showUpiQrDialog = true },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp),
+                                    shape = RoundedCornerShape(8.dp),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, AmarDokanColors.NavyDarkHeader)
+                                ) {
+                                    Icon(Icons.Default.QrCode2, contentDescription = null, tint = AmarDokanColors.NavyDarkHeader, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("UPI কিউআর কোড", fontSize = 12.sp, color = AmarDokanColors.NavyDarkHeader, fontWeight = FontWeight.Bold)
+                                }
+
+                                Button(
+                                    onClick = {
+                                        if (customerId != null) {
+                                            viewModel.openReceivePaymentForCustomer(customerId)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(42.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = AmarDokanColors.CashGreen),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Payments, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("পেমেন্ট জমা নিন", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -361,20 +406,44 @@ fun Screen5CustomerLedger(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .background(if (idx % 2 == 0) AmarDokanColors.TableRowEven else AmarDokanColors.TableRowOdd)
+                                        .then(
+                                            if (isBill) {
+                                                Modifier.clickable {
+                                                    coroutineScope.launch {
+                                                        val bill = viewModel.bills.value.find { it.id == entry.id }
+                                                        if (bill != null) {
+                                                            val items = viewModel.getBillItems(bill.id)
+                                                            selectedMemoData = AmarDokanCashMemoGenerator.MemoData.fromBill(bill, items)
+                                                        }
+                                                    }
+                                                }
+                                            } else Modifier
+                                        )
                                         .padding(horizontal = 10.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Column(modifier = Modifier.weight(2.5f)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text(
+                                                text = entry.description,
+                                                fontWeight = FontWeight.SemiBold,
+                                                fontSize = 12.sp,
+                                                color = AmarDokanColors.TextPrimary
+                                            )
+                                            if (isBill) {
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.ReceiptLong,
+                                                    contentDescription = "Cash Memo",
+                                                    tint = AmarDokanColors.PrimaryBlue,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                            }
+                                        }
                                         Text(
-                                            text = entry.description,
-                                            fontWeight = FontWeight.SemiBold,
-                                            fontSize = 12.sp,
-                                            color = AmarDokanColors.TextPrimary
-                                        )
-                                        Text(
-                                            text = entry.dateFormatted,
+                                            text = if (isBill) "${entry.dateFormatted} • ক্যাশ মেমো দেখতে ট্যাপ করুন" else entry.dateFormatted,
                                             fontSize = 10.sp,
-                                            color = AmarDokanColors.TextSecondary
+                                            color = if (isBill) AmarDokanColors.PrimaryBlue else AmarDokanColors.TextSecondary
                                         )
                                     }
 
@@ -415,5 +484,27 @@ fun Screen5CustomerLedger(
                 }
             }
         }
+    }
+
+    // Modal UPI QR Payment Dialog for Outstanding Due
+    if (showUpiQrDialog && customerSummary != null) {
+        UpiPaymentQrDialog(
+            billNumber = "বকেয়া হিসাব",
+            customerName = currentCustomer?.name ?: "গ্রাহক",
+            payableAmount = customerSummary.outstandingBalance,
+            isCreditBill = true,
+            onDismiss = { showUpiQrDialog = false },
+            onConfirmPaid = {
+                viewModel.openReceivePaymentForCustomer(customerId)
+            }
+        )
+    }
+
+    // Modal Cash Memo Inspection Dialog
+    if (selectedMemoData != null) {
+        AmarDokanCashMemoDialog(
+            memoData = selectedMemoData!!,
+            onDismiss = { selectedMemoData = null }
+        )
     }
 }

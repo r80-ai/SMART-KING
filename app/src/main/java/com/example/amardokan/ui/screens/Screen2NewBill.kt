@@ -34,6 +34,8 @@ import com.example.amardokan.data.ServiceItem
 import com.example.amardokan.ui.AmarDokanColors
 import com.example.amardokan.ui.AmarDokanViewModel
 import com.example.amardokan.ui.BanglaNumberUtil
+import com.example.amardokan.ui.memo.AmarDokanCashMemoDialog
+import com.example.amardokan.ui.memo.AmarDokanCashMemoGenerator
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -80,6 +82,10 @@ fun Screen2NewBill(
 
     // Customer selection dropdown expanded
     var customerMenuExpanded by remember { mutableStateOf(false) }
+
+    // Cash memo preview dialog state
+    var activeCashMemoData by remember { mutableStateOf<AmarDokanCashMemoGenerator.MemoData?>(null) }
+    var shouldExitAfterMemoDismiss by remember { mutableStateOf(false) }
 
     // Calculations
     val subtotal = draftItems.sumOf { it.lineTotal }
@@ -624,6 +630,9 @@ fun Screen2NewBill(
                             )
                         }
 
+                        val newBillCount = viewModel.bills.value.size + 1
+                        val billNumber = "বিল-${newBillCount + 1000}"
+
                         viewModel.createBill(
                             dateMillis = selectedDateMillis,
                             customerId = custId,
@@ -636,7 +645,18 @@ fun Screen2NewBill(
                             notes = notesInput,
                             items = billItems
                         ) {
-                            onBack()
+                            activeCashMemoData = AmarDokanCashMemoGenerator.MemoData.fromDraft(
+                                billNumber = billNumber,
+                                customerName = custName,
+                                customerPhone = custPhone,
+                                dateStr = dateFormatted,
+                                items = draftItems.toList(),
+                                subtotal = subtotal,
+                                discount = discount,
+                                grandTotal = grandTotal,
+                                paymentType = paymentType
+                            )
+                            shouldExitAfterMemoDismiss = true
                         }
                     },
                     modifier = Modifier
@@ -655,7 +675,7 @@ fun Screen2NewBill(
                     )
                 }
 
-                // Print Receipt Button
+                // Print Receipt Button (Cash Memo preview)
                 OutlinedButton(
                     onClick = {
                         if (draftItems.isEmpty()) {
@@ -663,16 +683,19 @@ fun Screen2NewBill(
                             return@OutlinedButton
                         }
                         val custName = if (isCashCustomer) "নগদ কাউন্টার খদ্দের" else (selectedCustomer?.name ?: "নগদ খদ্দের")
-                        onPrintReceipt(
-                            "নতুন বিল",
-                            custName,
-                            dateFormatted,
-                            draftItems.toList(),
-                            subtotal,
-                            discount,
-                            grandTotal,
-                            paymentType
+                        val custPhone = selectedCustomer?.phone ?: ""
+                        activeCashMemoData = AmarDokanCashMemoGenerator.MemoData.fromDraft(
+                            billNumber = "নতুন বিল",
+                            customerName = custName,
+                            customerPhone = custPhone,
+                            dateStr = dateFormatted,
+                            items = draftItems.toList(),
+                            subtotal = subtotal,
+                            discount = discount,
+                            grandTotal = grandTotal,
+                            paymentType = paymentType
                         )
+                        shouldExitAfterMemoDismiss = false
                     },
                     modifier = Modifier
                         .fillMaxWidth()
@@ -680,10 +703,10 @@ fun Screen2NewBill(
                         .testTag("btn_print_bill"),
                     shape = RoundedCornerShape(10.dp)
                 ) {
-                    Icon(Icons.Default.Print, contentDescription = null, tint = AmarDokanColors.PrimaryBlue)
+                    Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = AmarDokanColors.PrimaryBlue)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "রসিদ প্রিন্ট / শেয়ার করুন",
+                        text = "ক্যাশ মেমো দেখুন ও প্রিন্ট করুন",
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
                         color = AmarDokanColors.PrimaryBlue
@@ -759,6 +782,20 @@ fun Screen2NewBill(
             dismissButton = {
                 TextButton(onClick = { showAddItemDialog = false }) {
                     Text("বাতিল")
+                }
+            }
+        )
+    }
+
+    // Interactive Full Cash Memo Dialog
+    if (activeCashMemoData != null) {
+        AmarDokanCashMemoDialog(
+            memoData = activeCashMemoData!!,
+            onDismiss = {
+                val exit = shouldExitAfterMemoDismiss
+                activeCashMemoData = null
+                if (exit) {
+                    onBack()
                 }
             }
         )
