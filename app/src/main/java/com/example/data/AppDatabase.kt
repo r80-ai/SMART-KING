@@ -8,11 +8,30 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.model.PdfFileRecord
 import com.example.model.UserBirthday
+import com.example.amardokan.data.Customer
+import com.example.amardokan.data.ServiceItem
+import com.example.amardokan.data.Bill
+import com.example.amardokan.data.BillItem
+import com.example.amardokan.data.Payment
+import com.example.amardokan.data.AmarDokanDao
 
-@Database(entities = [PdfFileRecord::class, UserBirthday::class], version = 3, exportSchema = false)
+@Database(
+    entities = [
+        PdfFileRecord::class,
+        UserBirthday::class,
+        Customer::class,
+        ServiceItem::class,
+        Bill::class,
+        BillItem::class,
+        Payment::class
+    ],
+    version = 4,
+    exportSchema = false
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pdfFileDao(): PdfFileDao
     abstract fun userBirthdayDao(): UserBirthdayDao
+    abstract fun amarDokanDao(): AmarDokanDao
 
     companion object {
         @Volatile

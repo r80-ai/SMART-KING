@@ -183,6 +183,7 @@ fun HisabMainScreen(
             when (screen) {
                 HisabSubScreen.HOME -> {
                     HisabCalculatorHomeScreen(
+                        onOpenAmarDokan = { viewModel.setTab(com.example.ui.NavigationTab.AMAR_DOKAN) },
                         onOpenShopHisab = { currentSubScreen = HisabSubScreen.SHOP_HISAB },
                         onOpenAgeCalculator = { currentSubScreen = HisabSubScreen.AGE_CALCULATOR },
                         onOpenNormalCalculator = { currentSubScreen = HisabSubScreen.NORMAL_CALCULATOR },
@@ -354,6 +355,7 @@ fun HisabMainScreen(
  */
 @Composable
 private fun HisabCalculatorHomeScreen(
+    onOpenAmarDokan: () -> Unit,
     onOpenShopHisab: () -> Unit,
     onOpenAgeCalculator: () -> Unit,
     onOpenNormalCalculator: () -> Unit,
@@ -370,6 +372,57 @@ private fun HisabCalculatorHomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
+        // AMAR DOKAN SHOP MANAGEMENT HERO BANNER
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onOpenAmarDokan),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F2042)),
+            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(Color.White.copy(alpha = 0.2f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Storefront,
+                        contentDescription = null,
+                        tint = Color.White,
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(14.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "আমার দোকান – Xerox & Service Hisab",
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 15.sp
+                    )
+                    Text(
+                        text = "৮-স্ক্রিন পূর্ণাঙ্গ জেরক্স, সার্ভিস বিলিং ও বাকি খাতা",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 12.sp
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
+                    contentDescription = null,
+                    tint = Color.White.copy(alpha = 0.7f),
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+        }
         // HEADER HERO CARD (PDF MASTER PREMIUM DARK STYLE)
         Card(
             modifier = Modifier.fillMaxWidth(),

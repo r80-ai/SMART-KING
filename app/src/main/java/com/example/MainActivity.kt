@@ -152,6 +152,16 @@ fun PdfMasterApp(viewModel: PdfMasterViewModel) {
                 modifier = Modifier.fillMaxSize()
             ) { tab ->
                 when (tab) {
+                    NavigationTab.AMAR_DOKAN -> com.example.amardokan.ui.AmarDokanMainScreen(
+                        onExitApp = {
+                            if (!viewModel.popTab()) {
+                                viewModel.setTab(NavigationTab.HOME)
+                            }
+                        },
+                        onOpenPdfTools = {
+                            viewModel.setTab(NavigationTab.HOME)
+                        }
+                    )
                     NavigationTab.HOME -> HomeScreen(viewModel = viewModel)
                     NavigationTab.TOOLS -> ToolsScreen(viewModel = viewModel)
                     NavigationTab.PHOTO_TOOLS -> PhotoToolsScreen(viewModel = viewModel)

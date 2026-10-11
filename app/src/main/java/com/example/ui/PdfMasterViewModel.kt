@@ -34,7 +34,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 enum class NavigationTab {
-    HOME, TOOLS, FILES, SETTINGS, PHOTO_TOOLS, HISAB_CALCULATOR, BANGLA_CALENDAR
+    HOME, TOOLS, FILES, SETTINGS, PHOTO_TOOLS, HISAB_CALCULATOR, BANGLA_CALENDAR, AMAR_DOKAN
 }
 
 enum class ActiveModal {
@@ -92,7 +92,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
     private val repository: PdfRepository
     
     // Navigation
-    private val _currentTab = MutableStateFlow(NavigationTab.HOME)
+    private val _currentTab = MutableStateFlow(NavigationTab.AMAR_DOKAN)
     val currentTab: StateFlow<NavigationTab> = _currentTab.asStateFlow()
 
     // Modals & Active Tool
