@@ -90,6 +90,10 @@ class MainActivity : ComponentActivity() {
         mainViewModel?.let { handleCalendarIntent(intent, it) }
     }
 
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+    }
+
     private fun handleCalendarIntent(intent: Intent?, vm: PdfMasterViewModel) {
         val target = intent?.getStringExtra(CalendarWidgetUpdater.EXTRA_OPEN_CALENDAR)
         if (target == CalendarWidgetUpdater.VALUE_OPEN_BANGLA) {

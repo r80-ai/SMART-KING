@@ -91,6 +91,11 @@ import com.example.workers.BackupManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.app.Activity
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material3.CircularProgressIndicator
 import com.example.ui.AppScreen
 
@@ -114,33 +119,85 @@ fun SettingsScreen(
     var showFolderCustomizer by remember { mutableStateOf(false) }
     var autoDeleteTemp by remember { mutableStateOf(true) }
 
+    val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var googleAccount by remember {
         mutableStateOf<GoogleSignInAccount?>(GoogleSignIn.getLastSignedInAccount(context))
     }
+    var signInError by remember { mutableStateOf<String?>(null) }
+
     val isBackupRunning by BackupManager.isBackupRunning.collectAsState()
     val lastBackupTime by BackupManager.lastBackupTime.collectAsState()
     val lastStatus by BackupManager.lastStatus.collectAsState()
 
+    val driveScope = remember { Scope(DriveScopes.DRIVE_FILE) }
+    val sheetsScope = remember { Scope(SheetsScopes.SPREADSHEETS) }
+
+    val hasDriveScope = googleAccount != null && GoogleSignIn.hasPermissions(googleAccount, driveScope)
+    val hasSheetsScope = googleAccount != null && GoogleSignIn.hasPermissions(googleAccount, sheetsScope)
+    val hasAllScopes = hasDriveScope && hasSheetsScope
+
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(
-                Scope(DriveScopes.DRIVE_FILE),
-                Scope(SheetsScopes.SPREADSHEETS)
-            )
+            .requestScopes(driveScope, sheetsScope)
             .build()
+    }
+
+    // Refresh state on resume
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val acc = GoogleSignIn.getLastSignedInAccount(context)
+                googleAccount = acc
+                if (acc != null && GoogleSignIn.hasPermissions(acc, driveScope) && GoogleSignIn.hasPermissions(acc, sheetsScope)) {
+                    if (signInError?.contains("permission") == true || signInError?.contains("অনুমতি") == true) {
+                        signInError = null
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     val signInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        val data = result.data
+        if (data == null) {
+            signInError = "No response data from Google Sign-In"
+            return@rememberLauncherForActivityResult
+        }
+
+        val task = GoogleSignIn.getSignedInAccountFromIntent(data)
         try {
             val account = task.getResult(ApiException::class.java)
             googleAccount = account
-            viewModel.setNotification("✅ Connected Google Account: ${account.email}")
+            val hasDrive = GoogleSignIn.hasPermissions(account, driveScope)
+            val hasSheets = GoogleSignIn.hasPermissions(account, sheetsScope)
+            if (!hasDrive || !hasSheets) {
+                signInError = if (language == "bn") "⚠️ ড্রাইভ ও শিটস অনুমতি প্রয়োজন। 'অনুমতি দিন' বাটনে ট্যাপ করুন।" else "⚠️ Drive & Sheets permissions needed. Please tap 'Grant Permissions'."
+            } else {
+                signInError = null
+                viewModel.setNotification("✅ Connected Google Account: ${account.email}")
+            }
         } catch (e: ApiException) {
-            viewModel.setNotification("❌ Sign-in failed (Error code ${e.statusCode}): ${e.message}")
+            val explanation = when (e.statusCode) {
+                10 -> "DEVELOPER_ERROR (Code 10): Android OAuth Client ID not found or SHA-1/Package Name mismatch in Google Cloud Console."
+                12500 -> "SIGN_IN_FAILED (Code 12500): Configuration error. Check OAuth Consent Screen & Test Users in Google Cloud."
+                12501 -> "SIGN_IN_CANCELLED (Code 12501): Sign-in cancelled by user."
+                7 -> "NETWORK_ERROR (Code 7): Network error. Please check your connection."
+                else -> "ApiException (Code ${e.statusCode}): ${e.message ?: "Error"}"
+            }
+            signInError = explanation
+            android.util.Log.e("GoogleSignIn", "SettingsScreen sign-in error: code=${e.statusCode}, msg=${e.message}", e)
+        } catch (e: Exception) {
+            signInError = "Error: ${e.message ?: "Unknown"}"
+            android.util.Log.e("GoogleSignIn", "SettingsScreen general error", e)
         }
     }
 
@@ -331,13 +388,22 @@ AppScreen(modifier = modifier, isScrollable = false) {
                             Text(
                                 text = googleAccount?.email ?: (if (isBn) "কোনো অ্যাকাউন্ট নেই" else "Not Connected"),
                                 style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (googleAccount != null) ToolGreen else ToolOrange
+                                color = if (hasAllScopes) ToolGreen else if (googleAccount != null) ToolOrange else MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            if (googleAccount != null) {
+                                Text(
+                                    text = if (hasAllScopes) (if (isBn) "✅ Drive ও Sheets পারমিশন মঞ্জুর" else "✅ Drive & Sheets Authorized")
+                                           else (if (isBn) "⚠️ Drive/Sheets অনুমতি বাকি" else "⚠️ Drive/Sheets Permission Needed"),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = if (hasAllScopes) ToolGreen else ToolOrange
+                                )
+                            }
                         }
 
                         if (googleAccount == null) {
                             Button(
                                 onClick = {
+                                    signInError = null
                                     val client = GoogleSignIn.getClient(context, gso)
                                     signInLauncher.launch(client.signInIntent)
                                 },
@@ -352,6 +418,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
                                     val client = GoogleSignIn.getClient(context, gso)
                                     client.signOut().addOnCompleteListener {
                                         googleAccount = null
+                                        signInError = null
                                         viewModel.setNotification(if (isBn) "গুগল অ্যাকাউন্ট ডিসকানেক্ট করা হয়েছে" else "Disconnected Google Account")
                                     }
                                 },
@@ -360,6 +427,63 @@ AppScreen(modifier = modifier, isScrollable = false) {
                                 shape = RoundedCornerShape(10.dp)
                             ) {
                                 Text(if (isBn) "ডিসকানেক্ট" else "Disconnect")
+                            }
+                        }
+                    }
+
+                    // Grant Permissions Button (if signed in but missing scopes)
+                    if (googleAccount != null && !hasAllScopes) {
+                        Button(
+                            onClick = {
+                                signInError = null
+                                if (activity != null) {
+                                    GoogleSignIn.requestPermissions(
+                                        activity,
+                                        9001,
+                                        googleAccount,
+                                        driveScope,
+                                        sheetsScope
+                                    )
+                                } else {
+                                    val client = GoogleSignIn.getClient(context, gso)
+                                    signInLauncher.launch(client.signInIntent)
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ToolOrange),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(if (isBn) "ড্রাইভ ও শিটস অনুমতি দিন (Grant Permissions)" else "Grant Drive & Sheets Permissions", fontWeight = FontWeight.Bold)
+                        }
+                    }
+
+                    // Error banner
+                    if (!signInError.isNullOrBlank()) {
+                        Surface(
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(10.dp)) {
+                                Text(
+                                    text = if (isBn) "সাইন-ইন সমস্যা (Error):" else "Authentication Issue:",
+                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = signInError!!,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onErrorContainer
+                                )
+                                if (signInError!!.contains("DEVELOPER_ERROR") || signInError!!.contains("10")) {
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = "Package: com.aistudio.pdfmaster.qvrx\nSHA-1: D5:86:68:06:DA:A6:12:2E:35:87:0A:64:B7:0E:2F:02:29:36:36:FE",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                                        color = MaterialTheme.colorScheme.onErrorContainer
+                                    )
+                                }
                             }
                         }
                     }
@@ -408,8 +532,11 @@ AppScreen(modifier = modifier, isScrollable = false) {
                     Button(
                         onClick = {
                             if (googleAccount == null) {
-                                viewModel.setNotification(if (isBn) "❌ প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন" else "❌ Please connect a Google account first")
+                                signInError = if (isBn) "অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন।" else "Please connect a Google account first."
+                            } else if (!hasAllScopes) {
+                                signInError = if (isBn) "ড্রাইভ ও শিটস অনুমতি দেওয়া হয়নি। অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।" else "Drive & Sheets permissions needed. Please tap 'Grant Permissions'."
                             } else {
+                                signInError = null
                                 BackupManager.triggerImmediateBackup(context)
                                 viewModel.setNotification(if (isBn) "⏳ ক্লাউড ব্যাকআপ শুরু হয়েছে..." else "⏳ Cloud backup started...")
                             }

@@ -50,6 +50,10 @@ import com.example.workers.BackupManager
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import android.app.Activity
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import kotlinx.coroutines.launch
 
 @Composable
@@ -343,6 +347,8 @@ fun BackupRestoreDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? Activity
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     var backupJson by remember { mutableStateOf("") }
     var inputRestoreJson by remember { mutableStateOf("") }
@@ -351,31 +357,80 @@ fun BackupRestoreDialog(
     var currentAccount by remember {
         mutableStateOf<GoogleSignInAccount?>(GoogleSignIn.getLastSignedInAccount(context))
     }
+    var signInError by remember { mutableStateOf<String?>(null) }
 
     val isBackupRunning by BackupManager.isBackupRunning.collectAsState()
     val lastBackupTime by BackupManager.lastBackupTime.collectAsState()
     val lastStatus by BackupManager.lastStatus.collectAsState()
 
+    val driveScope = remember { Scope(DriveScopes.DRIVE_FILE) }
+    val sheetsScope = remember { Scope(SheetsScopes.SPREADSHEETS) }
+
+    val hasDriveScope = currentAccount != null && GoogleSignIn.hasPermissions(currentAccount, driveScope)
+    val hasSheetsScope = currentAccount != null && GoogleSignIn.hasPermissions(currentAccount, sheetsScope)
+    val hasAllScopes = hasDriveScope && hasSheetsScope
+
+    // Standard client requesting email and scopes
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(
-                Scope(DriveScopes.DRIVE_FILE),
-                Scope(SheetsScopes.SPREADSHEETS)
-            )
+            .requestScopes(driveScope, sheetsScope)
             .build()
+    }
+
+    // Refresh state on lifecycle resume
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                val acc = GoogleSignIn.getLastSignedInAccount(context)
+                currentAccount = acc
+                if (acc != null && GoogleSignIn.hasPermissions(acc, driveScope) && GoogleSignIn.hasPermissions(acc, sheetsScope)) {
+                    if (signInError?.contains("অনুমতি") == true) {
+                        signInError = null
+                    }
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     val signInLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        val data = result.data
+        if (data == null) {
+            signInError = "গুগল থেকে কোনো সাইন-ইন রেসপন্স পাওয়া যায়নি (No response data received)."
+            return@rememberLauncherForActivityResult
+        }
+
+        val task = GoogleSignIn.getSignedInAccountFromIntent(data)
         try {
             val account = task.getResult(ApiException::class.java)
             currentAccount = account
-            viewModel.showMessage("✅ গুগল অ্যাকাউন্ট সংযুক্ত হয়েছে: ${account.email}")
+            val hasDrive = GoogleSignIn.hasPermissions(account, driveScope)
+            val hasSheets = GoogleSignIn.hasPermissions(account, sheetsScope)
+            if (!hasDrive || !hasSheets) {
+                signInError = "⚠️ গুগল অ্যাকাউন্ট সাইন-ইন হয়েছে, কিন্তু Drive ও Sheets ব্যবহারের অনুমতি দেওয়া হয়নি। নিচের 'অনুমতি দিন' বাটনে ট্যাপ করুন।"
+            } else {
+                signInError = null
+                viewModel.showMessage("✅ গুগল অ্যাকাউন্ট সংযুক্ত হয়েছে: ${account.email}")
+            }
         } catch (e: ApiException) {
-            viewModel.showMessage("❌ সাইন-ইন ব্যর্থ: Error code ${e.statusCode} (${e.message})")
+            val explanation = when (e.statusCode) {
+                10 -> "DEVELOPER_ERROR (কোড 10): Google Cloud Console-এ এই অ্যাপের Android OAuth Client ID তৈরি করা হয়নি বা SHA-1 / Package Name মিল নেই।"
+                12500 -> "SIGN_IN_FAILED (কোড 12500): কনফিগারেশন ত্রুটি। Google Play Services অথবা ক্লাউড কনসোলের OAuth Consent Screen ও Test Users চেক করুন।"
+                12501 -> "SIGN_IN_CANCELLED (কোড 12501): ব্যবহারকারী সাইন-ইন বাতিল করেছেন।"
+                7 -> "NETWORK_ERROR (কোড 7): ইন্টারনেট সংযোগ পরীক্ষা করুন।"
+                else -> "ApiException (কোড ${e.statusCode}): ${e.message ?: "অজানা ত্রুটি"}"
+            }
+            signInError = explanation
+            android.util.Log.e("GoogleSignIn", "Sign-in error: code=${e.statusCode}, msg=${e.message}", e)
+        } catch (e: Exception) {
+            signInError = "ত্রুটি: ${e.message ?: "অপ্রত্যাশিত সমস্যা"}"
+            android.util.Log.e("GoogleSignIn", "General sign-in error", e)
         }
     }
 
@@ -434,13 +489,22 @@ fun BackupRestoreDialog(
                                     text = currentAccount?.email ?: "কোনো অ্যাকাউন্ট নেই (Not Connected)",
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = if (currentAccount != null) AmarDokanColors.CashGreen else AmarDokanColors.AmberOrange
+                                    color = if (hasAllScopes) AmarDokanColors.CashGreen else if (currentAccount != null) AmarDokanColors.AmberOrange else AmarDokanColors.TextSecondary
                                 )
+                                if (currentAccount != null) {
+                                    Text(
+                                        text = if (hasAllScopes) "✅ Drive ও Sheets পারমিশন মঞ্জুর" else "⚠️ Drive/Sheets পারমিশন বাকি",
+                                        fontSize = 10.sp,
+                                        color = if (hasAllScopes) AmarDokanColors.CashGreen else AmarDokanColors.AmberOrange,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                             }
 
                             if (currentAccount == null) {
                                 Button(
                                     onClick = {
+                                        signInError = null
                                         val client = GoogleSignIn.getClient(context, gso)
                                         signInLauncher.launch(client.signInIntent)
                                     },
@@ -457,12 +521,74 @@ fun BackupRestoreDialog(
                                         val client = GoogleSignIn.getClient(context, gso)
                                         client.signOut().addOnCompleteListener {
                                             currentAccount = null
+                                            signInError = null
                                             viewModel.showMessage("গুগল অ্যাকাউন্ট ডিসকানেক্ট করা হয়েছে")
                                         }
                                     },
                                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                                 ) {
                                     Text("ডিসকানেক্ট", fontSize = 11.sp, color = AmarDokanColors.AmberOrange)
+                                }
+                            }
+                        }
+
+                        // Grant Permissions Button (if signed in but missing scopes)
+                        if (currentAccount != null && !hasAllScopes) {
+                            Button(
+                                onClick = {
+                                    signInError = null
+                                    if (activity != null) {
+                                        GoogleSignIn.requestPermissions(
+                                            activity,
+                                            9001,
+                                            currentAccount,
+                                            driveScope,
+                                            sheetsScope
+                                        )
+                                    } else {
+                                        val client = GoogleSignIn.getClient(context, gso)
+                                        signInLauncher.launch(client.signInIntent)
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = AmarDokanColors.AmberOrange),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("ড্রাইভ ও শিটস অনুমতি দিন (Grant Permissions)", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                            }
+                        }
+
+                        // Error Banner
+                        if (!signInError.isNullOrBlank()) {
+                            Surface(
+                                color = Color(0xFFFEE2E2),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFCA5A5)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(10.dp)) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Default.ErrorOutline, contentDescription = null, tint = Color(0xFFDC2626), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("সাইন-ইন সমস্যা (Authentication Issue):", fontSize = 11.sp, fontWeight = FontWeight.Bold, color = Color(0xFFDC2626))
+                                    }
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = signInError!!,
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF991B1B)
+                                    )
+                                    if (signInError!!.contains("DEVELOPER_ERROR") || signInError!!.contains("10")) {
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "Package: com.aistudio.pdfmaster.qvrx\nSHA-1: D5:86:68:06:DA:A6:12:2E:35:87:0A:64:B7:0E:2F:02:29:36:36:FE",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color(0xFF7F1D1D)
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -501,8 +627,11 @@ fun BackupRestoreDialog(
                         Button(
                             onClick = {
                                 if (currentAccount == null) {
-                                    viewModel.showMessage("❌ অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন")
+                                    signInError = "অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন।"
+                                } else if (!hasAllScopes) {
+                                    signInError = "ড্রাইভ ও শিটস পারমিশন দেওয়া হয়নি। অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।"
                                 } else {
+                                    signInError = null
                                     BackupManager.triggerImmediateBackup(context)
                                     viewModel.showMessage("⏳ ক্লাউড ব্যাকআপ শুরু হয়েছে...")
                                 }
