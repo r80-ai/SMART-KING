@@ -8,6 +8,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
+import com.example.amardokan.data.SyncMetadata
 
 @Dao
 interface AmarDokanDao {
@@ -130,4 +131,11 @@ interface AmarDokanDao {
 
     @Query("SELECT COALESCE(SUM(amount), 0.0) FROM ad_payments WHERE customerId = :customerId")
     suspend fun getTotalPaymentsForCustomer(customerId: Long): Double
+
+    // ---------------- SYNC METADATA ----------------
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertSyncMetadata(metadata: SyncMetadata)
+
+    @Query("SELECT * FROM ad_sync_metadata WHERE isPending = 1")
+    suspend fun getPendingSyncs(): List<SyncMetadata>
 }

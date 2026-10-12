@@ -133,3 +133,15 @@ data class CustomerBalanceSummary(
     val totalPaidAmount: Double,
     val outstandingBalance: Double
 )
+
+/**
+ * Metadata for tracking sync status of entities.
+ */
+@Entity(tableName = "ad_sync_metadata")
+data class SyncMetadata(
+    @PrimaryKey val id: String, // Combination of type and entityId or a UUID
+    val entityType: String, // e.g., "customer", "bill", "payment"
+    val entityId: Long,
+    val lastSyncedAt: Long = 0,
+    val isPending: Boolean = true
+)

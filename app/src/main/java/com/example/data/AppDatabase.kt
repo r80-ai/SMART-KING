@@ -13,6 +13,7 @@ import com.example.amardokan.data.ServiceItem
 import com.example.amardokan.data.Bill
 import com.example.amardokan.data.BillItem
 import com.example.amardokan.data.Payment
+import com.example.amardokan.data.SyncMetadata
 import com.example.amardokan.data.AmarDokanDao
 
 @Database(
@@ -23,9 +24,10 @@ import com.example.amardokan.data.AmarDokanDao
         ServiceItem::class,
         Bill::class,
         BillItem::class,
-        Payment::class
+        Payment::class,
+        SyncMetadata::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -49,6 +51,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS `ad_sync_metadata` (`id` TEXT NOT NULL, `entityType` TEXT NOT NULL, `entityId` INTEGER NOT NULL, `lastSyncedAt` INTEGER NOT NULL, `isPending` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -56,7 +64,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "pdf_master_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

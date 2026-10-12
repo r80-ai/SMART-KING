@@ -63,6 +63,11 @@ android {
   androidResources {
     noCompress += listOf("onnx")
   }
+  packaging {
+    resources {
+      excludes += "/META-INF/DEPENDENCIES"
+    }
+  }
   testOptions { unitTests { isIncludeAndroidResources = true } }
   dependenciesInfo {
     includeInApk = false
@@ -104,6 +109,10 @@ dependencies {
   implementation("androidx.navigation:navigation-compose:2.8.9")
   implementation("androidx.room:room-ktx:2.7.0")
   implementation("androidx.room:room-runtime:2.7.0")
+  implementation("androidx.work:work-runtime-ktx:2.10.0")
+  implementation("com.google.api-client:google-api-client-android:2.2.0")
+  implementation("com.google.apis:google-api-services-drive:v3-rev20230815-2.0.0")
+  implementation("com.google.apis:google-api-services-sheets:v4-rev20230815-2.0.0")
   implementation("io.coil-kt:coil-compose:2.7.0")
   implementation("com.squareup.retrofit2:converter-moshi:2.12.0")
   implementation("com.google.firebase:firebase-ai")
