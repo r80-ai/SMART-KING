@@ -212,5 +212,17 @@ object BackupManager {
 
     fun getRootFolderId(context: Context): String? = getPrefs(context).getString(KEY_ROOT_FOLDER_ID, null)
     fun getSpreadsheetId(context: Context): String? = getPrefs(context).getString(KEY_SPREADSHEET_ID, null)
-    fun getCashMemoFolderId(context: Context): String? = getPrefs(context).getString(KEY_CASH_MEMO_FOLDER_ID, null)
+    fun checkAndRestoreIfNeeded(context: Context) {
+        // Simple check: if no backup folders initialized, it's likely a new install
+        if (getRootFolderId(context) == null) {
+            val account = GoogleSignIn.getLastSignedInAccount(context)
+            if (account != null) {
+                // Trigger Restore check in background
+                val restoreWork = OneTimeWorkRequestBuilder<RestoreWorker>()
+                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    .build()
+                WorkManager.getInstance(context).enqueueUniqueWork("amar_dokan_restore", ExistingWorkPolicy.KEEP, restoreWork)
+            }
+        }
+    }
 }
