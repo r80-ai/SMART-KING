@@ -86,7 +86,7 @@ class GoogleApiService(private val context: Context) {
 
     /**
      * Finds or creates the Google Spreadsheet [title] inside [folderId].
-     * Prevents duplicate spreadsheet creation.
+     * Creates with empty content or finds existing spreadsheet without duplicating.
      */
     fun findOrCreateSpreadsheet(title: String, folderId: String): String {
         val drive = getDriveService()
@@ -162,15 +162,41 @@ class GoogleApiService(private val context: Context) {
 
     /**
      * Ensures all required tabs exist in the spreadsheet.
+     * Also renames default 'Sheet1' to the first required tab if needed, or deletes it once tabs exist.
      */
     fun ensureSheetTabs(spreadsheetId: String, requiredTabs: List<String>) {
         val sheets = getSheetsService()
         val spreadsheet = sheets.spreadsheets().get(spreadsheetId).execute()
-        val existingTabs = spreadsheet.sheets?.map { it.properties.title }?.toSet() ?: emptySet()
+        val existingSheets = spreadsheet.sheets ?: emptyList()
+        val existingTabNames = existingSheets.map { it.properties.title }.toSet()
 
         val requests = mutableListOf<Request>()
+
+        // 1. If only default "Sheet1" exists and it's not in requiredTabs, rename it to the first required tab
+        val defaultSheet = existingSheets.find { it.properties.title.equals("Sheet1", ignoreCase = true) }
+        var firstTabUsedForRename = false
+        if (defaultSheet != null && !requiredTabs.contains("Sheet1") && requiredTabs.isNotEmpty()) {
+            val firstRequired = requiredTabs.first()
+            if (!existingTabNames.contains(firstRequired)) {
+                val renameReq = UpdateSheetPropertiesRequest().apply {
+                    properties = SheetProperties().apply {
+                        sheetId = defaultSheet.properties.sheetId
+                        title = firstRequired
+                    }
+                    fields = "title"
+                }
+                requests.add(Request().setUpdateSheetProperties(renameReq))
+                firstTabUsedForRename = true
+                Log.d(tag, "Renaming default Sheet1 to '$firstRequired'")
+            }
+        }
+
+        // 2. Add any other missing tabs
         for (tab in requiredTabs) {
-            if (!existingTabs.contains(tab)) {
+            if (firstTabUsedForRename && tab == requiredTabs.first()) {
+                continue
+            }
+            if (!existingTabNames.contains(tab)) {
                 val addSheet = AddSheetRequest().apply {
                     properties = SheetProperties().setTitle(tab)
                 }
@@ -180,33 +206,200 @@ class GoogleApiService(private val context: Context) {
 
         if (requests.isNotEmpty()) {
             val batchRequest = BatchUpdateSpreadsheetRequest().setRequests(requests)
-            sheets.spreadsheets().batchUpdate(spreadsheetId, batchRequest).execute()
-            Log.d(tag, "Created missing tabs: ${requests.size} tabs")
+            val response = sheets.spreadsheets().batchUpdate(spreadsheetId, batchRequest).execute()
+            Log.d(tag, "Tabs ensured: executed ${requests.size} requests successfully. Total replies: ${response.replies?.size ?: 0}")
+        } else {
+            Log.d(tag, "All required tabs (${requiredTabs.joinToString()}) already exist.")
         }
     }
 
     /**
-     * Writes tabular data into [sheetName] starting at A1.
-     * Clears previous content to ensure consistent snapshots without stale records.
+     * Reads all existing rows from [sheetName] starting at A1.
+     * Returns empty list if sheet has no values or error occurs.
      */
-    fun writeSheetData(spreadsheetId: String, sheetName: String, data: List<List<Any>>) {
-        if (data.isEmpty()) return
+    fun readSheetRows(spreadsheetId: String, sheetName: String): List<List<Any>> {
         val sheets = getSheetsService()
-
-        try {
-            sheets.spreadsheets().values()
-                .clear(spreadsheetId, "'$sheetName'!A1:Z5000", ClearValuesRequest())
+        val range = "'$sheetName'!A:Z"
+        return try {
+            val response = sheets.spreadsheets().values()
+                .get(spreadsheetId, range)
                 .execute()
+            @Suppress("UNCHECKED_CAST")
+            (response.getValues() as? List<List<Any>>) ?: emptyList()
         } catch (e: Exception) {
-            Log.w(tag, "Clear sheet failed for $sheetName: ${e.message}")
+            Log.w(tag, "Failed to read values from $sheetName: ${e.message}")
+            emptyList()
         }
+    }
 
+    /**
+     * Writes full tabular data into [sheetName] starting at A1 using [valueInputOption].
+     * Properly escapes sheet name with single quotes.
+     * Returns the UpdateValuesResponse with updated row count.
+     */
+    fun writeSheetData(
+        spreadsheetId: String,
+        sheetName: String,
+        data: List<List<Any>>,
+        valueInputOption: String = "USER_ENTERED"
+    ): UpdateValuesResponse? {
+        if (data.isEmpty()) return null
+        val sheets = getSheetsService()
         val range = "'$sheetName'!A1"
         val valueRange = ValueRange().setValues(data)
-        sheets.spreadsheets().values()
+
+        Log.d(tag, "Writing ${data.size} rows to $range with ValueInputOption.$valueInputOption")
+        val response = sheets.spreadsheets().values()
             .update(spreadsheetId, range, valueRange)
-            .setValueInputOption("USER_ENTERED")
+            .setValueInputOption(valueInputOption)
             .execute()
-        Log.d(tag, "Updated $sheetName with ${data.size} rows")
+
+        Log.d(tag, "writeSheetData finished for $sheetName: updatedRows=${response.updatedRows}, updatedCells=${response.updatedCells}, updatedRange=${response.updatedRange}")
+        return response
+    }
+
+    /**
+     * Appends rows to [sheetName] using ValueInputOption.RAW or USER_ENTERED.
+     * Returns AppendValuesResponse.
+     */
+    fun appendSheetRows(
+        spreadsheetId: String,
+        sheetName: String,
+        rows: List<List<Any>>,
+        valueInputOption: String = "RAW"
+    ): AppendValuesResponse? {
+        if (rows.isEmpty()) return null
+        val sheets = getSheetsService()
+        val range = "'$sheetName'!A1"
+        val valueRange = ValueRange().setValues(rows)
+
+        Log.d(tag, "Appending ${rows.size} rows to $range with ValueInputOption.$valueInputOption")
+        val response = sheets.spreadsheets().values()
+            .append(spreadsheetId, range, valueRange)
+            .setValueInputOption(valueInputOption)
+            .setInsertDataOption("INSERT_ROWS")
+            .execute()
+
+        Log.d(tag, "appendSheetRows finished for $sheetName: updatedRows=${response.updates?.updatedRows}, tableRange=${response.tableRange}")
+        return response
+    }
+
+    /**
+     * Updates an exact row range in [sheetName].
+     * [rowNumber] is 1-based sheet row index.
+     */
+    fun updateSheetRow(
+        spreadsheetId: String,
+        sheetName: String,
+        rowNumber: Int,
+        rowValues: List<Any>,
+        valueInputOption: String = "RAW"
+    ): UpdateValuesResponse? {
+        val sheets = getSheetsService()
+        val range = "'$sheetName'!A$rowNumber"
+        val valueRange = ValueRange().setValues(listOf(rowValues))
+
+        return sheets.spreadsheets().values()
+            .update(spreadsheetId, range, valueRange)
+            .setValueInputOption(valueInputOption)
+            .execute()
+    }
+
+    /**
+     * Synchronizes a table into [sheetName]:
+     * 1. If tab has no rows at all, writes [headers] + all [records] starting at A1 with RAW.
+     * 2. If tab has existing rows:
+     *    - Validates/writes headers at A1 if empty.
+     *    - Checks existing record IDs (column index [idColumnIndex]) to prevent duplicates.
+     *    - If an existing ID is found and data changed, updates that specific row in place.
+     *    - If an ID is new, appends it with appendSheetRows(valueInputOption = "RAW").
+     *
+     * Returns a Pair(rowsWrittenOrUpdated, totalRecordsProcessed).
+     */
+    fun syncTableWithIdDeduplication(
+        spreadsheetId: String,
+        sheetName: String,
+        headers: List<Any>,
+        records: List<List<Any>>,
+        idColumnIndex: Int = 0,
+        valueInputOption: String = "RAW"
+    ): Pair<Int, Int> {
+        val existingRows = readSheetRows(spreadsheetId, sheetName)
+        Log.d(tag, "[$sheetName] Existing rows in sheet: ${existingRows.size}, New records to sync: ${records.size}")
+
+        if (existingRows.isEmpty()) {
+            // Sheet is completely empty. Initialize headers and all records at once!
+            val fullData = mutableListOf<List<Any>>()
+            fullData.add(headers)
+            fullData.addAll(records)
+
+            val response = writeSheetData(spreadsheetId, sheetName, fullData, valueInputOption)
+            val updatedRows = response?.updatedRows ?: fullData.size
+            Log.i(tag, "[$sheetName] Initialized empty sheet with headers and ${records.size} records. Updated rows: $updatedRows")
+            return Pair(records.size, records.size)
+        }
+
+        // Sheet already has data. First verify header at row 1
+        val firstRow = existingRows.firstOrNull()
+        if (firstRow.isNullOrEmpty()) {
+            writeSheetData(spreadsheetId, sheetName, listOf(headers), valueInputOption)
+        }
+
+        if (records.isEmpty()) {
+            Log.d(tag, "[$sheetName] No local records to sync. Existing headers preserved.")
+            return Pair(0, 0)
+        }
+
+        // Map existing record IDs to row numbers (1-indexed)
+        // Row 1 is header, so row 2 corresponds to index 1
+        val existingIdToRowIndex = mutableMapOf<String, Int>()
+        for (i in 1 until existingRows.size) {
+            val row = existingRows[i]
+            if (row.size > idColumnIndex) {
+                val idStr = row[idColumnIndex].toString().trim()
+                if (idStr.isNotEmpty()) {
+                    existingIdToRowIndex[idStr] = i + 1 // 1-based row index in Google Sheets
+                }
+            }
+        }
+
+        val rowsToAppend = mutableListOf<List<Any>>()
+        var updatedCount = 0
+
+        for (record in records) {
+            val recordId = if (record.size > idColumnIndex) record[idColumnIndex].toString().trim() else ""
+            val existingRowNumber = existingIdToRowIndex[recordId]
+
+            if (existingRowNumber != null) {
+                // Row already exists in Sheet. Check if values differ, update in place if needed
+                val currentSheetRow = existingRows[existingRowNumber - 1]
+                val recordStrings = record.map { it.toString() }
+                val currentStrings = currentSheetRow.map { it.toString() }
+
+                if (recordStrings != currentStrings) {
+                    try {
+                        updateSheetRow(spreadsheetId, sheetName, existingRowNumber, record, valueInputOption)
+                        updatedCount++
+                        Log.d(tag, "[$sheetName] Updated existing record ID=$recordId at row $existingRowNumber")
+                    } catch (e: Exception) {
+                        Log.w(tag, "[$sheetName] Failed to update row $existingRowNumber for ID $recordId: ${e.message}")
+                    }
+                }
+            } else {
+                // New record, queue for append
+                rowsToAppend.add(record)
+            }
+        }
+
+        var appendedCount = 0
+        if (rowsToAppend.isNotEmpty()) {
+            val appendResponse = appendSheetRows(spreadsheetId, sheetName, rowsToAppend, valueInputOption)
+            appendedCount = appendResponse?.updates?.updatedRows ?: rowsToAppend.size
+            Log.i(tag, "[$sheetName] Appended $appendedCount new rows.")
+        }
+
+        val totalWritten = updatedCount + appendedCount
+        Log.i(tag, "[$sheetName] Sync completed: $totalWritten changes ($updatedCount updated, $appendedCount appended) out of ${records.size} local records.")
+        return Pair(totalWritten, records.size)
     }
 }

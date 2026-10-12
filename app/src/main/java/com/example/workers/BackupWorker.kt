@@ -9,6 +9,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkInfo
 import androidx.work.WorkerParameters
 import com.example.data.AppDatabase
+import com.example.amardokan.data.SyncMetadata
 import com.example.amardokan.ui.memo.AmarDokanCashMemoGenerator
 import com.example.util.GoogleApiService
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -91,9 +92,9 @@ class BackupWorker(
             val billItems = dao.getAllBillItemsSync()
             val payments = dao.getAllPaymentsSync()
 
-            Log.d(tag, "Database fetched: ${customers.size} customers, ${services.size} services, ${bills.size} bills, ${billItems.size} items, ${payments.size} payments")
+            Log.i(tag, "Room records retrieved: ad_customers=${customers.size}, ad_services=${services.size}, ad_bills=${bills.size}, ad_bill_items=${billItems.size}, ad_payments=${payments.size}")
 
-            // 4. Google API Service
+            // 4. Initialize Google API Service
             val apiService = GoogleApiService(applicationContext)
 
             // 5. Drive Folders & Spreadsheet Setup
@@ -107,36 +108,78 @@ class BackupWorker(
             val cashMemoFolderId = apiService.findOrCreateFolder("Cash_Memo_PDF", rootFolderId)
             BackupManager.saveCashMemoFolderId(applicationContext, cashMemoFolderId)
 
-            // 6. Google Sheets Data Sync (5 Tabs)
-            BackupManager.updateStatus(applicationContext, "Google Sheets-এ ডাটা আপলোড হচ্ছে...")
+            // 6. Ensure all 5 Tabs exist in Billing_Data
+            BackupManager.updateStatus(applicationContext, "Google Sheets ট্যাব প্রস্তুত করা হচ্ছে...")
             val requiredTabs = listOf("ad_customers", "ad_services", "ad_bills", "ad_bill_items", "ad_payments")
             apiService.ensureSheetTabs(spreadsheetId, requiredTabs)
 
-            // Tab 1: ad_customers
-            val customerRows = mutableListOf<List<Any>>()
-            customerRows.add(listOf("ID", "Customer Name", "Phone", "Address", "Notes", "Created At"))
+            // 7. Synchronize all 5 Tables with Headers and Data (ValueInputOption.RAW)
+            BackupManager.updateStatus(applicationContext, "Google Sheets-এ টেবিল সিনক্রোনাইজ হচ্ছে...")
+            val syncTimestamp = System.currentTimeMillis()
+
+            // --- TAB 1: ad_customers ---
+            val customerHeaders = listOf("ID", "Customer Name", "Phone", "Address", "Notes", "Created At")
+            val customerRecords = customers.map { c ->
+                listOf(c.id, c.name, c.phone, c.address, c.notes, c.createdAt)
+            }
+            Log.i(tag, "Syncing [ad_customers]: ${customers.size} local records to sheet...")
+            val (custChanges, custTotal) = apiService.syncTableWithIdDeduplication(
+                spreadsheetId = spreadsheetId,
+                sheetName = "ad_customers",
+                headers = customerHeaders,
+                records = customerRecords,
+                idColumnIndex = 0,
+                valueInputOption = "RAW"
+            )
+            // Mark sync metadata for successfully processed customers
             for (c in customers) {
-                customerRows.add(listOf(c.id, c.name, c.phone, c.address, c.notes, c.createdAt))
+                dao.insertSyncMetadata(
+                    SyncMetadata(
+                        id = "customer_${c.id}",
+                        entityType = "customer",
+                        entityId = c.id,
+                        lastSyncedAt = syncTimestamp,
+                        isPending = false
+                    )
+                )
             }
-            apiService.writeSheetData(spreadsheetId, "ad_customers", customerRows)
+            Log.i(tag, "[ad_customers] Sync complete. Processed $custTotal records, wrote/updated $custChanges rows.")
 
-            // Tab 2: ad_services
-            val serviceRows = mutableListOf<List<Any>>()
-            serviceRows.add(listOf("ID", "Name (Bengali)", "Name (English)", "Default Rate", "Unit", "Is Default"))
+            // --- TAB 2: ad_services ---
+            val serviceHeaders = listOf("ID", "Name (Bengali)", "Name (English)", "Default Rate", "Unit", "Is Default")
+            val serviceRecords = services.map { s ->
+                listOf(s.id, s.nameBn, s.nameEn, s.defaultRate, s.unitBn, if (s.isDefault) "YES" else "NO")
+            }
+            Log.i(tag, "Syncing [ad_services]: ${services.size} local records to sheet...")
+            val (srvChanges, srvTotal) = apiService.syncTableWithIdDeduplication(
+                spreadsheetId = spreadsheetId,
+                sheetName = "ad_services",
+                headers = serviceHeaders,
+                records = serviceRecords,
+                idColumnIndex = 0,
+                valueInputOption = "RAW"
+            )
             for (s in services) {
-                serviceRows.add(listOf(s.id, s.nameBn, s.nameEn, s.defaultRate, s.unitBn, if (s.isDefault) "YES" else "NO"))
+                dao.insertSyncMetadata(
+                    SyncMetadata(
+                        id = "service_${s.id}",
+                        entityType = "service",
+                        entityId = s.id,
+                        lastSyncedAt = syncTimestamp,
+                        isPending = false
+                    )
+                )
             }
-            apiService.writeSheetData(spreadsheetId, "ad_services", serviceRows)
+            Log.i(tag, "[ad_services] Sync complete. Processed $srvTotal records, wrote/updated $srvChanges rows.")
 
-            // Tab 3: ad_bills
-            val billRows = mutableListOf<List<Any>>()
-            billRows.add(listOf(
+            // --- TAB 3: ad_bills ---
+            val billHeaders = listOf(
                 "ID", "Bill Number", "Date Formatted", "Date Timestamp", "Customer ID",
                 "Customer Name", "Phone", "Payment Type", "Subtotal", "Discount",
                 "Grand Total", "Cash Received", "Notes", "Language", "Created At"
-            ))
-            for (b in bills) {
-                billRows.add(listOf(
+            )
+            val billRecords = bills.map { b ->
+                listOf(
                     b.id,
                     b.billNumber,
                     b.dateFormatted,
@@ -152,27 +195,85 @@ class BackupWorker(
                     b.notes,
                     b.language,
                     b.createdAt
-                ))
+                )
             }
-            apiService.writeSheetData(spreadsheetId, "ad_bills", billRows)
+            Log.i(tag, "Syncing [ad_bills]: ${bills.size} local records to sheet...")
+            val (billChanges, billTotal) = apiService.syncTableWithIdDeduplication(
+                spreadsheetId = spreadsheetId,
+                sheetName = "ad_bills",
+                headers = billHeaders,
+                records = billRecords,
+                idColumnIndex = 0,
+                valueInputOption = "RAW"
+            )
+            for (b in bills) {
+                dao.insertSyncMetadata(
+                    SyncMetadata(
+                        id = "bill_${b.id}",
+                        entityType = "bill",
+                        entityId = b.id,
+                        lastSyncedAt = syncTimestamp,
+                        isPending = false
+                    )
+                )
+            }
+            Log.i(tag, "[ad_bills] Sync complete. Processed $billTotal records, wrote/updated $billChanges rows.")
 
-            // Tab 4: ad_bill_items
-            val itemRows = mutableListOf<List<Any>>()
-            itemRows.add(listOf("ID", "Bill ID", "Service Name", "Quantity", "Unit Rate", "Line Total"))
+            // --- TAB 4: ad_bill_items ---
+            val itemHeaders = listOf("ID", "Bill ID", "Service Name", "Quantity", "Unit Rate", "Line Total")
+            val itemRecords = billItems.map { item ->
+                listOf(item.id, item.billId, item.serviceName, item.quantity, item.unitRate, item.lineTotal)
+            }
+            Log.i(tag, "Syncing [ad_bill_items]: ${billItems.size} local records to sheet...")
+            val (itemChanges, itemTotal) = apiService.syncTableWithIdDeduplication(
+                spreadsheetId = spreadsheetId,
+                sheetName = "ad_bill_items",
+                headers = itemHeaders,
+                records = itemRecords,
+                idColumnIndex = 0,
+                valueInputOption = "RAW"
+            )
             for (item in billItems) {
-                itemRows.add(listOf(item.id, item.billId, item.serviceName, item.quantity, item.unitRate, item.lineTotal))
+                dao.insertSyncMetadata(
+                    SyncMetadata(
+                        id = "bill_item_${item.id}",
+                        entityType = "bill_item",
+                        entityId = item.id,
+                        lastSyncedAt = syncTimestamp,
+                        isPending = false
+                    )
+                )
             }
-            apiService.writeSheetData(spreadsheetId, "ad_bill_items", itemRows)
+            Log.i(tag, "[ad_bill_items] Sync complete. Processed $itemTotal records, wrote/updated $itemChanges rows.")
 
-            // Tab 5: ad_payments
-            val paymentRows = mutableListOf<List<Any>>()
-            paymentRows.add(listOf("ID", "Customer ID", "Customer Name", "Date Formatted", "Date Timestamp", "Amount", "Payment Mode", "Notes", "Created At"))
+            // --- TAB 5: ad_payments ---
+            val paymentHeaders = listOf("ID", "Customer ID", "Customer Name", "Date Formatted", "Date Timestamp", "Amount", "Payment Mode", "Notes", "Created At")
+            val paymentRecords = payments.map { p ->
+                listOf(p.id, p.customerId, p.customerName, p.dateFormatted, p.dateMillis, p.amount, p.paymentMode, p.notes, p.createdAt)
+            }
+            Log.i(tag, "Syncing [ad_payments]: ${payments.size} local records to sheet...")
+            val (payChanges, payTotal) = apiService.syncTableWithIdDeduplication(
+                spreadsheetId = spreadsheetId,
+                sheetName = "ad_payments",
+                headers = paymentHeaders,
+                records = paymentRecords,
+                idColumnIndex = 0,
+                valueInputOption = "RAW"
+            )
             for (p in payments) {
-                paymentRows.add(listOf(p.id, p.customerId, p.customerName, p.dateFormatted, p.dateMillis, p.amount, p.paymentMode, p.notes, p.createdAt))
+                dao.insertSyncMetadata(
+                    SyncMetadata(
+                        id = "payment_${p.id}",
+                        entityType = "payment",
+                        entityId = p.id,
+                        lastSyncedAt = syncTimestamp,
+                        isPending = false
+                    )
+                )
             }
-            apiService.writeSheetData(spreadsheetId, "ad_payments", paymentRows)
+            Log.i(tag, "[ad_payments] Sync complete. Processed $payTotal records, wrote/updated $payChanges rows.")
 
-            // 7. Cash Memo PDF Uploads into YEAR / MONTH subfolders
+            // 8. Cash Memo PDF Uploads into YEAR / MONTH subfolders
             BackupManager.updateStatus(applicationContext, "ক্যাশ মেমো PDF ব্যাকআপ হচ্ছে...")
             val calendar = Calendar.getInstance()
             var pdfUploadedCount = 0
@@ -248,7 +349,7 @@ class BackupWorker(
                 }
             }
 
-            val summary = "সফল: ${bills.size}টি বিল, ${customers.size}টি গ্রাহক, $pdfUploadedCount PDF আপলোড হয়েছে"
+            val summary = "সফল: ${bills.size}টি বিল, ${customers.size}টি গ্রাহক, ৫টি শিট সিঙ্ক, $pdfUploadedCount PDF আপলোড হয়েছে"
             Log.i(tag, "Backup complete: $summary")
             BackupManager.updateSuccess(applicationContext, summary)
             BackupManager.setBackupRunning(false)
