@@ -78,6 +78,20 @@ import com.example.ui.theme.ToolGreen
 import com.example.ui.theme.ToolIndigo
 import com.example.ui.theme.ToolOrange
 import com.example.ui.theme.ToolPurple
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
+import com.google.api.services.drive.DriveScopes
+import com.google.api.services.sheets.v4.SheetsScopes
+import com.example.workers.BackupManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import androidx.compose.material3.CircularProgressIndicator
 import com.example.ui.AppScreen
 
 @Composable
@@ -99,6 +113,36 @@ fun SettingsScreen(
     var isKeyVisible by remember { mutableStateOf(false) }
     var showFolderCustomizer by remember { mutableStateOf(false) }
     var autoDeleteTemp by remember { mutableStateOf(true) }
+
+    var googleAccount by remember {
+        mutableStateOf<GoogleSignInAccount?>(GoogleSignIn.getLastSignedInAccount(context))
+    }
+    val isBackupRunning by BackupManager.isBackupRunning.collectAsState()
+    val lastBackupTime by BackupManager.lastBackupTime.collectAsState()
+    val lastStatus by BackupManager.lastStatus.collectAsState()
+
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(
+                Scope(DriveScopes.DRIVE_FILE),
+                Scope(SheetsScopes.SPREADSHEETS)
+            )
+            .build()
+    }
+
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            googleAccount = account
+            viewModel.setNotification("✅ Connected Google Account: ${account.email}")
+        } catch (e: ApiException) {
+            viewModel.setNotification("❌ Sign-in failed (Error code ${e.statusCode}): ${e.message}")
+        }
+    }
 
 AppScreen(modifier = modifier, isScrollable = false) {
     LazyColumn(
@@ -266,22 +310,125 @@ AppScreen(modifier = modifier, isScrollable = false) {
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
-                Column(modifier = Modifier.padding(14.dp)) {
-                    val isSignedIn = viewModel.isUserSignedIn(context)
-                    Button(
-                        onClick = {
-                            if (isSignedIn) {
-                                viewModel.signOut(context)
-                                viewModel.setNotification("Signed out of Google")
-                            } else {
-                                // For now, simple sign-in trigger.
-                                // In a real app, this would trigger the actual GoogleSignIn flow
-                                viewModel.setNotification("Sign-in logic needs to be triggered via Activity result launcher")
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    val isBn = language == "bn"
+
+                    // Account row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isBn) "সংযুক্ত অ্যাকাউন্ট:" else "Connected Account:",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = googleAccount?.email ?: (if (isBn) "কোনো অ্যাকাউন্ট নেই" else "Not Connected"),
+                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                color = if (googleAccount != null) ToolGreen else ToolOrange
+                            )
+                        }
+
+                        if (googleAccount == null) {
+                            Button(
+                                onClick = {
+                                    val client = GoogleSignIn.getClient(context, gso)
+                                    signInLauncher.launch(client.signInIntent)
+                                },
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(if (isBn) "কানেক্ট করুন" else "Connect Google")
                             }
-                        },
+                        } else {
+                            Button(
+                                onClick = {
+                                    val client = GoogleSignIn.getClient(context, gso)
+                                    client.signOut().addOnCompleteListener {
+                                        googleAccount = null
+                                        viewModel.setNotification(if (isBn) "গুগল অ্যাকাউন্ট ডিসকানেক্ট করা হয়েছে" else "Disconnected Google Account")
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                shape = RoundedCornerShape(10.dp)
+                            ) {
+                                Text(if (isBn) "ডিসকানেক্ট" else "Disconnect")
+                            }
+                        }
+                    }
+
+                    // Cloud location info
+                    Surface(
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(8.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Text(if (isSignedIn) "Sign Out" else "Sign In with Google")
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = if (isBn) "গুগল ড্রাইভ ফোল্ডার:" else "Google Drive Target:",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                text = "Telecom Cyber Cafe\n├── Billing_Data (Sheets: 5 Tables)\n└── Cash_Memo_PDF (YEAR/MONTH/Invoices)",
+                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                    }
+
+                    // Last backup & status
+                    val lastBackupFormatted = if (lastBackupTime > 0) {
+                        SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(lastBackupTime))
+                    } else {
+                        if (isBn) "কখনো ব্যাকআপ নেওয়া হয়নি" else "Never"
+                    }
+                    Text(
+                        text = (if (isBn) "সর্বশেষ ব্যাকআপ: " else "Last Backup: ") + lastBackupFormatted,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    if (!lastStatus.isNullOrBlank()) {
+                        Text(
+                            text = (if (isBn) "স্ট্যাটাস: " else "Status: ") + lastStatus,
+                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
+                            color = if (lastStatus!!.startsWith("ব্যর্থ") || lastStatus!!.startsWith("FAILED")) MaterialTheme.colorScheme.error else ToolGreen
+                        )
+                    }
+
+                    // Backup Now action
+                    Button(
+                        onClick = {
+                            if (googleAccount == null) {
+                                viewModel.setNotification(if (isBn) "❌ প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন" else "❌ Please connect a Google account first")
+                            } else {
+                                BackupManager.triggerImmediateBackup(context)
+                                viewModel.setNotification(if (isBn) "⏳ ক্লাউড ব্যাকআপ শুরু হয়েছে..." else "⏳ Cloud backup started...")
+                            }
+                        },
+                        enabled = !isBackupRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        if (isBackupRunning) {
+                            CircularProgressIndicator(
+                                color = Color.White,
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isBn) "ব্যাকআপ হচ্ছে..." else "Backing up...")
+                        } else {
+                            Text(if (isBn) "এখনই ব্যাকআপ নিন (Backup Now)" else "Backup Now to Google Drive")
+                        }
                     }
                 }
             }

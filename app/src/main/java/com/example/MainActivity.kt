@@ -61,6 +61,10 @@ class MainActivity : ComponentActivity() {
         // Update home screen widgets on start
         CalendarWidgetUpdater.updateAllWidgets(this)
 
+        // Initialize BackupManager and schedule periodic cloud backup
+        com.example.workers.BackupManager.initialize(this)
+        com.example.workers.BackupManager.schedulePeriodicBackup(this)
+
         setContent {
             val vm: PdfMasterViewModel = viewModel()
             mainViewModel = vm

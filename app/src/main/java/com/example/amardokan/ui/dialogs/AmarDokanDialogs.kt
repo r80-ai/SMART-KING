@@ -37,6 +37,19 @@ import com.example.amardokan.ui.BanglaNumberUtil
 import com.example.amardokan.ui.memo.AmarDokanCashMemoDialog
 import com.example.amardokan.ui.memo.AmarDokanCashMemoGenerator
 import com.example.amardokan.ui.screens.DraftBillItem
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
+import com.google.android.gms.common.api.ApiException
+import com.google.android.gms.common.api.Scope
+import com.google.api.services.drive.DriveScopes
+import com.google.api.services.sheets.v4.SheetsScopes
+import com.example.workers.BackupManager
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.launch
 
 @Composable
@@ -335,8 +348,40 @@ fun BackupRestoreDialog(
     var inputRestoreJson by remember { mutableStateOf("") }
     var isRestoring by remember { mutableStateOf(false) }
 
+    var currentAccount by remember {
+        mutableStateOf<GoogleSignInAccount?>(GoogleSignIn.getLastSignedInAccount(context))
+    }
+
+    val isBackupRunning by BackupManager.isBackupRunning.collectAsState()
+    val lastBackupTime by BackupManager.lastBackupTime.collectAsState()
+    val lastStatus by BackupManager.lastStatus.collectAsState()
+
+    val gso = remember {
+        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
+            .requestEmail()
+            .requestScopes(
+                Scope(DriveScopes.DRIVE_FILE),
+                Scope(SheetsScopes.SPREADSHEETS)
+            )
+            .build()
+    }
+
+    val signInLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val task = GoogleSignIn.getSignedInAccountFromIntent(result.data)
+        try {
+            val account = task.getResult(ApiException::class.java)
+            currentAccount = account
+            viewModel.showMessage("✅ গুগল অ্যাকাউন্ট সংযুক্ত হয়েছে: ${account.email}")
+        } catch (e: ApiException) {
+            viewModel.showMessage("❌ সাইন-ইন ব্যর্থ: Error code ${e.statusCode} (${e.message})")
+        }
+    }
+
     LaunchedEffect(Unit) {
         backupJson = viewModel.exportBackupJson()
+        BackupManager.initialize(context)
     }
 
     AlertDialog(
@@ -356,14 +401,134 @@ fun BackupRestoreDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "আপনার দোকানের সমস্ত খদ্দের, বিল, রেট ও লেনদেনের ডাটা নিরাপদে ব্যাকআপ রাখুন। যেকোনো সময় এটি কপি বা রিস্টোর করতে পারবেন।",
+                    text = "আপনার দোকানের সমস্ত খদ্দের, বিল, রেট ও লেনদেনের ডাটা ক্লাউডে সুরক্ষিত রাখুন।",
                     fontSize = 12.sp,
                     color = AmarDokanColors.TextSecondary
                 )
 
+                // ---------------- 1. GOOGLE CLOUD BACKUP SECTION ----------------
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = AmarDokanColors.ContentBg),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.CloudUpload, contentDescription = null, tint = AmarDokanColors.PrimaryBlue, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("১. Google Drive ও Sheets ব্যাকআপ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+
+                        // Account status row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("সংযুক্ত অ্যাকাউন্ট:", fontSize = 11.sp, color = AmarDokanColors.TextSecondary)
+                                Text(
+                                    text = currentAccount?.email ?: "কোনো অ্যাকাউন্ট নেই (Not Connected)",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if (currentAccount != null) AmarDokanColors.CashGreen else AmarDokanColors.AmberOrange
+                                )
+                            }
+
+                            if (currentAccount == null) {
+                                Button(
+                                    onClick = {
+                                        val client = GoogleSignIn.getClient(context, gso)
+                                        signInLauncher.launch(client.signInIntent)
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Login, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("কানেক্ট করুন", fontSize = 11.sp)
+                                }
+                            } else {
+                                TextButton(
+                                    onClick = {
+                                        val client = GoogleSignIn.getClient(context, gso)
+                                        client.signOut().addOnCompleteListener {
+                                            currentAccount = null
+                                            viewModel.showMessage("গুগল অ্যাকাউন্ট ডিসকানেক্ট করা হয়েছে")
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text("ডিসকানেক্ট", fontSize = 11.sp, color = AmarDokanColors.AmberOrange)
+                                }
+                            }
+                        }
+
+                        // Folder structure info
+                        Surface(
+                            color = Color.White,
+                            shape = RoundedCornerShape(6.dp),
+                            border = androidx.compose.foundation.BorderStroke(0.5.dp, AmarDokanColors.BorderLight),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(modifier = Modifier.padding(8.dp)) {
+                                Text("সংরক্ষণ লোকেশন (Drive):", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = AmarDokanColors.TextSecondary)
+                                Text("📁 Telecom Cyber Cafe/\n├── 📊 Billing_Data (Sheets: ৫টি টেবিল)\n└── 📁 Cash_Memo_PDF/ (বছর/মাস অনুযায়ী বিল PDF)", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = AmarDokanColors.PrimaryBlue)
+                            }
+                        }
+
+                        // Last backup info
+                        val lastBackupFormatted = if (lastBackupTime > 0) {
+                            SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(lastBackupTime))
+                        } else {
+                            "কখনো ব্যাকআপ নেওয়া হয়নি (Never)"
+                        }
+                        Text("সর্বশেষ ব্যাকআপ: $lastBackupFormatted", fontSize = 11.sp, color = AmarDokanColors.TextSecondary)
+
+                        if (!lastStatus.isNullOrBlank()) {
+                            Text(
+                                text = "স্ট্যাটাস: $lastStatus",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = if (lastStatus!!.startsWith("ব্যর্থ") || lastStatus!!.startsWith("FAILED")) Color(0xFFDC2626) else AmarDokanColors.CashGreen
+                            )
+                        }
+
+                        // Backup Now button
+                        Button(
+                            onClick = {
+                                if (currentAccount == null) {
+                                    viewModel.showMessage("❌ অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন")
+                                } else {
+                                    BackupManager.triggerImmediateBackup(context)
+                                    viewModel.showMessage("⏳ ক্লাউড ব্যাকআপ শুরু হয়েছে...")
+                                }
+                            },
+                            enabled = !isBackupRunning,
+                            colors = ButtonDefaults.buttonColors(containerColor = AmarDokanColors.PrimaryBlue),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            if (isBackupRunning) {
+                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("ব্যাকআপ হচ্ছে...", fontSize = 12.sp)
+                            } else {
+                                Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("এখনই ব্যাকআপ নিন (Backup Now)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                            }
+                        }
+                    }
+                }
+
                 HorizontalDivider(color = AmarDokanColors.BorderLight)
 
-                Text("১. ব্যাকআপ এক্সপোর্ট / কপি করুন:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                // ---------------- 2. LOCAL JSON EXPORT / COPY ----------------
+                Text("২. অফলাইন ব্যাকআপ এক্সপোর্ট / কপি করুন:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -403,7 +568,8 @@ fun BackupRestoreDialog(
 
                 HorizontalDivider(color = AmarDokanColors.BorderLight)
 
-                Text("২. ব্যাকআপ ডাটা রিস্টোর করুন:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                // ---------------- 3. LOCAL RESTORE ----------------
+                Text("৩. অফলাইন ডাটা রিস্টোর করুন:", fontWeight = FontWeight.Bold, fontSize = 13.sp)
 
                 OutlinedTextField(
                     value = inputRestoreJson,
@@ -425,7 +591,7 @@ fun BackupRestoreDialog(
                                 if (ok) onDismiss()
                             }
                         } else {
-                            viewModel.showMessage("❌ অনুগ্রহ করে ব্যাকআপ টেক্সট পেস্ট করুন")
+                            viewModel.showMessage("❌ অনুগ্রহ করে ব্যাকআপ টেকস্ট পেস্ট করুন")
                         }
                     },
                     enabled = !isRestoring,
