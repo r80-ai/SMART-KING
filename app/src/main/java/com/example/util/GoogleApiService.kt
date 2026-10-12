@@ -221,11 +221,14 @@ class GoogleApiService(private val context: Context) {
         val sheets = getSheetsService()
         val range = "'$sheetName'!A:Z"
         return try {
+            Log.d(tag, "Reading rows from range: $range in spreadsheet: $spreadsheetId")
             val response = sheets.spreadsheets().values()
                 .get(spreadsheetId, range)
                 .execute()
+            val values = response.getValues()
+            Log.d(tag, "Read ${values?.size ?: 0} rows from $sheetName")
             @Suppress("UNCHECKED_CAST")
-            (response.getValues() as? List<List<Any>>) ?: emptyList()
+            (values as? List<List<Any>>) ?: emptyList()
         } catch (e: Exception) {
             Log.w(tag, "Failed to read values from $sheetName: ${e.message}")
             emptyList()
@@ -255,6 +258,9 @@ class GoogleApiService(private val context: Context) {
             .execute()
 
         Log.d(tag, "writeSheetData finished for $sheetName: updatedRows=${response.updatedRows}, updatedCells=${response.updatedCells}, updatedRange=${response.updatedRange}")
+        if (response.updatedRows == null || response.updatedRows == 0) {
+            Log.e(tag, "WARNING: writeSheetData returned 0 updated rows for $sheetName! Data might not have been written.")
+        }
         return response
     }
 
@@ -281,6 +287,9 @@ class GoogleApiService(private val context: Context) {
             .execute()
 
         Log.d(tag, "appendSheetRows finished for $sheetName: updatedRows=${response.updates?.updatedRows}, tableRange=${response.tableRange}")
+        if (response.updates?.updatedRows == null || response.updates?.updatedRows == 0) {
+            Log.e(tag, "WARNING: appendSheetRows returned 0 updated rows for $sheetName! Data might not have been appended.")
+        }
         return response
     }
 
