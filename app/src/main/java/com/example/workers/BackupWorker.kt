@@ -19,26 +19,26 @@ class BackupWorker(
         val dao = database.amarDokanDao()
         val apiService = com.example.util.GoogleApiService(applicationContext)
 
-        // 1. Fetch pending records from SyncMetadata
-        val pendingSyncs = dao.getPendingSyncs()
-        if (pendingSyncs.isEmpty()) {
-            return@withContext Result.success()
-        }
-
         try {
-            val sheetsService = apiService.getSheetsService()
-            // 2. Implementation: Upload records to Google Sheets
-            // Logic: Create/update sheets per table
-            // For each record, if successful, mark as synced in SyncMetadata
-            
-            // Simplified for now: Log pending count
-            android.util.Log.d("BackupWorker", "Syncing ${pendingSyncs.size} records")
-            
-            // Mark as synced
-            pendingSyncs.forEach { metadata ->
-                dao.updateSyncMetadata(metadata.copy(isPending = false))
+            // Check if user is signed in
+            val account = com.google.android.gms.auth.api.signin.GoogleSignIn.getLastSignedInAccount(applicationContext)
+            if (account == null) {
+                android.util.Log.e("BackupWorker", "User not signed in, skipping sync")
+                return@withContext Result.failure()
             }
-            
+
+            // 1. Fetch all records
+            val customers = dao.getAllCustomersSync()
+            val services = dao.getAllServicesSync()
+            val bills = dao.getAllBillsSync()
+            val billItems = dao.getAllBillItemsSync()
+            val payments = dao.getAllPaymentsSync()
+
+            android.util.Log.d("BackupWorker", "Fetched ${customers.size} customers, ${bills.size} bills")
+
+            // 2. Implementation: Upload records to Google Sheets
+            // (Sheets upload logic will go here)
+
             Result.success()
         } catch (e: Exception) {
             android.util.Log.e("BackupWorker", "Sync failed", e)

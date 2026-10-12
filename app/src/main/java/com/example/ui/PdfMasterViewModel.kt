@@ -6,6 +6,8 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.util.LruCache
+import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import android.graphics.pdf.PdfRenderer
 import android.os.ParcelFileDescriptor
 import kotlinx.coroutines.sync.Mutex
@@ -397,6 +399,16 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun clearNotification() {
         _notification.value = null
+    }
+
+    fun signOut(context: Context) {
+        val googleSignInClient = GoogleSignIn.getClient(context, GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN).build())
+        googleSignInClient.signOut()
+    }
+
+    // Helper for sign-in check
+    fun isUserSignedIn(context: Context): Boolean {
+        return GoogleSignIn.getLastSignedInAccount(context) != null
     }
 
     fun setNotification(msg: String) {

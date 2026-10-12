@@ -26,6 +26,9 @@ interface AmarDokanDao {
     @Query("SELECT * FROM ad_customers ORDER BY name ASC")
     fun getAllCustomers(): Flow<List<Customer>>
 
+    @Query("SELECT * FROM ad_customers")
+    suspend fun getAllCustomersSync(): List<Customer>
+
     @Query("SELECT * FROM ad_customers WHERE id = :customerId LIMIT 1")
     suspend fun getCustomerById(customerId: Long): Customer?
 
@@ -45,6 +48,9 @@ interface AmarDokanDao {
     @Query("SELECT * FROM ad_services ORDER BY isDefault DESC, id ASC")
     fun getAllServices(): Flow<List<ServiceItem>>
 
+    @Query("SELECT * FROM ad_services")
+    suspend fun getAllServicesSync(): List<ServiceItem>
+
     @Query("SELECT COUNT(*) FROM ad_services")
     suspend fun countServices(): Int
 
@@ -61,6 +67,9 @@ interface AmarDokanDao {
     @Query("SELECT * FROM ad_bills ORDER BY dateMillis DESC, id DESC")
     fun getAllBills(): Flow<List<Bill>>
 
+    @Query("SELECT * FROM ad_bills")
+    suspend fun getAllBillsSync(): List<Bill>
+
     @Query("SELECT * FROM ad_bills WHERE id = :billId LIMIT 1")
     suspend fun getBillById(billId: Long): Bill?
 
@@ -76,6 +85,9 @@ interface AmarDokanDao {
 
     @Query("SELECT * FROM ad_bill_items WHERE billId = :billId ORDER BY id ASC")
     fun getBillItemsByBillId(billId: Long): Flow<List<BillItem>>
+
+    @Query("SELECT * FROM ad_bill_items")
+    suspend fun getAllBillItemsSync(): List<BillItem>
 
     @Query("SELECT * FROM ad_bill_items WHERE billId = :billId ORDER BY id ASC")
     suspend fun getBillItemsByBillIdSync(billId: Long): List<BillItem>
@@ -95,6 +107,9 @@ interface AmarDokanDao {
 
     @Query("SELECT * FROM ad_payments ORDER BY dateMillis DESC, id DESC")
     fun getAllPayments(): Flow<List<Payment>>
+
+    @Query("SELECT * FROM ad_payments")
+    suspend fun getAllPaymentsSync(): List<Payment>
 
     @Query("SELECT * FROM ad_payments WHERE customerId = :customerId ORDER BY dateMillis ASC, id ASC")
     fun getPaymentsByCustomerId(customerId: Long): Flow<List<Payment>>

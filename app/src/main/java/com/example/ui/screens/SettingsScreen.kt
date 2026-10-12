@@ -250,6 +250,43 @@ AppScreen(modifier = modifier, isScrollable = false) {
             }
         }
 
+        // Section: Google Backup
+        item {
+            Spacer(modifier = Modifier.height(14.dp))
+            SettingsSectionHeader(
+                title = if (language == "bn") "গুগল ব্যাকআপ" else "Google Backup",
+                icon = Icons.Default.Security,
+                color = ToolGreen
+            )
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            ) {
+                Column(modifier = Modifier.padding(14.dp)) {
+                    val isSignedIn = viewModel.isUserSignedIn(context)
+                    Button(
+                        onClick = {
+                            if (isSignedIn) {
+                                viewModel.signOut(context)
+                                viewModel.setNotification("Signed out of Google")
+                            } else {
+                                // For now, simple sign-in trigger.
+                                // In a real app, this would trigger the actual GoogleSignIn flow
+                                viewModel.setNotification("Sign-in logic needs to be triggered via Activity result launcher")
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(if (isSignedIn) "Sign Out" else "Sign In with Google")
+                    }
+                }
+            }
+        }
+
         // Section: About App
         item {
             Spacer(modifier = Modifier.height(14.dp))

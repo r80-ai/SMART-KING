@@ -68,4 +68,17 @@ class GoogleApiService(private val context: Context) {
         val mediaContent = com.google.api.client.http.FileContent(mimeType, file)
         return getDriveService().files().create(fileMetadata, mediaContent).setFields("id").execute().id
     }
-}
+
+    fun uploadToSheets(spreadsheetId: String, sheetName: String, data: List<List<Any>>) {
+        val range = "$sheetName!A1"
+        val valueRange = com.google.api.services.sheets.v4.model.ValueRange().setValues(data)
+        getSheetsService().spreadsheets().values()
+            .update(spreadsheetId, range, valueRange)
+            .setValueInputOption("RAW")
+            .execute()
+    }
+
+    fun findOrCreateSpreadsheet(title: String, folderId: String): String {
+        // Implementation to find or create spreadsheet
+        return "" // Placeholder for now
+    }
