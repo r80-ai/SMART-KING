@@ -2,9 +2,13 @@ package com.example.amardokan.data
 
 import android.content.Context
 import com.example.data.AppDatabase
+import com.example.util.UserManager
+import com.example.workers.BackupManager
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -15,15 +19,31 @@ import java.util.Locale
 
 class AmarDokanRepository(private val context: Context) {
 
-    private val db = AppDatabase.getDatabase(context)
-    private val dao = db.amarDokanDao()
+    private fun getDao(): AmarDokanDao =
+        AppDatabase.getDatabase(context, UserManager.getCurrentUserKey(context)).amarDokanDao()
 
-    val allCustomers: Flow<List<Customer>> = dao.getAllCustomers()
-    val allServices: Flow<List<ServiceItem>> = dao.getAllServices()
-    val allBills: Flow<List<Bill>> = dao.getAllBills()
-    val allPayments: Flow<List<Payment>> = dao.getAllPayments()
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allCustomers: Flow<List<Customer>> = UserManager.currentUserKey.flatMapLatest { key ->
+        AppDatabase.getDatabase(context, key).amarDokanDao().getAllCustomers()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allServices: Flow<List<ServiceItem>> = UserManager.currentUserKey.flatMapLatest { key ->
+        AppDatabase.getDatabase(context, key).amarDokanDao().getAllServices()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allBills: Flow<List<Bill>> = UserManager.currentUserKey.flatMapLatest { key ->
+        AppDatabase.getDatabase(context, key).amarDokanDao().getAllBills()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val allPayments: Flow<List<Payment>> = UserManager.currentUserKey.flatMapLatest { key ->
+        AppDatabase.getDatabase(context, key).amarDokanDao().getAllPayments()
+    }
 
     suspend fun initDefaultServicesIfEmpty() = withContext(Dispatchers.IO) {
+        val dao = getDao()
         if (dao.countServices() == 0) {
             val defaults = listOf(
                 ServiceItem(nameBn = "সাদা-কালো জেরক্স / প্রিন্ট", nameEn = "B&W Xerox / Print", defaultRate = 3.0, unitBn = "পাতা", isDefault = true),
@@ -38,32 +58,40 @@ class AmarDokanRepository(private val context: Context) {
 
     // ---------------- CUSTOMERS ----------------
     suspend fun addCustomer(name: String, phone: String, address: String = "", notes: String = ""): Long = withContext(Dispatchers.IO) {
-        dao.insertCustomer(Customer(name = name.trim(), phone = phone.trim(), address = address.trim(), notes = notes.trim()))
+        val id = getDao().insertCustomer(Customer(name = name.trim(), phone = phone.trim(), address = address.trim(), notes = notes.trim()))
+        BackupManager.triggerImmediateBackup(context)
+        id
     }
 
     suspend fun updateCustomer(customer: Customer) = withContext(Dispatchers.IO) {
-        dao.updateCustomer(customer)
+        getDao().updateCustomer(customer)
+        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun deleteCustomer(customer: Customer) = withContext(Dispatchers.IO) {
-        dao.deleteCustomer(customer)
+        getDao().deleteCustomer(customer)
+        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun getCustomerById(customerId: Long): Customer? = withContext(Dispatchers.IO) {
-        dao.getCustomerById(customerId)
+        getDao().getCustomerById(customerId)
     }
 
     // ---------------- SERVICES ----------------
     suspend fun addService(nameBn: String, nameEn: String, rate: Double, unitBn: String): Long = withContext(Dispatchers.IO) {
-        dao.insertService(ServiceItem(nameBn = nameBn.trim(), nameEn = nameEn.trim(), defaultRate = rate, unitBn = unitBn.trim(), isDefault = false))
+        val id = getDao().insertService(ServiceItem(nameBn = nameBn.trim(), nameEn = nameEn.trim(), defaultRate = rate, unitBn = unitBn.trim(), isDefault = false))
+        BackupManager.triggerImmediateBackup(context)
+        id
     }
 
     suspend fun updateService(service: ServiceItem) = withContext(Dispatchers.IO) {
-        dao.updateService(service)
+        getDao().updateService(service)
+        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun deleteService(service: ServiceItem) = withContext(Dispatchers.IO) {
-        dao.deleteService(service)
+        getDao().deleteService(service)
+        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun resetDefaultServices() = withContext(Dispatchers.IO) {
@@ -74,7 +102,9 @@ class AmarDokanRepository(private val context: Context) {
             ServiceItem(nameBn = "লেমিনেশন", nameEn = "Lamination", defaultRate = 20.0, unitBn = "টি", isDefault = true),
             ServiceItem(nameBn = "অনলাইন ফর্ম / আবেদন ফি", nameEn = "Online Form / Apply Fee", defaultRate = 50.0, unitBn = "সার্ভিস", isDefault = true)
         )
+        val dao = getDao()
         defaults.forEach { dao.insertService(it) }
+        BackupManager.triggerImmediateBackup(context)
     }
 
     // ---------------- BILLS ----------------
@@ -109,15 +139,18 @@ class AmarDokanRepository(private val context: Context) {
             notes = notes,
             language = language
         )
-        dao.saveBillWithItems(bill, items)
+        val billId = getDao().saveBillWithItems(bill, items)
+        BackupManager.triggerImmediateBackup(context)
+        billId
     }
 
     suspend fun deleteBill(bill: Bill) = withContext(Dispatchers.IO) {
-        dao.deleteBillCompletely(bill)
+        getDao().deleteBillCompletely(bill)
+        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun getBillItems(billId: Long): List<BillItem> = withContext(Dispatchers.IO) {
-        dao.getBillItemsByBillIdSync(billId)
+        getDao().getBillItemsByBillIdSync(billId)
     }
 
     // ---------------- PAYMENTS ----------------
@@ -131,7 +164,7 @@ class AmarDokanRepository(private val context: Context) {
         notes: String
     ): Long = withContext(Dispatchers.IO) {
         if (amount <= 0.0) return@withContext -1L
-        dao.insertPayment(
+        val payId = getDao().insertPayment(
             Payment(
                 customerId = customerId,
                 customerName = customerName,
@@ -142,14 +175,18 @@ class AmarDokanRepository(private val context: Context) {
                 notes = notes
             )
         )
+        BackupManager.triggerImmediateBackup(context)
+        payId
     }
 
     suspend fun deletePayment(payment: Payment) = withContext(Dispatchers.IO) {
-        dao.deletePayment(payment)
+        getDao().deletePayment(payment)
+        BackupManager.triggerImmediateBackup(context)
     }
 
     // ---------------- ACCOUNTING CALCULATIONS ----------------
     suspend fun getCustomerBalance(customerId: Long): Double = withContext(Dispatchers.IO) {
+        val dao = getDao()
         val totalCreditBills = dao.getTotalCreditBillsForCustomer(customerId)
         val totalPayments = dao.getTotalPaymentsForCustomer(customerId)
         val balance = totalCreditBills - totalPayments
@@ -157,6 +194,7 @@ class AmarDokanRepository(private val context: Context) {
     }
 
     suspend fun getCustomerLedger(customerId: Long): List<LedgerEntry> = withContext(Dispatchers.IO) {
+        val dao = getDao()
         val bills = dao.getBillsByCustomerId(customerId).first()
         val payments = dao.getPaymentsByCustomerId(customerId).first()
 
@@ -218,6 +256,7 @@ class AmarDokanRepository(private val context: Context) {
 
     // ---------------- BACKUP & RESTORE ----------------
     suspend fun exportBackupJson(): String = withContext(Dispatchers.IO) {
+        val dao = getDao()
         val root = JSONObject()
         val customers = dao.getAllCustomers().first()
         val services = dao.getAllServices().first()
@@ -307,6 +346,7 @@ class AmarDokanRepository(private val context: Context) {
 
     suspend fun importBackupJson(jsonString: String): Boolean = withContext(Dispatchers.IO) {
         try {
+            val dao = getDao()
             val root = JSONObject(jsonString)
             if (root.has("customers")) {
                 val custArray = root.getJSONArray("customers")
@@ -398,6 +438,7 @@ class AmarDokanRepository(private val context: Context) {
                     )
                 }
             }
+            BackupManager.triggerImmediateBackup(context)
             true
         } catch (e: Exception) {
             e.printStackTrace()

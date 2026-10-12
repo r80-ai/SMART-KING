@@ -49,6 +49,25 @@ class GoogleApiService(private val context: Context) {
     fun getSheetsService(): Sheets = cachedSheets
 
     /**
+     * Checks if a folder with [name] already exists under [parentId] (or root if null).
+     * Returns the folder ID if found, or null otherwise.
+     */
+    fun findFolder(name: String, parentId: String? = null): String? {
+        val drive = getDriveService()
+        val parentCondition = if (parentId != null) "'$parentId' in parents" else "'root' in parents"
+        val query = "name = '$name' and mimeType = 'application/vnd.google-apps.folder' and $parentCondition and trashed = false"
+
+        val response = drive.files().list()
+            .setQ(query)
+            .setSpaces("drive")
+            .setFields("files(id, name)")
+            .execute()
+
+        val files = response.files
+        return if (!files.isNullOrEmpty()) files[0].id else null
+    }
+
+    /**
      * Finds or creates a folder with [name] under [parentId] (or root if null).
      * Prevents duplicate folder creation.
      */
@@ -82,6 +101,24 @@ class GoogleApiService(private val context: Context) {
             .execute()
         Log.d(tag, "Created new folder '$name' (id: ${created.id})")
         return created.id
+    }
+
+    /**
+     * Finds existing Google Spreadsheet [title] inside [folderId] without creating a new one.
+     * Returns its spreadsheet ID if found, or null otherwise.
+     */
+    fun findSpreadsheet(title: String, folderId: String): String? {
+        val drive = getDriveService()
+        val query = "name = '$title' and mimeType = 'application/vnd.google-apps.spreadsheet' and '$folderId' in parents and trashed = false"
+
+        val response = drive.files().list()
+            .setQ(query)
+            .setSpaces("drive")
+            .setFields("files(id, name)")
+            .execute()
+
+        val files = response.files
+        return if (!files.isNullOrEmpty()) files[0].id else null
     }
 
     /**

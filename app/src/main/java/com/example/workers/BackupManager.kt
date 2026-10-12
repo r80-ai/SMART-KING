@@ -6,7 +6,9 @@ import android.os.Build
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.work.*
+import com.example.util.UserManager
 import com.google.android.gms.auth.api.signin.GoogleSignIn
+import com.google.android.gms.auth.api.signin.GoogleSignInAccount
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -41,6 +43,8 @@ object BackupManager {
 
     // Atomic execution lock to prevent parallel or overlapping backup operations
     private val backupExecutionLock = AtomicBoolean(false)
+    // Tracks if database was modified while a backup was already running
+    private val hasPendingChanges = AtomicBoolean(false)
 
     private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private var isObserverAttached = false
@@ -59,7 +63,8 @@ object BackupManager {
 
     fun initialize(context: Context) {
         val appContext = context.applicationContext
-        val prefs = getPrefs(appContext)
+        val userKey = UserManager.getCurrentUserKey(appContext)
+        val prefs = getPrefs(appContext, userKey)
         _lastBackupTime.value = prefs.getLong(KEY_LAST_BACKUP_TIME, 0L)
         _lastStatus.value = prefs.getString(KEY_LAST_STATUS, null)
 
@@ -77,6 +82,9 @@ object BackupManager {
                             WorkInfo.State.SUCCEEDED -> {
                                 _isBackupRunning.value = false
                                 releaseBackupLock()
+                                if (hasPendingChanges.compareAndSet(true, false)) {
+                                    triggerImmediateBackup(appContext)
+                                }
                             }
                             WorkInfo.State.FAILED -> {
                                 _isBackupRunning.value = false
@@ -119,31 +127,46 @@ object BackupManager {
         }
     }
 
-    private fun getPrefs(context: Context): SharedPreferences {
-        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    fun onUserAccountChanged(context: Context, account: GoogleSignInAccount?) {
+        val userKey = UserManager.computeUserKey(account)
+        val prefs = getPrefs(context, userKey)
+        _lastBackupTime.value = prefs.getLong(KEY_LAST_BACKUP_TIME, 0L)
+        _lastStatus.value = prefs.getString(KEY_LAST_STATUS, null)
+
+        if (account != null) {
+            checkAndRestoreIfNeeded(context, userKey)
+        }
+    }
+
+    private fun getPrefs(context: Context, userKey: String = UserManager.getCurrentUserKey(context)): SharedPreferences {
+        return context.getSharedPreferences("${PREFS_NAME}_$userKey", Context.MODE_PRIVATE)
     }
 
     fun schedulePeriodicBackup(context: Context) {
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
-            .build()
+        try {
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
 
-        val periodicWork = PeriodicWorkRequestBuilder<BackupWorker>(6, TimeUnit.HOURS)
-            .setConstraints(constraints)
-            .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
-            .build()
+            val periodicWork = PeriodicWorkRequestBuilder<BackupWorker>(6, TimeUnit.HOURS)
+                .setConstraints(constraints)
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 15, TimeUnit.MINUTES)
+                .build()
 
-        WorkManager.getInstance(context).enqueueUniquePeriodicWork(
-            WORK_NAME_PERIODIC,
-            ExistingPeriodicWorkPolicy.KEEP,
-            periodicWork
-        )
+            WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+                WORK_NAME_PERIODIC,
+                ExistingPeriodicWorkPolicy.KEEP,
+                periodicWork
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scheduling periodic backup", e)
+        }
     }
 
     fun triggerImmediateBackup(context: Context) {
         if (_isBackupRunning.value || backupExecutionLock.get()) {
-            Log.w(TAG, "Backup is already running or locked. Ignoring duplicate trigger.")
-            updateStatus(context, "ব্যাকআপ ইতিমধ্যে চলছে, অনুগ্রহ করে অপেক্ষা করুন...")
+            Log.w(TAG, "Backup is already running or locked. Marking pending changes.")
+            hasPendingChanges.set(true)
             return
         }
 
@@ -156,16 +179,40 @@ object BackupManager {
         _isBackupRunning.value = true
         updateStatus(context, "ক্লাউড ব্যাকআপ শুরু হচ্ছে...")
 
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+
         val manualWork = OneTimeWorkRequestBuilder<BackupWorker>()
+            .setConstraints(constraints)
             .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 30, TimeUnit.SECONDS)
             .build()
 
         val workManager = WorkManager.getInstance(context)
-        // CRITICAL: Use ExistingWorkPolicy.KEEP so an in-flight manual backup is NEVER cancelled or replaced!
         workManager.enqueueUniqueWork(
             WORK_NAME_MANUAL,
             ExistingWorkPolicy.KEEP,
             manualWork
+        )
+    }
+
+    fun triggerImmediateRestore(context: Context, userKey: String = UserManager.getCurrentUserKey(context)) {
+        val account = GoogleSignIn.getLastSignedInAccount(context)
+        if (account == null) {
+            updateStatus(context, "ব্যর্থ: গুগল অ্যাকাউন্ট সংযুক্ত নেই", userKey)
+            return
+        }
+        updateStatus(context, "ক্লাউড থেকে রিস্টোর শুরু হচ্ছে...", userKey)
+        val constraints = Constraints.Builder()
+            .setRequiredNetworkType(NetworkType.CONNECTED)
+            .build()
+        val restoreWork = OneTimeWorkRequestBuilder<RestoreWorker>()
+            .setConstraints(constraints)
+            .build()
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "amar_dokan_restore_$userKey",
+            ExistingWorkPolicy.REPLACE,
+            restoreWork
         )
     }
 
@@ -180,49 +227,68 @@ object BackupManager {
         }
     }
 
-    fun updateStatus(context: Context, status: String) {
-        _lastStatus.value = status
-        getPrefs(context).edit().putString(KEY_LAST_STATUS, status).apply()
+    fun updateStatus(context: Context, status: String, userKey: String = UserManager.getCurrentUserKey(context)) {
+        if (userKey == UserManager.getCurrentUserKey(context)) {
+            _lastStatus.value = status
+        }
+        getPrefs(context, userKey).edit().putString(KEY_LAST_STATUS, status).apply()
     }
 
-    fun updateSuccess(context: Context, summary: String) {
+    fun updateSuccess(context: Context, summary: String, userKey: String = UserManager.getCurrentUserKey(context)) {
         val now = System.currentTimeMillis()
-        _lastBackupTime.value = now
-        _lastStatus.value = summary
-        _isBackupRunning.value = false
+        if (userKey == UserManager.getCurrentUserKey(context)) {
+            _lastBackupTime.value = now
+            _lastStatus.value = summary
+            _isBackupRunning.value = false
+        }
         releaseBackupLock()
-        getPrefs(context).edit()
+        getPrefs(context, userKey).edit()
             .putLong(KEY_LAST_BACKUP_TIME, now)
             .putString(KEY_LAST_STATUS, summary)
             .putString(KEY_LAST_SUMMARY, summary)
             .apply()
     }
 
-    fun saveRootFolderId(context: Context, id: String) {
-        getPrefs(context).edit().putString(KEY_ROOT_FOLDER_ID, id).apply()
+    fun saveRootFolderId(context: Context, id: String, userKey: String = UserManager.getCurrentUserKey(context)) {
+        getPrefs(context, userKey).edit().putString(KEY_ROOT_FOLDER_ID, id).apply()
     }
 
-    fun saveSpreadsheetId(context: Context, id: String) {
-        getPrefs(context).edit().putString(KEY_SPREADSHEET_ID, id).apply()
+    fun saveSpreadsheetId(context: Context, id: String, userKey: String = UserManager.getCurrentUserKey(context)) {
+        getPrefs(context, userKey).edit().putString(KEY_SPREADSHEET_ID, id).apply()
     }
 
-    fun saveCashMemoFolderId(context: Context, id: String) {
-        getPrefs(context).edit().putString(KEY_CASH_MEMO_FOLDER_ID, id).apply()
+    fun saveCashMemoFolderId(context: Context, id: String, userKey: String = UserManager.getCurrentUserKey(context)) {
+        getPrefs(context, userKey).edit().putString(KEY_CASH_MEMO_FOLDER_ID, id).apply()
     }
 
-    fun getRootFolderId(context: Context): String? = getPrefs(context).getString(KEY_ROOT_FOLDER_ID, null)
-    fun getSpreadsheetId(context: Context): String? = getPrefs(context).getString(KEY_SPREADSHEET_ID, null)
-    fun checkAndRestoreIfNeeded(context: Context) {
-        // Simple check: if no backup folders initialized, it's likely a new install
-        if (getRootFolderId(context) == null) {
-            val account = GoogleSignIn.getLastSignedInAccount(context)
-            if (account != null) {
-                // Trigger Restore check in background
-                val restoreWork = OneTimeWorkRequestBuilder<RestoreWorker>()
-                    .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
-                    .build()
-                WorkManager.getInstance(context).enqueueUniqueWork("amar_dokan_restore", ExistingWorkPolicy.KEEP, restoreWork)
-            }
+    fun getRootFolderId(context: Context, userKey: String = UserManager.getCurrentUserKey(context)): String? =
+        getPrefs(context, userKey).getString(KEY_ROOT_FOLDER_ID, null)
+
+    fun getSpreadsheetId(context: Context, userKey: String = UserManager.getCurrentUserKey(context)): String? =
+        getPrefs(context, userKey).getString(KEY_SPREADSHEET_ID, null)
+
+    fun getCashMemoFolderId(context: Context, userKey: String = UserManager.getCurrentUserKey(context)): String? =
+        getPrefs(context, userKey).getString(KEY_CASH_MEMO_FOLDER_ID, null)
+
+    fun checkAndRestoreIfNeeded(context: Context, userKey: String = UserManager.getCurrentUserKey(context)) {
+        val account = GoogleSignIn.getLastSignedInAccount(context) ?: return
+        val prefs = getPrefs(context, userKey)
+        val hasRestoredOrSynced = prefs.getLong(KEY_LAST_BACKUP_TIME, 0L) > 0L || prefs.getString(KEY_SPREADSHEET_ID, null) != null
+
+        // If this user has never restored or synced on this device, check Google Drive to restore historical data
+        if (!hasRestoredOrSynced) {
+            updateStatus(context, "ক্লাউড থেকে আগের ডাটা চেক করা হচ্ছে...", userKey)
+            val constraints = Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build()
+            val restoreWork = OneTimeWorkRequestBuilder<RestoreWorker>()
+                .setConstraints(constraints)
+                .build()
+            WorkManager.getInstance(context).enqueueUniqueWork(
+                "amar_dokan_restore_$userKey",
+                ExistingWorkPolicy.KEEP,
+                restoreWork
+            )
         }
     }
 }

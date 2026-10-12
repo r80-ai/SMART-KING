@@ -44,6 +44,8 @@ import com.example.ai.GeminiAiHelper
 import com.example.ui.dialogs.FolderCustomizerDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -177,6 +179,8 @@ fun SettingsScreen(
         try {
             val account = task.getResult(ApiException::class.java)
             googleAccount = account
+            com.example.util.UserManager.onAccountChanged(context, account)
+            com.example.workers.BackupManager.onUserAccountChanged(context, account)
             val hasDrive = GoogleSignIn.hasPermissions(account, driveScope)
             val hasSheets = GoogleSignIn.hasPermissions(account, sheetsScope)
             if (!hasDrive || !hasSheets) {
@@ -419,6 +423,8 @@ AppScreen(modifier = modifier, isScrollable = false) {
                                     client.signOut().addOnCompleteListener {
                                         googleAccount = null
                                         signInError = null
+                                        com.example.util.UserManager.onAccountChanged(context, null)
+                                        com.example.workers.BackupManager.onUserAccountChanged(context, null)
                                         viewModel.setNotification(if (isBn) "গুগল অ্যাকাউন্ট ডিসকানেক্ট করা হয়েছে" else "Disconnected Google Account")
                                     }
                                 },
@@ -552,10 +558,32 @@ AppScreen(modifier = modifier, isScrollable = false) {
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (isBn) "ব্যাকআপ হচ্ছে..." else "Backing up...")
+                            Text(if (isBn) "কাজ চলছে..." else "In progress...")
                         } else {
                             Text(if (isBn) "এখনই ব্যাকআপ নিন (Backup Now)" else "Backup Now to Google Drive")
                         }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedButton(
+                        onClick = {
+                            if (googleAccount == null) {
+                                signInError = if (isBn) "অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন।" else "Please connect a Google account first."
+                            } else if (!hasAllScopes) {
+                                signInError = if (isBn) "ড্রাইভ ও শিটস অনুমতি দেওয়া হয়নি। অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।" else "Drive & Sheets permissions needed. Please tap 'Grant Permissions'."
+                            } else {
+                                signInError = null
+                                BackupManager.triggerImmediateRestore(context)
+                                viewModel.setNotification(if (isBn) "⏳ ড্রাইভ থেকে রিস্টোর শুরু হয়েছে..." else "⏳ Restoring from Google Drive...")
+                            }
+                        },
+                        enabled = !isBackupRunning,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(if (isBn) "ড্রাইভ থেকে রিস্টোর (Restore from Drive)" else "Restore from Google Drive")
                     }
                 }
             }

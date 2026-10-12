@@ -79,11 +79,12 @@ class BackupWorker(
                 return@withContext Result.failure()
             }
 
-            BackupManager.updateStatus(applicationContext, "ডাটাবেজ থেকে তথ্য নেওয়া হচ্ছে...")
-            Log.d(tag, "Signed in successfully. Starting Drive and Sheets backup for ${account.email?.take(3)}***...")
+            val userKey = com.example.util.UserManager.computeUserKey(account)
+            BackupManager.updateStatus(applicationContext, "ডাটাবেজ থেকে তথ্য নেওয়া হচ্ছে...", userKey)
+            Log.d(tag, "Signed in successfully. Starting Drive and Sheets backup for user $userKey (${account.email?.take(3)}***)...")
 
-            // 3. Fetch Room data (all 5 tables)
-            val db = AppDatabase.getDatabase(applicationContext)
+            // 3. Fetch Room data (all 5 tables for this user)
+            val db = AppDatabase.getDatabase(applicationContext, userKey)
             val dao = db.amarDokanDao()
 
             val customers = dao.getAllCustomersSync()
@@ -92,29 +93,29 @@ class BackupWorker(
             val billItems = dao.getAllBillItemsSync()
             val payments = dao.getAllPaymentsSync()
 
-            Log.i(tag, "Room records retrieved: ad_customers=${customers.size}, ad_services=${services.size}, ad_bills=${bills.size}, ad_bill_items=${billItems.size}, ad_payments=${payments.size}")
+            Log.i(tag, "Room records retrieved for $userKey: ad_customers=${customers.size}, ad_services=${services.size}, ad_bills=${bills.size}, ad_bill_items=${billItems.size}, ad_payments=${payments.size}")
 
             // 4. Initialize Google API Service
             val apiService = GoogleApiService(applicationContext)
 
             // 5. Drive Folders & Spreadsheet Setup
-            BackupManager.updateStatus(applicationContext, "Google Drive ফোল্ডার প্রস্তুত করা হচ্ছে...")
+            BackupManager.updateStatus(applicationContext, "Google Drive ফোল্ডার প্রস্তুত করা হচ্ছে...", userKey)
             val rootFolderId = apiService.findOrCreateFolder("Telecom Cyber Cafe")
-            BackupManager.saveRootFolderId(applicationContext, rootFolderId)
+            BackupManager.saveRootFolderId(applicationContext, rootFolderId, userKey)
 
             val spreadsheetId = apiService.findOrCreateSpreadsheet("Billing_Data", rootFolderId)
-            BackupManager.saveSpreadsheetId(applicationContext, spreadsheetId)
+            BackupManager.saveSpreadsheetId(applicationContext, spreadsheetId, userKey)
 
             val cashMemoFolderId = apiService.findOrCreateFolder("Cash_Memo_PDF", rootFolderId)
-            BackupManager.saveCashMemoFolderId(applicationContext, cashMemoFolderId)
+            BackupManager.saveCashMemoFolderId(applicationContext, cashMemoFolderId, userKey)
 
             // 6. Ensure all 5 Tabs exist in Billing_Data
-            BackupManager.updateStatus(applicationContext, "Google Sheets ট্যাব প্রস্তুত করা হচ্ছে...")
+            BackupManager.updateStatus(applicationContext, "Google Sheets ট্যাব প্রস্তুত করা হচ্ছে...", userKey)
             val requiredTabs = listOf("ad_customers", "ad_services", "ad_bills", "ad_bill_items", "ad_payments")
             apiService.ensureSheetTabs(spreadsheetId, requiredTabs)
 
             // 7. Synchronize all 5 Tables with Headers and Data (ValueInputOption.RAW)
-            BackupManager.updateStatus(applicationContext, "Google Sheets-এ টেবিল সিনক্রোনাইজ হচ্ছে...")
+            BackupManager.updateStatus(applicationContext, "Google Sheets-এ টেবিল সিনক্রোনাইজ হচ্ছে...", userKey)
             val syncTimestamp = System.currentTimeMillis()
 
             // --- TAB 1: ad_customers ---
@@ -349,9 +350,9 @@ class BackupWorker(
                 }
             }
 
-            val summary = "সফল: ${bills.size}টি বিল, ${customers.size}টি গ্রাহক, ৫টি শিট সিঙ্ক, $pdfUploadedCount PDF আপলোড হয়েছে"
+            val summary = "সফল: ${bills.size}টি বিল, ${customers.size} জন গ্রাহক, ৫টি শিট সিঙ্ক, $pdfUploadedCount PDF আপলোড হয়েছে"
             Log.i(tag, "Backup complete: $summary")
-            BackupManager.updateSuccess(applicationContext, summary)
+            BackupManager.updateSuccess(applicationContext, summary, userKey)
             BackupManager.setBackupRunning(false)
             BackupManager.releaseBackupLock()
             Result.success()

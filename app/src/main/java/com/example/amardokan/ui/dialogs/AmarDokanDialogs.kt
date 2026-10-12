@@ -410,6 +410,8 @@ fun BackupRestoreDialog(
         try {
             val account = task.getResult(ApiException::class.java)
             currentAccount = account
+            com.example.util.UserManager.onAccountChanged(context, account)
+            com.example.workers.BackupManager.onUserAccountChanged(context, account)
             val hasDrive = GoogleSignIn.hasPermissions(account, driveScope)
             val hasSheets = GoogleSignIn.hasPermissions(account, sheetsScope)
             if (!hasDrive || !hasSheets) {
@@ -522,6 +524,8 @@ fun BackupRestoreDialog(
                                         client.signOut().addOnCompleteListener {
                                             currentAccount = null
                                             signInError = null
+                                            com.example.util.UserManager.onAccountChanged(context, null)
+                                            com.example.workers.BackupManager.onUserAccountChanged(context, null)
                                             viewModel.showMessage("গুগল অ্যাকাউন্ট ডিসকানেক্ট করা হয়েছে")
                                         }
                                     },
@@ -644,12 +648,34 @@ fun BackupRestoreDialog(
                             if (isBackupRunning) {
                                 CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("ব্যাকআপ হচ্ছে...", fontSize = 12.sp)
+                                Text("কাজ চলছে...", fontSize = 12.sp)
                             } else {
                                 Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Text("এখনই ব্যাকআপ নিন (Backup Now)", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                             }
+                        }
+
+                        // Restore from Drive button
+                        OutlinedButton(
+                            onClick = {
+                                if (currentAccount == null) {
+                                    signInError = "অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন।"
+                                } else if (!hasAllScopes) {
+                                    signInError = "ড্রাইভ ও শিটস পারমিশন দেওয়া হয়নি। অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।"
+                                } else {
+                                    signInError = null
+                                    BackupManager.triggerImmediateRestore(context)
+                                    viewModel.showMessage("⏳ ড্রাইভ থেকে রিস্টোর শুরু হয়েছে...")
+                                }
+                            },
+                            enabled = !isBackupRunning,
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp), tint = AmarDokanColors.PrimaryBlue)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("ড্রাইভ থেকে রিস্টোর (Restore from Drive)", fontWeight = FontWeight.Bold, fontSize = 12.sp, color = AmarDokanColors.PrimaryBlue)
                         }
                     }
                 }

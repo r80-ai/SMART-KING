@@ -38,6 +38,7 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         @Volatile
         private var INSTANCE: AppDatabase? = null
+        private val userInstances = java.util.concurrent.ConcurrentHashMap<String, AppDatabase>()
 
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
@@ -57,18 +58,56 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
+        fun getDatabase(
+            context: Context,
+            userKey: String = com.example.util.UserManager.getCurrentUserKey(context)
+        ): AppDatabase {
+            return userInstances.computeIfAbsent(userKey) { key ->
+                val appContext = context.applicationContext
+                val dbName = com.example.util.UserManager.getUserDatabaseName(key)
+
+                // If this is a specific user database and doesn't exist yet, check if legacy data should be migrated
+                if (key.startsWith("user_")) {
+                    maybeMigrateLegacyDatabase(appContext, key, dbName)
+                }
+
+                Room.databaseBuilder(
+                    appContext,
                     AppDatabase::class.java,
-                    "pdf_master_database"
+                    dbName
                 )
                 .addMigrations(MIGRATION_1_2, MIGRATION_4_5, MIGRATION_5_6)
                 .fallbackToDestructiveMigration()
                 .build()
-                INSTANCE = instance
-                instance
+            }
+        }
+
+        private fun maybeMigrateLegacyDatabase(context: Context, userKey: String, targetDbName: String) {
+            try {
+                val targetFile = context.getDatabasePath(targetDbName)
+                if (targetFile.exists()) return
+
+                val legacyFile = context.getDatabasePath("pdf_master_database")
+                if (!legacyFile.exists()) return
+
+                val legacyPrefs = context.getSharedPreferences("legacy_db_migration_prefs", Context.MODE_PRIVATE)
+                val alreadyMigrated = legacyPrefs.getString("migrated_to_user", null)
+                // Only copy legacy database to the FIRST user who signs in on this device
+                if (alreadyMigrated == null) {
+                    legacyPrefs.edit().putString("migrated_to_user", userKey).apply()
+                    legacyFile.copyTo(targetFile, overwrite = false)
+                    val legacyWal = java.io.File(legacyFile.parentFile, "pdf_master_database-wal")
+                    val legacyShm = java.io.File(legacyFile.parentFile, "pdf_master_database-shm")
+                    if (legacyWal.exists()) {
+                        legacyWal.copyTo(java.io.File(targetFile.parentFile, "$targetDbName-wal"), overwrite = false)
+                    }
+                    if (legacyShm.exists()) {
+                        legacyShm.copyTo(java.io.File(targetFile.parentFile, "$targetDbName-shm"), overwrite = false)
+                    }
+                    android.util.Log.i("AppDatabase", "Migrated legacy database to $targetDbName for $userKey")
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("AppDatabase", "Error migrating legacy database to $targetDbName", e)
             }
         }
     }

@@ -115,7 +115,10 @@ class AmarDokanViewModel(application: Application) : AndroidViewModel(applicatio
 
     init {
         viewModelScope.launch {
-            repository.initDefaultServicesIfEmpty()
+            com.example.util.UserManager.currentUserKey.collect { _ ->
+                _selectedCustomerIdForLedger.value = null
+                repository.initDefaultServicesIfEmpty()
+            }
         }
     }
 
