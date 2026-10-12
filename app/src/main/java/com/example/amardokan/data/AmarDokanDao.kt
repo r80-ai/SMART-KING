@@ -138,4 +138,7 @@ interface AmarDokanDao {
 
     @Query("SELECT * FROM ad_sync_metadata WHERE isPending = 1")
     suspend fun getPendingSyncs(): List<SyncMetadata>
+
+    @Update
+    suspend fun updateSyncMetadata(metadata: SyncMetadata)
 }
