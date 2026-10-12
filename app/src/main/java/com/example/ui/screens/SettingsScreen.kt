@@ -88,7 +88,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
-import com.google.api.services.sheets.v4.SheetsScopes
 import com.example.workers.BackupManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -134,16 +133,14 @@ fun SettingsScreen(
     val lastStatus by BackupManager.lastStatus.collectAsState()
 
     val driveScope = remember { Scope(DriveScopes.DRIVE_FILE) }
-    val sheetsScope = remember { Scope(SheetsScopes.SPREADSHEETS) }
 
     val hasDriveScope = googleAccount != null && GoogleSignIn.hasPermissions(googleAccount, driveScope)
-    val hasSheetsScope = googleAccount != null && GoogleSignIn.hasPermissions(googleAccount, sheetsScope)
-    val hasAllScopes = hasDriveScope && hasSheetsScope
+    val hasAllScopes = hasDriveScope
 
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(driveScope, sheetsScope)
+            .requestScopes(driveScope)
             .build()
     }
 
@@ -153,7 +150,7 @@ fun SettingsScreen(
             if (event == Lifecycle.Event.ON_RESUME) {
                 val acc = GoogleSignIn.getLastSignedInAccount(context)
                 googleAccount = acc
-                if (acc != null && GoogleSignIn.hasPermissions(acc, driveScope) && GoogleSignIn.hasPermissions(acc, sheetsScope)) {
+                if (acc != null && GoogleSignIn.hasPermissions(acc, driveScope)) {
                     if (signInError?.contains("permission") == true || signInError?.contains("অনুমতি") == true) {
                         signInError = null
                     }
@@ -182,9 +179,8 @@ fun SettingsScreen(
             com.example.util.UserManager.onAccountChanged(context, account)
             com.example.workers.BackupManager.onUserAccountChanged(context, account)
             val hasDrive = GoogleSignIn.hasPermissions(account, driveScope)
-            val hasSheets = GoogleSignIn.hasPermissions(account, sheetsScope)
-            if (!hasDrive || !hasSheets) {
-                signInError = if (language == "bn") "⚠️ ড্রাইভ ও শিটস অনুমতি প্রয়োজন। 'অনুমতি দিন' বাটনে ট্যাপ করুন।" else "⚠️ Drive & Sheets permissions needed. Please tap 'Grant Permissions'."
+            if (!hasDrive) {
+                signInError = if (language == "bn") "⚠️ ড্রাইভ অনুমতি প্রয়োজন। 'অনুমতি দিন' বাটনে ট্যাপ করুন।" else "⚠️ Drive permissions needed. Please tap 'Grant Permissions'."
             } else {
                 signInError = null
                 viewModel.setNotification("✅ Connected Google Account: ${account.email}")
@@ -447,8 +443,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
                                         activity,
                                         9001,
                                         googleAccount,
-                                        driveScope,
-                                        sheetsScope
+                                        driveScope
                                     )
                                 } else {
                                     val client = GoogleSignIn.getClient(context, gso)
@@ -459,7 +454,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Text(if (isBn) "ড্রাইভ ও শিটস অনুমতি দিন (Grant Permissions)" else "Grant Drive & Sheets Permissions", fontWeight = FontWeight.Bold)
+                            Text(if (isBn) "ড্রাইভ অনুমতি দিন (Grant Permissions)" else "Grant Drive Permissions", fontWeight = FontWeight.Bold)
                         }
                     }
 

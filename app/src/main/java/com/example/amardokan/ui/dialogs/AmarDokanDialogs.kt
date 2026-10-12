@@ -419,7 +419,7 @@ fun BackupRestoreDialog(
         } catch (e: ApiException) {
             val explanation = when (e.statusCode) {
                 10 -> "DEVELOPER_ERROR (কোড 10): Google Cloud Console-এ এই অ্যাপের Android OAuth Client ID তৈরি করা হয়নি বা SHA-1 / Package Name মিল নেই।"
-                12500 -> "SIGN_IN_FAILED (কোড 12500): কনফিগারেশন ত্রুটি। Google Play Services অথবা ক্লাউড কনসোলের OAuth Consent Screen ও Test Users চেক করুন।"
+                12500 -> "SIGN_IN_FAILED (কোড 12500): কনফিগারেশন ত্রুটি। Google Play Services অথবা ক্লাউড কনসোলের OAuth Consent Screen ও Test Users চেক করুন."
                 12501 -> "SIGN_IN_CANCELLED (কোড 12501): ব্যবহারকারী সাইন-ইন বাতিল করেছেন।"
                 7 -> "NETWORK_ERROR (কোড 7): ইন্টারনেট সংযোগ পরীক্ষা করুন।"
                 else -> "ApiException (কোড ${e.statusCode}): ${e.message ?: "অজানা ত্রুটি"}"
@@ -601,7 +601,7 @@ fun BackupRestoreDialog(
                         ) {
                             Column(modifier = Modifier.padding(8.dp)) {
                                 Text("সংরক্ষণ লোকেশন (Drive):", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = AmarDokanColors.TextSecondary)
-                                Text("📁 Telecom Cyber Cafe/\n└── 📁 Cash_Memo_PDF/ (বছর/মাস অনুযায়ী বিল PDF)", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = AmarDokanColors.PrimaryBlue)
+                                Text("📁 Telecom Cyber Cafe/\n├── 📊 Billing_Data (Sheets: ৫টি টেবিল)\n└── 📁 Cash_Memo_PDF/ (বছর/মাস অনুযায়ী বিল PDF)", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = AmarDokanColors.PrimaryBlue)
                             }
                         }
 
