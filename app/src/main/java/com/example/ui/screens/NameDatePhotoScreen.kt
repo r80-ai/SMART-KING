@@ -56,12 +56,6 @@ enum class DatePrefixOption(val label: String, val prefix: String) {
     NONE("None", "")
 }
 
-enum class BorderThicknessOption(val label: String, val factor: Float) {
-    THIN("Thin", 0.010f),
-    MEDIUM("Medium", 0.016f),
-    THICK("Thick", 0.024f)
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun NameDatePhotoScreen(
@@ -80,7 +74,6 @@ fun NameDatePhotoScreen(
     
     // Border On / Off switch state
     var isBorderOn by remember { mutableStateOf(true) }
-    var borderThickness by remember { mutableStateOf(BorderThicknessOption.MEDIUM) }
     
     var barHeightFactor by remember { mutableFloatStateOf(0.18f) }
     var showOriginal by remember { mutableStateOf(false) }
@@ -133,7 +126,6 @@ fun NameDatePhotoScreen(
                     date = date,
                     datePrefix = datePrefix.prefix,
                     isBorderOn = isBorderOn,
-                    borderThicknessFactor = borderThickness.factor,
                     barHeightFactor = barHeightFactor
                 )
             }
@@ -141,7 +133,7 @@ fun NameDatePhotoScreen(
         }
     }
 
-    LaunchedEffect(name, date, datePrefix, isBorderOn, borderThickness, barHeightFactor, sourceBitmap) {
+    LaunchedEffect(name, date, datePrefix, isBorderOn, barHeightFactor, sourceBitmap) {
         applyNameDateOverlay()
     }
 
@@ -213,12 +205,18 @@ fun NameDatePhotoScreen(
                         CircularProgressIndicator(modifier = Modifier.size(48.dp))
                     } else if (sourceBitmap != null) {
                         val displayBmp = if (showOriginal) sourceBitmap!! else (resultBitmap ?: sourceBitmap!!)
+                        val borderModifier = if (isBorderOn) {
+                            Modifier.border(4.dp, androidx.compose.ui.graphics.Color.Black, RoundedCornerShape(0.dp))
+                        } else {
+                            Modifier
+                        }
+
                         Image(
                             bitmap = displayBmp.asImageBitmap(),
                             contentDescription = "Passport Photo Preview",
                             modifier = Modifier
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(8.dp)),
+                                .then(borderModifier),
                             contentScale = ContentScale.Fit
                         )
 
@@ -245,46 +243,61 @@ fun NameDatePhotoScreen(
                                 )
                             }
 
-                            // Compare Button
-                            Surface(
-                                shape = RoundedCornerShape(12.dp),
-                                color = if (showOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
-                                contentColor = if (showOriginal) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                                modifier = Modifier.clickable { showOriginal = !showOriginal }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                // Compare Button
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = if (showOriginal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                    contentColor = if (showOriginal) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.clickable { showOriginal = !showOriginal }
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Visibility,
-                                        contentDescription = null,
-                                        modifier = Modifier.size(14.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = if (showOriginal) "Original" else "Preview",
-                                        fontSize = 11.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Visibility,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = if (showOriginal) "Original" else "Preview",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
-                            }
-                        }
 
-                        // Bottom Actions Overlay: Change Photo
-                        Row(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 6.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FilledTonalButton(
-                                onClick = { galleryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                            ) {
-                                Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text("Change Photo", fontSize = 12.sp)
+                                // Change Button in top bar next to Preview
+                                Surface(
+                                    shape = RoundedCornerShape(12.dp),
+                                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+                                    contentColor = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.clickable {
+                                        galleryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                                    }
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.PhotoCamera,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(4.dp))
+                                        Text(
+                                            text = "Change",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
                             }
                         }
                     } else {
@@ -342,6 +355,28 @@ fun NameDatePhotoScreen(
                                 }
                             }
                         }
+                    }
+                }
+            }
+
+            // Below Photo Preview Card: Change Photo Button
+            if (sourceBitmap != null) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            galleryPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.PhotoCamera, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Change Photo", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }
@@ -437,7 +472,7 @@ fun NameDatePhotoScreen(
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                // BORDER ON / OFF SWITCH (Explicit user request: "or Boder on/off switch add")
+                // BORDER TOGGLE (On / Off)
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -450,75 +485,50 @@ fun NameDatePhotoScreen(
                     ),
                     shape = RoundedCornerShape(12.dp)
                 ) {
-                    Column(modifier = Modifier.padding(14.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.weight(1f)
+                            Surface(
+                                shape = RoundedCornerShape(8.dp),
+                                color = if (isBorderOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
+                                modifier = Modifier.size(36.dp)
                             ) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (isBorderOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                    modifier = Modifier.size(36.dp)
-                                ) {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.CropSquare,
-                                            contentDescription = null,
-                                            tint = androidx.compose.ui.graphics.Color.White,
-                                            modifier = Modifier.size(20.dp)
-                                        )
-                                    }
-                                }
-                                Spacer(modifier = Modifier.width(12.dp))
-                                Column {
-                                    Text(
-                                        text = "Photo Border (বর্ডার)",
-                                        fontWeight = FontWeight.Bold,
-                                        style = MaterialTheme.typography.bodyLarge
-                                    )
-                                    Text(
-                                        text = if (isBorderOn) "Border is ON (Black outline around photo & bar)" else "Border is OFF (No outer outline)",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Default.CropSquare,
+                                        contentDescription = null,
+                                        tint = androidx.compose.ui.graphics.Color.White,
+                                        modifier = Modifier.size(20.dp)
                                     )
                                 }
                             }
-                            Switch(
-                                checked = isBorderOn,
-                                onCheckedChange = { isBorderOn = it },
-                                modifier = Modifier.testTag("switch_photo_border")
-                            )
-                        }
-
-                        // Border Thickness Options when Border is ON
-                        AnimatedVisibility(visible = isBorderOn) {
-                            Column(modifier = Modifier.padding(top = 12.dp)) {
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
                                 Text(
-                                    text = "Border Thickness:",
-                                    style = MaterialTheme.typography.labelSmall,
+                                    text = "Border",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.bodyLarge
+                                )
+                                Text(
+                                    text = if (isBorderOn) "4dp outer black border ON" else "Border OFF",
+                                    style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
-                                Row(
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    BorderThicknessOption.entries.forEach { opt ->
-                                        FilterChip(
-                                            selected = borderThickness == opt,
-                                            onClick = { borderThickness = opt },
-                                            label = { Text(opt.label) },
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
                             }
                         }
+                        Switch(
+                            checked = isBorderOn,
+                            onCheckedChange = { isBorderOn = it },
+                            modifier = Modifier.testTag("switch_photo_border")
+                        )
                     }
                 }
 
@@ -651,7 +661,6 @@ fun overlayNameAndDate(
     date: String,
     datePrefix: String,
     isBorderOn: Boolean,
-    borderThicknessFactor: Float,
     barHeightFactor: Float
 ): Bitmap {
     val width = src.width
@@ -707,9 +716,9 @@ fun overlayNameAndDate(
         }
     }
     
-    // Draw outer border & dividing line if Border switch is ON
+    // Simple, clean 4-corner rectangular outer border around entire passport photo (black)
     if (isBorderOn) {
-        val strokePx = max(2f, width * borderThicknessFactor)
+        val strokePx = max(4f, width * 0.016f)
         val borderPaint = Paint().apply {
             color = Color.BLACK
             style = Paint.Style.STROKE
@@ -718,7 +727,7 @@ fun overlayNameAndDate(
         }
         val halfStroke = strokePx / 2f
         
-        // Outer boundary rectangle
+        // 4-corner rectangular outer border
         canvas.drawRect(halfStroke, halfStroke, width - halfStroke, height - halfStroke, borderPaint)
         
         // Divider line between photo and bottom white bar
