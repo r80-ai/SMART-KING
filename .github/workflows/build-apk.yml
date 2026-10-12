@@ -38,21 +38,30 @@ jobs:
           fi
 
           if [ -f "./debug.keystore.base64" ]; then
-            echo "Restoring persistent debug.keystore from debug.keystore.base64..."
+            echo "Restoring persistent debug.keystore from ./debug.keystore.base64..."
             base64 -d "./debug.keystore.base64" > "./debug.keystore"
+          elif [ -f "./.github/debug.keystore.base64" ]; then
+            echo "Restoring persistent debug.keystore from ./.github/debug.keystore.base64..."
+            base64 -d "./.github/debug.keystore.base64" > "./debug.keystore"
+          elif [ -f "./app/debug.keystore.base64" ]; then
+            echo "Restoring persistent debug.keystore from ./app/debug.keystore.base64..."
+            base64 -d "./app/debug.keystore.base64" > "./debug.keystore"
           elif [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
-            echo "Restoring persistent debug.keystore from GitHub secret..."
+            echo "Restoring persistent debug.keystore from GitHub secret DEBUG_KEYSTORE_BASE64..."
             echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > "./debug.keystore"
           elif [ -f "./debug.keystore" ]; then
             echo "Using existing debug.keystore in workspace..."
           else
-            echo "Error: Persistent debug keystore not found! debug.keystore.base64 is missing." >&2
+            echo "::error::Persistent debug signing keystore not found!" >&2
+            echo "To keep the verified SHA-1 (D5:86:68:06:DA:A6:12:2E:35:87:0A:64:B7:0E:2F:02:29:36:36:FE) stable:" >&2
+            echo "  Option A: Commit 'debug.keystore.base64' into your repository root or .github folder." >&2
+            echo "  Option B: In your GitHub repository, go to Settings -> Secrets and variables -> Actions, and add secret 'DEBUG_KEYSTORE_BASE64'." >&2
             exit 1
           fi
 
           echo "Verifying debug keystore alias 'androiddebugkey'..."
           KEYSTORE_INFO=$(keytool -list -v -keystore ./debug.keystore -storepass android -alias androiddebugkey) || {
-            echo "Error: Keystore verification failed for alias 'androiddebugkey'!" >&2
+            echo "::error::Keystore verification failed for alias 'androiddebugkey'!" >&2
             exit 1
           }
           echo "Verified debug.keystore SHA-1 fingerprint:"

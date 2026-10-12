@@ -20,6 +20,8 @@ app/build/
 local.properties
 .env
 debug.keystore
+!debug.keystore.base64
+!*.base64
 *.zip
 *.tar.gz
 *.diff
