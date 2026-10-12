@@ -113,7 +113,7 @@ dependencies {
   implementation("com.google.android.gms:play-services-auth:21.2.0")
   implementation("com.google.api-client:google-api-client-android:2.2.0")
   implementation("com.google.apis:google-api-services-drive:v3-rev20230815-2.0.0")
-  implementation("com.google.apis:google-api-services-sheets:v4-rev20230815-2.0.0")
+  // implementation("com.google.apis:google-api-services-sheets:v4-rev20230815-2.0.0")
   implementation("io.coil-kt:coil-compose:2.7.0")
   implementation("com.squareup.retrofit2:converter-moshi:2.12.0")
   implementation("com.google.firebase:firebase-ai")

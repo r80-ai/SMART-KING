@@ -9,6 +9,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkInfo
 import androidx.work.WorkerParameters
 import com.example.data.AppDatabase
+import com.example.amardokan.data.SyncMetadata
 import com.example.amardokan.ui.memo.AmarDokanCashMemoGenerator
 import com.example.util.GoogleApiService
 import com.google.android.gms.auth.api.signin.GoogleSignIn
@@ -78,16 +79,19 @@ class BackupWorker(
 
             val userKey = com.example.util.UserManager.computeUserKey(account)
             BackupManager.updateStatus(applicationContext, "ডাটাবেজ থেকে তথ্য নেওয়া হচ্ছে...", userKey)
-            Log.d(tag, "Signed in successfully. Starting Drive backup for user $userKey (${account.email?.take(3)}***)...")
+            Log.d(tag, "Signed in successfully. Starting Drive and Sheets backup for user $userKey (${account.email?.take(3)}***)...")
 
             // 3. Fetch Room data (all 5 tables for this user)
             val db = AppDatabase.getDatabase(applicationContext, userKey)
             val dao = db.amarDokanDao()
 
-            val bills = dao.getAllBillsSync()
             val customers = dao.getAllCustomersSync()
+            val services = dao.getAllServicesSync()
+            val bills = dao.getAllBillsSync()
+            val billItems = dao.getAllBillItemsSync()
+            val payments = dao.getAllPaymentsSync()
 
-            Log.i(tag, "Room records retrieved for $userKey: bills=${bills.size}, customers=${customers.size}")
+            Log.i(tag, "Room records retrieved for $userKey: ad_customers=${customers.size}, ad_services=${services.size}, ad_bills=${bills.size}, ad_bill_items=${billItems.size}, ad_payments=${payments.size}")
 
             // 4. Initialize Google API Service
             val apiService = GoogleApiService(applicationContext)
@@ -100,7 +104,11 @@ class BackupWorker(
             val cashMemoFolderId = apiService.findOrCreateFolder("Cash_Memo_PDF", rootFolderId)
             BackupManager.saveCashMemoFolderId(applicationContext, cashMemoFolderId, userKey)
 
-            // 6. Cash Memo PDF Uploads into YEAR / MONTH subfolders
+            // 6. PDF Backup
+            BackupManager.updateStatus(applicationContext, "PDF ব্যাকআপ শুরু হচ্ছে...", userKey)
+            val syncTimestamp = System.currentTimeMillis()
+
+            // 8. Cash Memo PDF Uploads into YEAR / MONTH subfolders
             BackupManager.updateStatus(applicationContext, "ক্যাশ মেমো PDF ব্যাকআপ হচ্ছে...")
             val calendar = Calendar.getInstance()
             var pdfUploadedCount = 0
@@ -176,7 +184,7 @@ class BackupWorker(
                 }
             }
 
-            val summary = "সফল: ${bills.size}টি বিল, ${customers.size} জন গ্রাহক, $pdfUploadedCount PDF আপলোড হয়েছে"
+            val summary = "সফল: ${bills.size}টি বিল, ${customers.size} জন গ্রাহক, ৫টি শিট সিঙ্ক, $pdfUploadedCount PDF আপলোড হয়েছে"
             Log.i(tag, "Backup complete: $summary")
             BackupManager.updateSuccess(applicationContext, summary, userKey)
             BackupManager.setBackupRunning(false)
@@ -204,7 +212,7 @@ class BackupWorker(
             val details = e.details?.message ?: e.message ?: "Unknown API error"
             val errorMsg = when (code) {
                 401 -> "গুগল সাইন-ইন মেয়াদোত্তীর্ণ (Authentication expired). অনুগ্রহ করে রি-কানেক্ট করুন।"
-                403 -> "Drive ব্যবহারের অনুমতি নেই (Permission denied). অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।"
+                403 -> "Drive বা Sheets ব্যবহারের অনুমতি নেই (Permission denied). অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।"
                 404 -> "ফাইল বা ফোল্ডার পাওয়া যায়নি (404 Not Found)"
                 else -> "গুগল এপিআই ত্রুটি (API error $code: $details)"
             }

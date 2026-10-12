@@ -265,7 +265,7 @@ object BackupManager {
     fun checkAndRestoreIfNeeded(context: Context, userKey: String = UserManager.getCurrentUserKey(context)) {
         val account = GoogleSignIn.getLastSignedInAccount(context) ?: return
         val prefs = getPrefs(context, userKey)
-        val hasRestoredOrSynced = prefs.getLong(KEY_LAST_BACKUP_TIME, 0L) > 0L
+        val hasRestoredOrSynced = prefs.getLong(KEY_LAST_BACKUP_TIME, 0L) > 0L || prefs.getString(KEY_SPREADSHEET_ID, null) != null
 
         // If this user has never restored or synced on this device, check Google Drive to restore historical data
         if (!hasRestoredOrSynced) {
