@@ -45,7 +45,6 @@ import com.google.android.gms.auth.api.signin.GoogleSignInOptions
 import com.google.android.gms.common.api.ApiException
 import com.google.android.gms.common.api.Scope
 import com.google.api.services.drive.DriveScopes
-import com.google.api.services.sheets.v4.SheetsScopes
 import com.example.workers.BackupManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -364,17 +363,15 @@ fun BackupRestoreDialog(
     val lastStatus by BackupManager.lastStatus.collectAsState()
 
     val driveScope = remember { Scope(DriveScopes.DRIVE_FILE) }
-    val sheetsScope = remember { Scope(SheetsScopes.SPREADSHEETS) }
 
     val hasDriveScope = currentAccount != null && GoogleSignIn.hasPermissions(currentAccount, driveScope)
-    val hasSheetsScope = currentAccount != null && GoogleSignIn.hasPermissions(currentAccount, sheetsScope)
-    val hasAllScopes = hasDriveScope && hasSheetsScope
+    val hasAllScopes = hasDriveScope
 
     // Standard client requesting email and scopes
     val gso = remember {
         GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
             .requestEmail()
-            .requestScopes(driveScope, sheetsScope)
+            .requestScopes(driveScope)
             .build()
     }
 
@@ -384,7 +381,7 @@ fun BackupRestoreDialog(
             if (event == Lifecycle.Event.ON_RESUME) {
                 val acc = GoogleSignIn.getLastSignedInAccount(context)
                 currentAccount = acc
-                if (acc != null && GoogleSignIn.hasPermissions(acc, driveScope) && GoogleSignIn.hasPermissions(acc, sheetsScope)) {
+                if (acc != null && GoogleSignIn.hasPermissions(acc, driveScope)) {
                     if (signInError?.contains("অনুমতি") == true) {
                         signInError = null
                     }
@@ -413,9 +410,8 @@ fun BackupRestoreDialog(
             com.example.util.UserManager.onAccountChanged(context, account)
             com.example.workers.BackupManager.onUserAccountChanged(context, account)
             val hasDrive = GoogleSignIn.hasPermissions(account, driveScope)
-            val hasSheets = GoogleSignIn.hasPermissions(account, sheetsScope)
-            if (!hasDrive || !hasSheets) {
-                signInError = "⚠️ গুগল অ্যাকাউন্ট সাইন-ইন হয়েছে, কিন্তু Drive ও Sheets ব্যবহারের অনুমতি দেওয়া হয়নি। নিচের 'অনুমতি দিন' বাটনে ট্যাপ করুন।"
+            if (!hasDrive) {
+                signInError = "⚠️ গুগল অ্যাকাউন্ট সাইন-ইন হয়েছে, কিন্তু Drive ব্যবহারের অনুমতি দেওয়া হয়নি। নিচের 'অনুমতি দিন' বাটনে ট্যাপ করুন।"
             } else {
                 signInError = null
                 viewModel.showMessage("✅ গুগল অ্যাকাউন্ট সংযুক্ত হয়েছে: ${account.email}")
@@ -476,7 +472,7 @@ fun BackupRestoreDialog(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.CloudUpload, contentDescription = null, tint = AmarDokanColors.PrimaryBlue, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("১. Google Drive ও Sheets ব্যাকআপ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                            Text("১. Google Drive ব্যাকআপ", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
 
                         // Account status row
@@ -495,7 +491,7 @@ fun BackupRestoreDialog(
                                 )
                                 if (currentAccount != null) {
                                     Text(
-                                        text = if (hasAllScopes) "✅ Drive ও Sheets পারমিশন মঞ্জুর" else "⚠️ Drive/Sheets পারমিশন বাকি",
+                                        text = if (hasAllScopes) "✅ Drive পারমিশন মঞ্জুর" else "⚠️ Drive পারমিশন বাকি",
                                         fontSize = 10.sp,
                                         color = if (hasAllScopes) AmarDokanColors.CashGreen else AmarDokanColors.AmberOrange,
                                         fontWeight = FontWeight.Medium
@@ -546,8 +542,7 @@ fun BackupRestoreDialog(
                                             activity,
                                             9001,
                                             currentAccount,
-                                            driveScope,
-                                            sheetsScope
+                                            driveScope
                                         )
                                     } else {
                                         val client = GoogleSignIn.getClient(context, gso)
@@ -560,7 +555,7 @@ fun BackupRestoreDialog(
                             ) {
                                 Icon(Icons.Default.Security, contentDescription = null, modifier = Modifier.size(15.dp))
                                 Spacer(modifier = Modifier.width(6.dp))
-                                Text("ড্রাইভ ও শিটস অনুমতি দিন (Grant Permissions)", fontWeight = FontWeight.Bold, fontSize = 11.sp)
+                                Text("ড্রাইভ অনুমতি দিন (Grant Permissions)", fontWeight = FontWeight.Bold, fontSize = 11.sp)
                             }
                         }
 
@@ -606,7 +601,7 @@ fun BackupRestoreDialog(
                         ) {
                             Column(modifier = Modifier.padding(8.dp)) {
                                 Text("সংরক্ষণ লোকেশন (Drive):", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = AmarDokanColors.TextSecondary)
-                                Text("📁 Telecom Cyber Cafe/\n├── 📊 Billing_Data (Sheets: ৫টি টেবিল)\n└── 📁 Cash_Memo_PDF/ (বছর/মাস অনুযায়ী বিল PDF)", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = AmarDokanColors.PrimaryBlue)
+                                Text("📁 Telecom Cyber Cafe/\n└── 📁 Cash_Memo_PDF/ (বছর/মাস অনুযায়ী বিল PDF)", fontSize = 10.sp, fontFamily = FontFamily.Monospace, color = AmarDokanColors.PrimaryBlue)
                             }
                         }
 

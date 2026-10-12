@@ -58,19 +58,15 @@ class AmarDokanRepository(private val context: Context) {
 
     // ---------------- CUSTOMERS ----------------
     suspend fun addCustomer(name: String, phone: String, address: String = "", notes: String = ""): Long = withContext(Dispatchers.IO) {
-        val id = getDao().insertCustomer(Customer(name = name.trim(), phone = phone.trim(), address = address.trim(), notes = notes.trim()))
-        BackupManager.triggerImmediateBackup(context)
-        id
+        getDao().insertCustomer(Customer(name = name.trim(), phone = phone.trim(), address = address.trim(), notes = notes.trim()))
     }
 
     suspend fun updateCustomer(customer: Customer) = withContext(Dispatchers.IO) {
         getDao().updateCustomer(customer)
-        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun deleteCustomer(customer: Customer) = withContext(Dispatchers.IO) {
         getDao().deleteCustomer(customer)
-        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun getCustomerById(customerId: Long): Customer? = withContext(Dispatchers.IO) {
@@ -79,19 +75,15 @@ class AmarDokanRepository(private val context: Context) {
 
     // ---------------- SERVICES ----------------
     suspend fun addService(nameBn: String, nameEn: String, rate: Double, unitBn: String): Long = withContext(Dispatchers.IO) {
-        val id = getDao().insertService(ServiceItem(nameBn = nameBn.trim(), nameEn = nameEn.trim(), defaultRate = rate, unitBn = unitBn.trim(), isDefault = false))
-        BackupManager.triggerImmediateBackup(context)
-        id
+        getDao().insertService(ServiceItem(nameBn = nameBn.trim(), nameEn = nameEn.trim(), defaultRate = rate, unitBn = unitBn.trim(), isDefault = false))
     }
 
     suspend fun updateService(service: ServiceItem) = withContext(Dispatchers.IO) {
         getDao().updateService(service)
-        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun deleteService(service: ServiceItem) = withContext(Dispatchers.IO) {
         getDao().deleteService(service)
-        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun resetDefaultServices() = withContext(Dispatchers.IO) {
@@ -104,7 +96,6 @@ class AmarDokanRepository(private val context: Context) {
         )
         val dao = getDao()
         defaults.forEach { dao.insertService(it) }
-        BackupManager.triggerImmediateBackup(context)
     }
 
     // ---------------- BILLS ----------------
@@ -139,14 +130,11 @@ class AmarDokanRepository(private val context: Context) {
             notes = notes,
             language = language
         )
-        val billId = getDao().saveBillWithItems(bill, items)
-        BackupManager.triggerImmediateBackup(context)
-        billId
+        getDao().saveBillWithItems(bill, items)
     }
 
     suspend fun deleteBill(bill: Bill) = withContext(Dispatchers.IO) {
         getDao().deleteBillCompletely(bill)
-        BackupManager.triggerImmediateBackup(context)
     }
 
     suspend fun getBillItems(billId: Long): List<BillItem> = withContext(Dispatchers.IO) {
@@ -164,7 +152,7 @@ class AmarDokanRepository(private val context: Context) {
         notes: String
     ): Long = withContext(Dispatchers.IO) {
         if (amount <= 0.0) return@withContext -1L
-        val payId = getDao().insertPayment(
+        getDao().insertPayment(
             Payment(
                 customerId = customerId,
                 customerName = customerName,
@@ -175,13 +163,10 @@ class AmarDokanRepository(private val context: Context) {
                 notes = notes
             )
         )
-        BackupManager.triggerImmediateBackup(context)
-        payId
     }
 
     suspend fun deletePayment(payment: Payment) = withContext(Dispatchers.IO) {
         getDao().deletePayment(payment)
-        BackupManager.triggerImmediateBackup(context)
     }
 
     // ---------------- ACCOUNTING CALCULATIONS ----------------

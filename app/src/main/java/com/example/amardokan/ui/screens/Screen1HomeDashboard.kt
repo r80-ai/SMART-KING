@@ -34,7 +34,6 @@ import java.util.Locale
 @Composable
 fun Screen1HomeDashboard(
     viewModel: AmarDokanViewModel,
-    onOpenBackupDialog: () -> Unit,
     onOpenPdfTools: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
@@ -101,20 +100,6 @@ fun Screen1HomeDashboard(
                                         tint = Color.White
                                     )
                                 }
-                            }
-
-                            IconButton(
-                                onClick = onOpenBackupDialog,
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .background(Color.White.copy(alpha = 0.15f))
-                                    .testTag("btn_backup_restore")
-                                ) {
-                                Icon(
-                                    imageVector = Icons.Default.CloudSync,
-                                    contentDescription = "ব্যাকআপ ও রিস্টোর",
-                                    tint = Color.White
-                                )
                             }
                         }
                     }

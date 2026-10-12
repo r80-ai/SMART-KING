@@ -38,7 +38,6 @@ fun AmarDokanMainScreen(
     var showAddCustomerDialog by remember { mutableStateOf(false) }
     var customerToEdit by remember { mutableStateOf<Customer?>(null) }
     var billToViewDetails by remember { mutableStateOf<Bill?>(null) }
-    var showBackupDialog by remember { mutableStateOf(false) }
 
     LaunchedEffect(userMessage) {
         userMessage?.let { msg ->
@@ -60,7 +59,6 @@ fun AmarDokanMainScreen(
                 AmarDokanScreenType.HOME_DASHBOARD -> {
                     Screen1HomeDashboard(
                         viewModel = viewModel,
-                        onOpenBackupDialog = { showBackupDialog = true },
                         onOpenPdfTools = onOpenPdfTools
                     )
                 }
@@ -175,13 +173,6 @@ fun AmarDokanMainScreen(
             bill = billToViewDetails!!,
             viewModel = viewModel,
             onDismiss = { billToViewDetails = null }
-        )
-    }
-
-    if (showBackupDialog) {
-        BackupRestoreDialog(
-            viewModel = viewModel,
-            onDismiss = { showBackupDialog = false }
         )
     }
 }

@@ -26,7 +26,6 @@ object BackupManager {
     private const val KEY_LAST_STATUS = "last_status"
     private const val KEY_LAST_SUMMARY = "last_summary"
     private const val KEY_ROOT_FOLDER_ID = "drive_root_folder_id"
-    private const val KEY_SPREADSHEET_ID = "drive_spreadsheet_id"
     private const val KEY_CASH_MEMO_FOLDER_ID = "drive_cash_memo_folder_id"
 
     const val WORK_NAME_PERIODIC = "amar_dokan_periodic_backup"
@@ -253,10 +252,6 @@ object BackupManager {
         getPrefs(context, userKey).edit().putString(KEY_ROOT_FOLDER_ID, id).apply()
     }
 
-    fun saveSpreadsheetId(context: Context, id: String, userKey: String = UserManager.getCurrentUserKey(context)) {
-        getPrefs(context, userKey).edit().putString(KEY_SPREADSHEET_ID, id).apply()
-    }
-
     fun saveCashMemoFolderId(context: Context, id: String, userKey: String = UserManager.getCurrentUserKey(context)) {
         getPrefs(context, userKey).edit().putString(KEY_CASH_MEMO_FOLDER_ID, id).apply()
     }
@@ -264,16 +259,13 @@ object BackupManager {
     fun getRootFolderId(context: Context, userKey: String = UserManager.getCurrentUserKey(context)): String? =
         getPrefs(context, userKey).getString(KEY_ROOT_FOLDER_ID, null)
 
-    fun getSpreadsheetId(context: Context, userKey: String = UserManager.getCurrentUserKey(context)): String? =
-        getPrefs(context, userKey).getString(KEY_SPREADSHEET_ID, null)
-
     fun getCashMemoFolderId(context: Context, userKey: String = UserManager.getCurrentUserKey(context)): String? =
         getPrefs(context, userKey).getString(KEY_CASH_MEMO_FOLDER_ID, null)
 
     fun checkAndRestoreIfNeeded(context: Context, userKey: String = UserManager.getCurrentUserKey(context)) {
         val account = GoogleSignIn.getLastSignedInAccount(context) ?: return
         val prefs = getPrefs(context, userKey)
-        val hasRestoredOrSynced = prefs.getLong(KEY_LAST_BACKUP_TIME, 0L) > 0L || prefs.getString(KEY_SPREADSHEET_ID, null) != null
+        val hasRestoredOrSynced = prefs.getLong(KEY_LAST_BACKUP_TIME, 0L) > 0L
 
         // If this user has never restored or synced on this device, check Google Drive to restore historical data
         if (!hasRestoredOrSynced) {
