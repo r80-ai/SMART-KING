@@ -36,17 +36,20 @@ jobs:
               touch ./.env
             fi
           fi
-          if [ ! -f "./debug.keystore" ]; then
-            keytool -genkey -v \
-              -keystore ./debug.keystore \
-              -storepass android \
-              -alias androiddebugkey \
-              -keypass android \
-              -dname "CN=Android Debug,O=Android,C=US" \
-              -keyalg RSA \
-              -keysize 2048 \
-              -validity 10000
+          if [ -f "./debug.keystore.base64" ]; then
+            echo "Restoring permanent debug.keystore from debug.keystore.base64..."
+            base64 -d ./debug.keystore.base64 > ./debug.keystore
+          elif [ -n "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" ]; then
+            echo "Restoring permanent debug.keystore from GitHub secret..."
+            echo "${{ secrets.DEBUG_KEYSTORE_BASE64 }}" | base64 -d > ./debug.keystore
+          elif [ ! -f "./debug.keystore" ]; then
+            echo "Restoring permanent debug.keystore from embedded base64..."
+            cat << 'EOF' | base64 -d > ./debug.keystore
+MIIKZgIBAzCCChAGCSqGSIb3DQEHAaCCCgEEggn9MIIJ+TCCBcAGCSqGSIb3DQEHAaCCBbEEggWtMIIFqTCCBaUGCyqGSIb3DQEMCgECoIIFQDCCBTwwZgYJKoZIhvcNAQUNMFkwOAYJKoZIhvcNAQUMMCsEFNmsO+ubPLEfXiRX13KwdL3+7ruoAgInEAIBIDAMBggqhkiG9w0CCQUAMB0GCWCGSAFlAwQBKgQQ1wVIiJhE3ZYGrze8/TbougSCBNBHEWk18wuF0YrPixhgy8Sez+oOR2ZGxDSOqG3J2WNR5PhLO3GLd08I9y9aeWD79+SRfjCRRSF0srZfIRiz1yd1bTG5vO9Ms2ZP+nfu37oXOjay/odAtxFeJ9ieYdvtfyXS3HYvz0SkgXiJMDha7ydokG83FHmJLm4iqyPkjNJ4gDaG0965IzYiIN0A/Km23r5KG8SEph10xcTeCpYVtXkuRhzPc69CO/r25TyXvrD8bDu4I3XQzlIv3ld/QvXg5yAsrFNnHwAlChXUn9t5N1IyDoSgx/OWu0k7hEQukgXFLfa1RJIGo8m+SO+Otnbzr352JGI6z7Wy5Bxy3RLDtK7li7+VHZ+nD3dQtyRKWtIHglgeeo8s2dwXtQa81JqLjYOa5X0MZgWGBHABcKo2A6OX3Dh1K/+kIZs5o/mEgqrr4gLNrOdGJgNYXeatxdq6YSL5k80Cmy73b6JJDG1fzwhvCbgIrWvm+rXHu1oBEQoiucPLUknm+K5UOr+tRjWCSuLl+Gq7kEvS2NrdllcOLs/9yXgZS1QiBodjMtOs41McTu5RKKZjkBoct5H2F28X2G3lHpE5x9N0lnnMGtTmP3Alt9GWMRnkHAuAbPfUr6FrBm0UXqHooihfhiAJr51C+S203Qb3bh5KY47yjrsOjHKgbrzB1d/sqZdRFt4VNP/sxK1Lsan8ZmK1TELKlxKDQ4SlAHbUzol9ZZR99OdTtqcYIoOz1aV2vJLQRFbrmWmKy0LrUI0UC+utYd3Y2ubI8w86Ixf8+OyGfUNm/77Sp5glA9f+ai9fQCfYpxQn+06kfNVzMS3EpQA2GZlqPcYo/LVs6S97dYWlyFDfxVW7yakweEiBVCfoswegsEfu3xutzmKndnTZB6rlFSeqMYwWzKoPoCRNrKZAKJqzCGAnUzQUCh7yQk5/CbcMZZy9GlyX138K1VKZUtrdVNGzgr4K3J04Orzaga2JlKazm9arb3B/2wp0KuKBGzJlAyHUV1BLalQcz+55zGwn5DSaBJc57zdJSkse0Kp9sFI29o5U3XnKr+D64YeOJUogdYfM29uXq1Xq8Zt4U6+bYcBX8pP/FI281mDtZaRm0pixCijw+g90/E7dMG8TwkJr53sAHqmI28mSmQd59Lsga5LtZXgzFFQ+lDW/Z9a9RDdBEc5/ZXVs3jqSj4khqS5iLpp0HkB66jlpJaZAAqxbSQAsqqmKxGXN3mjCKxzyzhMJr+unz2zrsmT+jgzzvWfb1zEGP++BRAubBuOWCrPvTrUuJwYqRV8fVdqpM5fuBbbnhxKMhA2QeZnQCDO2FX8K4RB+b7uvoBvKTp5zyUMamI9FEbZpF5qt2KintJoUPDQz+fjIXFxtwiApIXE7zuVk7Rw+auQ44F1WG4vEgsxxS8YEcbv3CGbdG764UOvojN78QQ5R8LwZPInlIKw/MaLtmHb/BWo37iQCdL7hU4Wpu9kt2AHqvxSy8m7Ho3rDp2ybXLt18sV4w36fTxZYtK7Wc7hPJva4/qGB1n2tMnXgBZfMROMDLv4CbEzIkxX1lY4ygkO39LVVaXGspkK7fmwdlpFM068mWiHZ3+WzoaBFbYOHlhRAAgFwPRIgi8W94ciuzvTHsyVrlngDYlVaqrxO3cZ+6LFNAzFSMC0GCSqGSIb3DQEJFDEgHh4AYQBuAGQAcgBvAGkAZABkAGUAYgB1AGcAawBlAHkwIQYJKoZIhvcNAQkVMRQEElRpbWUgMTc5MTY0ODI1MzQ4MTCCBDEGCSqGSIb3DQEHBqCCBCIwggQeAgEAMIIEFwYJKoZIhvcNAQcBMGYGCSqGSIb3DQEFDTBZMDgGCSqGSIb3DQEFDDArBBRkbpd25TKOZcTFj6buWeAlO5JlfgICJxACASAwDAYIKoZIhvcNAgkFADAdBglghkgBZQMEASoEEEYZA9ac54ucoCg0Q1VHJMaAggOgEZ+83XmeD9wlVuGuYod1SjEhw2eRBDfk45qOThWDLURRYOFJX4PiYwH7YsSfhw56Ehi9eko1f+6C75SS3og7k8wtLqZKTIHa3u4vNVhUP+9Z2Xqfp+JjP3uKNcOEHoHfydu3Ia0/FvMrt3CeBjrSgqfiVj0gfM9AI86Nq3F/TvrEZ8696ghE1s0rSFxxw+K/P754WRvjFbS/4GapdByOh3hKH0vWUvwWxZE+CS68mMafqcUzsySdcj4pVCOefEC51Z4UDqHW35osta8BsNZNJ+6oXTVLFHkBYlb5ZQLgTwIsM3C2hGc6E97WZipdvcvFgSQ1fqJoUTB1Oj14HFjQLIG930BtzkK/FAaXfbGIg1suEX9l8UyL/s4ex20eBs9G1hiVvRhVbsos3r7oOUWB7GoCFWD4llI3v7rsqG1z7qavu3T+8gMTf0SJWW2CMjwVcJKgseUX+w/s7eDE/0o3RgIaVDuho3DLdDMoGrY6n59bl3sj8BxJm/6tzi1/9O1SEgkw2a1b7LN/y4NkyRoGy381I1KjViWXz65yscKI8RWWjDpAakK6zXbxCyTVN+iurrmk0KnZayHCNTlOsE9hdpitJf2DHc6rTJRW7TvGfwsjnJGdHmL33wAs02+b6iWiWk/FEbtgH/gB+rYekPQT0NTtbPCxJqtqppNqtus0jZhpv8sRyO5QBhwtQi90maxPXOXysusraLR0l3tHHYCmvz88r6kKbhRxHWNrKs3aIuJsVOYyFCPo0MTODyJWLg/314DYJwMfe5Fpl7WbkJZAOCYard85HdfWhaM/WCrDmOBJpFUmoc0kQRfcNHdBW8SrPo3r9QOnzXTQ8INQ+WHsYSrtzQmU3xmYGBWbNL48ApEPLOenJsg0L9j+VkJ/C5OIRLzSx4uPgqO1GB7kZE/xFB6uX2A2N0PbCiRxhec36Xw3GOL3ll/g4DevT9JzfQTaNP+JPrrNtAJXRdyIui3acG1r/SjTwbST1tKXO0oOhWgaTvR2k330jiyWYPtaD24yrJBJ4kICDEqoz5cDDQ/s/uUVNNLp/9cDMEIB6qS5ED2cyK6FQ6BAsomnpB6P12BlwoQt0Gh3V9ehskmBdWYULtjufehpiTupFeuMcxax/rKjvseIMb7s7UYa0LmVgci3FkNw3Gj9ck1dJLl0loTUok1Ub3kdEv54YtlR+lBkUhkXHnk4FbNjDWzH6EHYPqDI9tLiFlamgcX35eF0vY2pGDBNMDEwDQYJYIZIAWUDBAIBBQAEIOSYBCdMqj4vMfC5L/qJweIFDspvlF8zHfaalnQCRQy2BBSApcZqlLDNYOEZkrLqEkwGiCUyKAICJxA=
+EOF
           fi
+          echo "Verified debug.keystore SHA-1 fingerprint:"
+          keytool -list -v -keystore ./debug.keystore -storepass android -alias androiddebugkey | grep "SHA1:"
 
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
