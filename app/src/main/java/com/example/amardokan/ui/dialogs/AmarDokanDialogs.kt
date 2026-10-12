@@ -619,7 +619,7 @@ fun BackupRestoreDialog(
                                 text = "স্ট্যাটাস: $lastStatus",
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = if (lastStatus!!.startsWith("ব্যর্থ") || lastStatus!!.startsWith("FAILED")) Color(0xFFDC2626) else AmarDokanColors.CashGreen
+                                color = if (lastStatus!!.startsWith("ব্যর্থ") || lastStatus!!.startsWith("FAILED") || lastStatus!!.startsWith("বাতিল")) Color(0xFFDC2626) else AmarDokanColors.CashGreen
                             )
                         }
 

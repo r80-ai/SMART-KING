@@ -19,11 +19,13 @@ class GoogleApiService(private val context: Context) {
 
     private val tag = "GoogleApiService"
 
-    private fun getCredential(): GoogleAccountCredential {
+    private val transport: NetHttpTransport by lazy { NetHttpTransport() }
+    private val jsonFactory: GsonFactory by lazy { GsonFactory.getDefaultInstance() }
+
+    private val credential: GoogleAccountCredential by lazy {
         val account = GoogleSignIn.getLastSignedInAccount(context)
             ?: throw IllegalStateException("Google account not signed in. Please connect your Google account.")
-        
-        return GoogleAccountCredential.usingOAuth2(
+        GoogleAccountCredential.usingOAuth2(
             context,
             listOf(DriveScopes.DRIVE_FILE, SheetsScopes.SPREADSHEETS)
         ).apply {
@@ -31,21 +33,20 @@ class GoogleApiService(private val context: Context) {
         }
     }
 
-    fun getDriveService(): Drive {
-        return Drive.Builder(
-            NetHttpTransport(),
-            GsonFactory.getDefaultInstance(),
-            getCredential()
-        ).setApplicationName("Amar Dokan Backup").build()
+    private val cachedDrive: Drive by lazy {
+        Drive.Builder(transport, jsonFactory, credential)
+            .setApplicationName("Amar Dokan Backup")
+            .build()
     }
 
-    fun getSheetsService(): Sheets {
-        return Sheets.Builder(
-            NetHttpTransport(),
-            GsonFactory.getDefaultInstance(),
-            getCredential()
-        ).setApplicationName("Amar Dokan Backup").build()
+    private val cachedSheets: Sheets by lazy {
+        Sheets.Builder(transport, jsonFactory, credential)
+            .setApplicationName("Amar Dokan Backup")
+            .build()
     }
+
+    fun getDriveService(): Drive = cachedDrive
+    fun getSheetsService(): Sheets = cachedSheets
 
     /**
      * Finds or creates a folder with [name] under [parentId] (or root if null).
@@ -55,7 +56,7 @@ class GoogleApiService(private val context: Context) {
         val drive = getDriveService()
         val parentCondition = if (parentId != null) "'$parentId' in parents" else "'root' in parents"
         val query = "name = '$name' and mimeType = 'application/vnd.google-apps.folder' and $parentCondition and trashed = false"
-        
+
         val response = drive.files().list()
             .setQ(query)
             .setSpaces("drive")
@@ -64,8 +65,9 @@ class GoogleApiService(private val context: Context) {
 
         val files = response.files
         if (!files.isNullOrEmpty()) {
-            Log.d(tag, "Found existing folder '$name' (id: ${files[0].id})")
-            return files[0].id
+            val folderId = files[0].id
+            Log.d(tag, "Found existing folder '$name' (id: $folderId)")
+            return folderId
         }
 
         val folderMetadata = com.google.api.services.drive.model.File().apply {
@@ -89,7 +91,7 @@ class GoogleApiService(private val context: Context) {
     fun findOrCreateSpreadsheet(title: String, folderId: String): String {
         val drive = getDriveService()
         val query = "name = '$title' and mimeType = 'application/vnd.google-apps.spreadsheet' and '$folderId' in parents and trashed = false"
-        
+
         val response = drive.files().list()
             .setQ(query)
             .setSpaces("drive")
@@ -98,8 +100,9 @@ class GoogleApiService(private val context: Context) {
 
         val files = response.files
         if (!files.isNullOrEmpty()) {
-            Log.d(tag, "Found existing spreadsheet '$title' (id: ${files[0].id})")
-            return files[0].id
+            val spreadsheetId = files[0].id
+            Log.d(tag, "Found existing spreadsheet '$title' (id: $spreadsheetId)")
+            return spreadsheetId
         }
 
         val fileMetadata = com.google.api.services.drive.model.File().apply {
@@ -135,6 +138,9 @@ class GoogleApiService(private val context: Context) {
      * If a file with [fileName] already exists in that folder, returns the existing ID without duplicating.
      */
     fun uploadFile(file: File, folderId: String, fileName: String, mimeType: String): String {
+        if (!file.exists() || file.length() == 0L) {
+            throw IllegalArgumentException("Cannot upload empty or non-existent file: ${file.absolutePath}")
+        }
         val existingId = findFileInFolder(fileName, folderId)
         if (existingId != null) {
             Log.d(tag, "File '$fileName' already exists in folder (id: $existingId). Skipping upload.")
@@ -189,13 +195,13 @@ class GoogleApiService(private val context: Context) {
 
         try {
             sheets.spreadsheets().values()
-                .clear(spreadsheetId, "$sheetName!A1:Z5000", ClearValuesRequest())
+                .clear(spreadsheetId, "'$sheetName'!A1:Z5000", ClearValuesRequest())
                 .execute()
         } catch (e: Exception) {
             Log.w(tag, "Clear sheet failed for $sheetName: ${e.message}")
         }
 
-        val range = "$sheetName!A1"
+        val range = "'$sheetName'!A1"
         val valueRange = ValueRange().setValues(data)
         sheets.spreadsheets().values()
             .update(spreadsheetId, range, valueRange)

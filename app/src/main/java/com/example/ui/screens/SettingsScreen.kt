@@ -524,7 +524,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         Text(
                             text = (if (isBn) "স্ট্যাটাস: " else "Status: ") + lastStatus,
                             style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                            color = if (lastStatus!!.startsWith("ব্যর্থ") || lastStatus!!.startsWith("FAILED")) MaterialTheme.colorScheme.error else ToolGreen
+                            color = if (lastStatus!!.startsWith("ব্যর্থ") || lastStatus!!.startsWith("FAILED") || lastStatus!!.startsWith("বাতিল")) MaterialTheme.colorScheme.error else ToolGreen
                         )
                     }
 
