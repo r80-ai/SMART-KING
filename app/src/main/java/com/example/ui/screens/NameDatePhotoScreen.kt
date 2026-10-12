@@ -488,42 +488,15 @@ fun NameDatePhotoScreen(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                            .padding(16.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = if (isBorderOn) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline,
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    Icon(
-                                        imageVector = Icons.Default.CropSquare,
-                                        contentDescription = null,
-                                        tint = androidx.compose.ui.graphics.Color.White,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column {
-                                Text(
-                                    text = "Border",
-                                    fontWeight = FontWeight.Bold,
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                                Text(
-                                    text = if (isBorderOn) "4dp outer black border ON" else "Border OFF",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
+                        Text(
+                            text = "Border",
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.bodyLarge
+                        )
                         Switch(
                             checked = isBorderOn,
                             onCheckedChange = { isBorderOn = it },
