@@ -149,8 +149,9 @@ class BackupWorker(
                     apiService.findOrCreateFolder(monthStr, yearFolderId)
                 }
 
+                val cleanCustomerName = bill.customerName.ifBlank { "Unknown" }.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
                 val cleanBillNo = bill.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-                val targetFileName = "${cleanBillNo}.pdf"
+                val targetFileName = "${cleanCustomerName}_${cleanBillNo}.pdf"
 
                 // Duplicate prevention: check if already in Drive
                 val existingFileId = apiService.findFileInFolder(targetFileName, monthFolderId)

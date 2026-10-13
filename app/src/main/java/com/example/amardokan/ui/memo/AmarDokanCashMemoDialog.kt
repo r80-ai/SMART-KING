@@ -230,8 +230,9 @@ fun AmarDokanCashMemoDialog(
                                             val pdfFile = withContext(Dispatchers.IO) {
                                                 AmarDokanCashMemoGenerator.generatePdfFile(context, memoData)
                                             }
-                                            val sanitized = memoData.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-                                            val fileName = "CashMemo_${sanitized}.pdf"
+                                            val sanitizedName = memoData.customerName.ifBlank { "Unknown" }.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+                                            val sanitizedBillNo = memoData.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+                                            val fileName = "${sanitizedName}_${sanitizedBillNo}.pdf"
                                             val result = GlobalSaveManager.saveProcessedFile(
                                                 context = context,
                                                 tempSourceFile = pdfFile,
