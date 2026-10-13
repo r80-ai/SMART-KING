@@ -172,174 +172,102 @@ object AmarDokanCashMemoGenerator {
      * Preserves the full template design, logo, tables, borders, and colors untouched,
      * only placing dynamic bill data into the designated blank fields.
      */
+    fun MemoData.toBillModel(): BillModel {
+        val isDue = !paymentType.equals("CASH", ignoreCase = true)
+        val dueVal = if (isDue) grandTotal else 0.0
+        val discRaw = if (discount % 1.0 == 0.0) discount.toInt() else discount
+        val subRaw = if (subtotal % 1.0 == 0.0) subtotal.toInt() else subtotal
+        val gtRaw = if (grandTotal % 1.0 == 0.0) grandTotal.toInt() else grandTotal
+        val dueRaw = if (dueVal % 1.0 == 0.0) dueVal.toInt() else dueVal
+
+        return BillModel(
+            billNumber = billNumber,
+            dateString = dateFormatted,
+            customerName = customerName,
+            customerMobile = customerPhone,
+            items = items.map { item ->
+                val qtyRaw = if (item.quantity % 1.0 == 0.0) item.quantity.toInt() else item.quantity
+                val rateRaw = if (item.unitRate % 1.0 == 0.0) item.unitRate.toInt() else item.unitRate
+                val totalRaw = if (item.lineTotal % 1.0 == 0.0) item.lineTotal.toInt() else item.lineTotal
+                BillItemModel(
+                    nameEnglish = item.serviceName,
+                    nameBengali = item.serviceName,
+                    quantity = qtyRaw,
+                    rate = rateRaw,
+                    total = totalRaw
+                )
+            },
+            subTotal = subRaw,
+            discountAmount = discount,
+            grandTotal = gtRaw,
+            dueAmount = dueRaw
+        )
+    }
+
+    /**
+     * Master authentic cash memo renderer using the real background templates:
+     * - app/src/main/assets/cash_memo_bengali.png
+     * - app/src/main/assets/cash_memo_english.png
+     *
+     * Preserves the full template design, logo, tables, borders, and colors untouched,
+     * only placing dynamic bill data into the designated blank fields via drawBillContentOnCanvas.
+     */
     private fun renderAuthenticCashMemo(data: MemoData, isEn: Boolean, context: Context?): Bitmap {
         val bitmap = loadTemplateBitmap(context, isEn)
         val canvas = Canvas(bitmap)
+        val pageWidth = bitmap.width.toFloat()
+        val pageHeight = bitmap.height.toFloat()
 
-        // 1. RECEIPT / BILL NUMBER (Yellow box: x=[30..271], y=[445..499])
-        val billNoPaint = Paint().apply {
-            isAntiAlias = true
-            isSubpixelText = true
-            color = Color.rgb(211, 47, 47) // Red bold text
-            textSize = 22f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-        val billNumStr = if (data.billNumber.isNotBlank()) data.billNumber else "0001"
-        canvas.drawText(billNumStr, 180f, 475f, billNoPaint)
-
-        // 2. DATE (Yellow box: x=[854..1005], y=[440..493])
-        val datePaint = Paint().apply {
-            isAntiAlias = true
-            isSubpixelText = true
-            color = Color.rgb(30, 41, 59)
-            textSize = 17f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
-        }
-        val dateDisplay = if (data.dateFormatted.isNotBlank()) data.dateFormatted else if (isEn) "___/___/20___" else "___/___/২০___"
-        canvas.drawText(dateDisplay, 925f, 473f, datePaint)
-
-        // 3. CUSTOMER INFORMATION (Customer Name & Mobile No around y=520f)
-        val customerPaint = Paint().apply {
-            isAntiAlias = true
-            isSubpixelText = true
-            color = Color.rgb(15, 23, 42)
-            textSize = 19f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.LEFT
-        }
-        if (data.customerName.isNotBlank()) {
-            val nameStartX = if (isEn) 215f else 205f
-            val maxNameW = 350f
-            val nameStr = truncateText(data.customerName, customerPaint, maxNameW)
-            canvas.drawText(nameStr, nameStartX, 525f, customerPaint)
-        }
-        if (data.customerPhone.isNotBlank()) {
-            val phoneStartX = if (isEn) 720f else 710f
-            val maxPhoneW = 270f
-            val phoneStr = truncateText(data.customerPhone, customerPaint, maxPhoneW)
-            canvas.drawText(phoneStr, phoneStartX, 525f, customerPaint)
-        }
-
-        // 4. INVOICE TABLE ROWS (14 rows from y=746f to 1195f, rowHeight=32.1f)
-        val tableTextPaint = Paint().apply {
-            isAntiAlias = true
-            isSubpixelText = true
-            color = Color.rgb(15, 23, 42)
-            textSize = 15.5f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        }
-        val tableBoldPaint = Paint().apply {
-            isAntiAlias = true
-            isSubpixelText = true
-            color = Color.rgb(15, 23, 42)
-            textSize = 15.5f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-        }
-
-        val rowCount = 14
-        val rowHeight = 32.1f
-        val tableStartY = 746f
-
-        for (r in 0 until minOf(rowCount, data.items.size)) {
-            val item = data.items[r]
-            val rY = tableStartY + r * rowHeight
-            val textBaseY = rY + 22.5f
-
-            // Col 1: Sl. No (centered at 63.5f)
-            tableBoldPaint.textAlign = Paint.Align.CENTER
-            val slNoStr = if (isEn) (r + 1).toString() else BanglaNumberUtil.toBangla((r + 1).toString())
-            canvas.drawText(slNoStr, 63.5f, textBaseY, tableBoldPaint)
-
-            // Col 2: Description (left-aligned at 115f, max width 395f)
-            tableTextPaint.textAlign = Paint.Align.LEFT
-            val desc = truncateText(item.serviceName, tableTextPaint, 395f)
-            canvas.drawText(desc, 115f, textBaseY, tableTextPaint)
-
-            // Col 3: Quantity (centered at 592f)
-            tableTextPaint.textAlign = Paint.Align.CENTER
-            val qtyRaw = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString()
-            val qtyStr = if (isEn) qtyRaw else BanglaNumberUtil.toBangla(qtyRaw)
-            canvas.drawText(qtyStr, 592f, textBaseY, tableTextPaint)
-
-            // Col 4: Rate (right-aligned at 810f)
-            tableTextPaint.textAlign = Paint.Align.RIGHT
-            val rateRaw = item.unitRate.toInt().toString()
-            val rateStr = if (isEn) rateRaw else BanglaNumberUtil.toBangla(rateRaw)
-            canvas.drawText(rateStr, 810f, textBaseY, tableTextPaint)
-
-            // Col 5: Amount (right-aligned at 985f)
-            tableBoldPaint.textAlign = Paint.Align.RIGHT
-            val amtRaw = item.lineTotal.toInt().toString()
-            val amtStr = if (isEn) amtRaw else BanglaNumberUtil.toBangla(amtRaw)
-            canvas.drawText(amtStr, 985f, textBaseY, tableBoldPaint)
-        }
-
-        // 5. SCANNABLE DYNAMIC UPI QR CODE (QR Box: x=45f, y=1255f, size=170x170)
+        // Generate dynamic UPI QR Code
         val qrAmount = String.format(Locale.ENGLISH, "%.2f", data.grandTotal)
         val billEncoded = Uri.encode(data.billNumber)
         val upiUri = "upi://pay?pa=$MERCHANT_UPI_ID&pn=Telecom%20Cyber%20Cafe&am=$qrAmount&cu=INR&tn=Bill%20$billEncoded"
-        val qrBmp = QrCodeGenerator.generateUpiQr(upiUri, 170)
-        if (qrBmp != null) {
-            canvas.drawBitmap(qrBmp, 45f, 1255f, null)
-        }
+        val qrSize = (pageWidth * 0.22f).toInt()
+        val qrBitmap = if (data.grandTotal > 0.0) QrCodeGenerator.generateUpiQr(upiUri, qrSize) else null
 
-        // 6. TOTALS PANEL VALUES (Total Amount, Discount, Grand Total)
-        // Row 1: Total Amount (y=1225..1285, white box x=790..995)
-        if (data.subtotal > 0.0) {
-            val totalPaint = Paint().apply {
-                isAntiAlias = true
-                isSubpixelText = true
-                color = Color.rgb(13, 27, 42)
-                textSize = 22f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val subRaw = data.subtotal.toInt().toString()
-            val subStr = if (isEn) "₹$subRaw" else "₹" + BanglaNumberUtil.toBangla(subRaw)
-            canvas.drawText(subStr, 980f, 1262f, totalPaint)
-        }
+        val billModel = data.toBillModel()
+        drawBillContentOnCanvas(
+            canvas = canvas,
+            pageWidth = pageWidth,
+            pageHeight = pageHeight,
+            billData = billModel,
+            qrBitmap = qrBitmap,
+            isEnglish = isEn
+        )
 
-        // Row 2: Discount (y=1315..1375, white box x=790..995)
-        if (data.discount > 0.0) {
-            val discPaint = Paint().apply {
-                isAntiAlias = true
-                isSubpixelText = true
-                color = Color.rgb(46, 125, 50)
-                textSize = 22f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val discRaw = data.discount.toInt().toString()
-            val discStr = if (isEn) "- ₹$discRaw" else "- ₹" + BanglaNumberUtil.toBangla(discRaw)
-            canvas.drawText(discStr, 980f, 1350f, discPaint)
-        }
-
-        // Row 3: Grand Total (y=1405..1465, white box x=790..995)
-        if (data.grandTotal > 0.0) {
-            val gtPaint = Paint().apply {
-                isAntiAlias = true
-                isSubpixelText = true
-                color = Color.rgb(220, 38, 38)
-                textSize = 25f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val gtRaw = data.grandTotal.toInt().toString()
-            val gtStr = if (isEn) "₹$gtRaw" else "₹" + BanglaNumberUtil.toBangla(gtRaw)
-            canvas.drawText(gtStr, 980f, 1445f, gtPaint)
-        }
-
-        // 7. PAYMENT STATUS STAMP (PAID / DUE)
+        // Payment status stamp (PAID / DUE)
         if (data.paymentType.equals("CASH", ignoreCase = true)) {
             val stampText = if (isEn) "PAID" else "পরিশোধিত"
-            drawStamp(canvas, stampText, Color.rgb(22, 163, 74), 395f, 1410f, -8f)
+            drawStamp(canvas, stampText, Color.rgb(22, 163, 74), pageWidth * 0.38f, pageHeight * 0.915f, -8f)
         } else {
             val stampText = if (isEn) "DUE / CREDIT" else "বকেয়া / বাকি"
-            drawStamp(canvas, stampText, Color.rgb(220, 38, 38), 395f, 1410f, -8f)
+            drawStamp(canvas, stampText, Color.rgb(220, 38, 38), pageWidth * 0.38f, pageHeight * 0.915f, -8f)
         }
 
+        return bitmap
+    }
+
+    fun generateMemoBitmap(billModel: BillModel, isEnglish: Boolean, context: Context? = null): Bitmap {
+        val appContext = context ?: try { AmarDokanApp.instance.applicationContext } catch (e: Exception) { null }
+        val bitmap = loadTemplateBitmap(appContext, isEnglish)
+        val canvas = Canvas(bitmap)
+        val pageWidth = bitmap.width.toFloat()
+        val pageHeight = bitmap.height.toFloat()
+
+        val qrAmount = billModel.grandTotal.toString()
+        val billEncoded = Uri.encode(billModel.billNumber)
+        val upiUri = "upi://pay?pa=$MERCHANT_UPI_ID&pn=Telecom%20Cyber%20Cafe&am=$qrAmount&cu=INR&tn=Bill%20$billEncoded"
+        val qrSize = (pageWidth * 0.22f).toInt()
+        val qrBitmap = QrCodeGenerator.generateUpiQr(upiUri, qrSize)
+
+        drawBillContentOnCanvas(
+            canvas = canvas,
+            pageWidth = pageWidth,
+            pageHeight = pageHeight,
+            billData = billModel,
+            qrBitmap = qrBitmap,
+            isEnglish = isEnglish
+        )
         return bitmap
     }
 
@@ -668,4 +596,170 @@ object AmarDokanCashMemoGenerator {
             Toast.makeText(context, "শেয়ার করতে সমস্যা হয়েছে: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
     }
+}
+
+// ==========================================
+// BILL DATA MODELS
+// ==========================================
+
+data class BillModel(
+    val billNumber: String = "",
+    val dateString: String = "",
+    val customerName: String = "",
+    val customerMobile: String = "",
+    val items: List<BillItemModel> = emptyList(),
+    val subTotal: Any = 0,
+    val discountAmount: Double = 0.0,
+    val grandTotal: Any = 0,
+    val dueAmount: Any = 0
+)
+
+data class BillItemModel(
+    val nameEnglish: String = "",
+    val nameBengali: String = "",
+    val quantity: Any = 0,
+    val rate: Any = 0,
+    val total: Any = 0
+)
+
+// ==========================================
+// UPDATED CANVAS & PDF RENDERING LOGIC
+// (Applies to both Bengali & English Bills)
+// ==========================================
+
+fun drawBillContentOnCanvas(
+    canvas: Canvas,
+    pageWidth: Float,
+    pageHeight: Float,
+    billData: BillModel, // Customer & billing data
+    qrBitmap: Bitmap?,
+    isEnglish: Boolean
+) {
+    val fontScale = if (pageWidth > 600f) (pageWidth / 595f) else 1f
+
+    // 1. HIGH CONTRAST & BOLD PAINT SETUP
+    val textPaint = Paint().apply {
+        color = Color.BLACK
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        isAntiAlias = true
+        style = Paint.Style.FILL
+    }
+
+    val valuePaint = Paint().apply {
+        color = Color.BLACK
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        isAntiAlias = true
+        style = Paint.Style.FILL
+    }
+
+    // 2. FIXED COORDINATES FOR HEADER & METADATA
+    // Bill Number & Date
+    valuePaint.textSize = 13f * fontScale
+    val billNoX = pageWidth * 0.22f
+    val billNoY = pageHeight * 0.205f
+    val displayBillNo = billData.billNumber.ifEmpty { "1001" }
+    canvas.drawText(displayBillNo, billNoX, billNoY, valuePaint)
+
+    val dateX = pageWidth * 0.72f
+    val dateY = pageHeight * 0.205f
+    val displayDate = billData.dateString.ifEmpty { "13/10/2026" }
+    canvas.drawText(displayDate, dateX, dateY, valuePaint)
+
+    // Customer Name (Precisely after "গ্রাহকের নাম:" / "Customer Name:")
+    valuePaint.textSize = 14f * fontScale
+    val customerNameX = pageWidth * 0.28f
+    val customerNameY = pageHeight * 0.235f
+    val customerName = billData.customerName.ifEmpty { "Cash Customer" }
+    canvas.drawText(customerName, customerNameX, customerNameY, valuePaint)
+
+    // Customer Mobile Number
+    if (billData.customerMobile.isNotEmpty()) {
+        val mobileX = pageWidth * 0.72f
+        val mobileY = pageHeight * 0.235f
+        canvas.drawText(billData.customerMobile, mobileX, mobileY, valuePaint)
+    }
+
+    // 3. TABLE ITEMS DRAWING (BOLD & PROPER ROW HEIGHT)
+    valuePaint.textSize = 12f * fontScale
+    var startRowY = pageHeight * 0.315f
+    val rowStep = pageHeight * 0.024f
+
+    billData.items.forEachIndexed { index, item ->
+        val currentY = startRowY + (index * rowStep)
+
+        // SL No.
+        val slNo = if (isEnglish) "${index + 1}" else convertToBengaliNumber(index + 1)
+        canvas.drawText(slNo, pageWidth * 0.07f, currentY, valuePaint)
+
+        // Item Name
+        val itemName = if (isEnglish) item.nameEnglish else item.nameBengali
+        canvas.drawText(itemName, pageWidth * 0.16f, currentY, valuePaint)
+
+        // Quantity
+        val qty = if (isEnglish) "${item.quantity}" else convertToBengaliNumber(item.quantity)
+        canvas.drawText(qty, pageWidth * 0.53f, currentY, valuePaint)
+
+        // Rate
+        val rate = if (isEnglish) "₹${item.rate}" else "₹${convertToBengaliNumber(item.rate)}"
+        canvas.drawText(rate, pageWidth * 0.68f, currentY, valuePaint)
+
+        // Total
+        val total = if (isEnglish) "₹${item.total}" else "₹${convertToBengaliNumber(item.total)}"
+        canvas.drawText(total, pageWidth * 0.85f, currentY, valuePaint)
+    }
+
+    // 4. SUMMARY TOTALS (BOX-FIT ALIGNMENT & BOLD)
+    valuePaint.textSize = 14f * fontScale
+
+    // মোট টাকা / Subtotal
+    val subtotalX = pageWidth * 0.84f
+    val subtotalY = pageHeight * 0.755f
+    val subtotalText = if (isEnglish) "₹${billData.subTotal}" else "₹${convertToBengaliNumber(billData.subTotal)}"
+    canvas.drawText(subtotalText, subtotalX, subtotalY, valuePaint)
+
+    // ছাড় (-) / Discount
+    val discountY = pageHeight * 0.785f
+    val discountVal = billData.discountAmount
+    val discountText = if (discountVal > 0) {
+        if (isEnglish) "₹$discountVal" else "₹${convertToBengaliNumber(discountVal)}"
+    } else {
+        "-"
+    }
+    canvas.drawText(discountText, subtotalX, discountY, valuePaint)
+
+    // সর্বমোট টাকা / Grand Total
+    val grandTotalY = pageHeight * 0.815f
+    val grandTotalText = if (isEnglish) "₹${billData.grandTotal}" else "₹${convertToBengaliNumber(billData.grandTotal)}"
+    canvas.drawText(grandTotalText, subtotalX, grandTotalY, valuePaint)
+
+    // বকেয়া / Due Amount
+    val dueY = pageHeight * 0.855f
+    val dueText = if (isEnglish) "₹${billData.dueAmount}" else "₹${convertToBengaliNumber(billData.dueAmount)}"
+    canvas.drawText(dueText, subtotalX, dueY, valuePaint)
+
+    // 5. UPI QR CODE (SCALED TO FILL BOX FULLY)
+    qrBitmap?.let { bitmap ->
+        val qrBoxLeft = pageWidth * 0.08f
+        val qrBoxTop = pageHeight * 0.735f
+        val qrBoxSize = pageWidth * 0.22f // Perfectly fits inside the QR boundary box
+
+        val destRect = RectF(
+            qrBoxLeft,
+            qrBoxTop,
+            qrBoxLeft + qrBoxSize,
+            qrBoxTop + qrBoxSize
+        )
+        canvas.drawBitmap(bitmap, null, destRect, null)
+    }
+}
+
+// Utility function for Bengali digit localization
+fun convertToBengaliNumber(number: Any): String {
+    val englishDigits = charArrayOf('0', '1', '2', '3', '4', '5', '6', '7', '8', '9')
+    val bengaliDigits = charArrayOf('০', '১', '২', '৩', '৪', '৫', '৬', '৭', '৮', '৯')
+    var str = number.toString()
+    for (i in 0..9) {
+        str = str.replace(englishDigits[i], bengaliDigits[i])
+    }
+    return str
 }
