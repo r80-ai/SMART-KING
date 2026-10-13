@@ -176,65 +176,81 @@ object AmarDokanCashMemoGenerator {
         val bitmap = loadTemplateBitmap(context, isEn)
         val canvas = Canvas(bitmap)
 
-        // 1. RECEIPT / BILL NUMBER (Yellow box: x=[30..271], y=[445..499])
+        // 1. RECEIPT / BILL NUMBER (Printed bold next to "নং:" / "No:" inside the yellow box)
+        // Yellow box span: x=[38..274], label occupies x=[75..185], blank space starts at x=190
         val billNoPaint = Paint().apply {
             isAntiAlias = true
             isSubpixelText = true
-            color = Color.rgb(211, 47, 47) // Red bold text
-            textSize = 22f
+            color = Color.rgb(211, 47, 47) // Bold Red text
+            textSize = 21f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
+            textAlign = Paint.Align.LEFT
         }
-        val billNumStr = if (data.billNumber.isNotBlank()) data.billNumber else "0001"
-        canvas.drawText(billNumStr, 180f, 475f, billNoPaint)
+        val billNumClean = if (data.billNumber.isNotBlank()) {
+            data.billNumber.replace("BILL-", "").replace("বিল-", "").trim()
+        } else {
+            "1001"
+        }
+        val billNumStr = if (isEn) billNumClean else BanglaNumberUtil.toBangla(billNumClean)
+        canvas.drawText(billNumStr, 192f, 482f, billNoPaint)
 
-        // 2. DATE (Yellow box: x=[854..1005], y=[440..493])
+        // 2. DATE (Printed bold next to "তারিখ:" / "Date:" inside the yellow box)
+        // Yellow box span: x=[854..1005], label occupies x=[855..920], blank space starts at x=922
         val datePaint = Paint().apply {
             isAntiAlias = true
             isSubpixelText = true
             color = Color.rgb(30, 41, 59)
             textSize = 17f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            textAlign = Paint.Align.CENTER
+            textAlign = Paint.Align.LEFT
         }
-        val dateDisplay = if (data.dateFormatted.isNotBlank()) data.dateFormatted else if (isEn) "___/___/20___" else "___/___/২০___"
-        canvas.drawText(dateDisplay, 925f, 473f, datePaint)
+        val dateClean = if (data.dateFormatted.isNotBlank()) {
+            data.dateFormatted
+        } else {
+            val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)
+            sdf.format(Date())
+        }
+        val dateDisplay = if (isEn) dateClean else BanglaNumberUtil.toBangla(dateClean)
+        canvas.drawText(dateDisplay, 922f, 482f, datePaint)
 
-        // 3. CUSTOMER INFORMATION (Customer Name & Mobile No around y=520f)
-        val customerPaint = Paint().apply {
+        // 3. CUSTOMER NAME & PHONE (Printed bold next to "গ্রাহকের নাম:" / "Customer Name:")
+        // Blank field starts right after the printed label around x=245f
+        val customerNamePaint = Paint().apply {
             isAntiAlias = true
             isSubpixelText = true
             color = Color.rgb(15, 23, 42)
+            textSize = 21f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
+        }
+        val customerPhonePaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.rgb(30, 41, 59)
             textSize = 19f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.LEFT
         }
         if (data.customerName.isNotBlank()) {
-            val nameStartX = if (isEn) 215f else 205f
-            val maxNameW = 350f
-            val nameStr = truncateText(data.customerName, customerPaint, maxNameW)
-            canvas.drawText(nameStr, nameStartX, 525f, customerPaint)
+            val nameStartX = if (isEn) 250f else 242f
+            val maxNameW = 480f
+            val nameStr = truncateText(data.customerName, customerNamePaint, maxNameW)
+            canvas.drawText(nameStr, nameStartX, 528f, customerNamePaint)
         }
         if (data.customerPhone.isNotBlank()) {
-            val phoneStartX = if (isEn) 720f else 710f
-            val maxPhoneW = 270f
-            val phoneStr = truncateText(data.customerPhone, customerPaint, maxPhoneW)
-            canvas.drawText(phoneStr, phoneStartX, 525f, customerPaint)
+            val phoneStartX = if (isEn) 745f else 735f
+            val maxPhoneW = 255f
+            val phoneClean = if (isEn) data.customerPhone else BanglaNumberUtil.toBangla(data.customerPhone)
+            val phoneStr = truncateText(phoneClean, customerPhonePaint, maxPhoneW)
+            canvas.drawText(phoneStr, phoneStartX, 528f, customerPhonePaint)
         }
 
-        // 4. INVOICE TABLE ROWS (14 rows from y=746f to 1195f, rowHeight=32.1f)
-        val tableTextPaint = Paint().apply {
+        // 4. INVOICE TABLE ROWS (14 rows from y=746f to 1195f, rowHeight=32.1f) - All BOLD
+        val tableBoldTextPaint = Paint().apply {
             isAntiAlias = true
             isSubpixelText = true
             color = Color.rgb(15, 23, 42)
-            textSize = 15.5f
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
-        }
-        val tableBoldPaint = Paint().apply {
-            isAntiAlias = true
-            isSubpixelText = true
-            color = Color.rgb(15, 23, 42)
-            textSize = 15.5f
+            textSize = 16f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
@@ -248,96 +264,98 @@ object AmarDokanCashMemoGenerator {
             val textBaseY = rY + 22.5f
 
             // Col 1: Sl. No (centered at 63.5f)
-            tableBoldPaint.textAlign = Paint.Align.CENTER
+            tableBoldTextPaint.textAlign = Paint.Align.CENTER
             val slNoStr = if (isEn) (r + 1).toString() else BanglaNumberUtil.toBangla((r + 1).toString())
-            canvas.drawText(slNoStr, 63.5f, textBaseY, tableBoldPaint)
+            canvas.drawText(slNoStr, 63.5f, textBaseY, tableBoldTextPaint)
 
             // Col 2: Description (left-aligned at 115f, max width 395f)
-            tableTextPaint.textAlign = Paint.Align.LEFT
-            val desc = truncateText(item.serviceName, tableTextPaint, 395f)
-            canvas.drawText(desc, 115f, textBaseY, tableTextPaint)
+            tableBoldTextPaint.textAlign = Paint.Align.LEFT
+            val desc = truncateText(item.serviceName, tableBoldTextPaint, 395f)
+            canvas.drawText(desc, 115f, textBaseY, tableBoldTextPaint)
 
             // Col 3: Quantity (centered at 592f)
-            tableTextPaint.textAlign = Paint.Align.CENTER
+            tableBoldTextPaint.textAlign = Paint.Align.CENTER
             val qtyRaw = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString()
             val qtyStr = if (isEn) qtyRaw else BanglaNumberUtil.toBangla(qtyRaw)
-            canvas.drawText(qtyStr, 592f, textBaseY, tableTextPaint)
+            canvas.drawText(qtyStr, 592f, textBaseY, tableBoldTextPaint)
 
             // Col 4: Rate (right-aligned at 810f)
-            tableTextPaint.textAlign = Paint.Align.RIGHT
+            tableBoldTextPaint.textAlign = Paint.Align.RIGHT
             val rateRaw = item.unitRate.toInt().toString()
             val rateStr = if (isEn) rateRaw else BanglaNumberUtil.toBangla(rateRaw)
-            canvas.drawText(rateStr, 810f, textBaseY, tableTextPaint)
+            canvas.drawText(rateStr, 810f, textBaseY, tableBoldTextPaint)
 
             // Col 5: Amount (right-aligned at 985f)
-            tableBoldPaint.textAlign = Paint.Align.RIGHT
+            tableBoldTextPaint.textAlign = Paint.Align.RIGHT
             val amtRaw = item.lineTotal.toInt().toString()
             val amtStr = if (isEn) amtRaw else BanglaNumberUtil.toBangla(amtRaw)
-            canvas.drawText(amtStr, 985f, textBaseY, tableBoldPaint)
+            canvas.drawText(amtStr, 985f, textBaseY, tableBoldTextPaint)
         }
 
-        // 5. SCANNABLE DYNAMIC UPI QR CODE (QR Box: x=45f, y=1255f, size=170x170)
+        // 5. SCANNABLE DYNAMIC UPI QR CODE (Box-fit exactly inside QR square: x=[35..246], y=[1245..1450])
         val qrAmount = String.format(Locale.ENGLISH, "%.2f", data.grandTotal)
         val billEncoded = Uri.encode(data.billNumber)
         val upiUri = "upi://pay?pa=$MERCHANT_UPI_ID&pn=Telecom%20Cyber%20Cafe&am=$qrAmount&cu=INR&tn=Bill%20$billEncoded"
-        val qrBmp = QrCodeGenerator.generateUpiQr(upiUri, 170)
+        val qrBoxSize = 202
+        val qrBmp = QrCodeGenerator.generateUpiQr(upiUri, qrBoxSize)
         if (qrBmp != null) {
-            canvas.drawBitmap(qrBmp, 45f, 1255f, null)
+            // Centers nicely inside x=[36..245], y=[1246..1449]
+            canvas.drawBitmap(qrBmp, 39f, 1247f, null)
         }
 
-        // 6. TOTALS PANEL VALUES (Total Amount, Discount, Grand Total)
-        // Row 1: Total Amount (y=1225..1285, white box x=790..995)
-        if (data.subtotal > 0.0) {
-            val totalPaint = Paint().apply {
-                isAntiAlias = true
-                isSubpixelText = true
-                color = Color.rgb(13, 27, 42)
-                textSize = 22f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val subRaw = data.subtotal.toInt().toString()
-            val subStr = if (isEn) "₹$subRaw" else "₹" + BanglaNumberUtil.toBangla(subRaw)
-            canvas.drawText(subStr, 980f, 1262f, totalPaint)
+        // 6. TOTALS PANEL VALUES (মোট টাকা, ছাড় (-), সর্বমোট টাকা / বকেয়া)
+        // Row 2: মোট টাকা / Subtotal (y=1238..1296, white box x=[790..1005], center y=1267f)
+        val totalAmountVal = if (data.subtotal > 0.0) data.subtotal else data.grandTotal
+        val totalPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.rgb(15, 23, 42)
+            textSize = 28f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
         }
+        val subRaw = totalAmountVal.toInt().toString()
+        val subStr = if (isEn) "₹$subRaw" else "₹" + BanglaNumberUtil.toBangla(subRaw)
+        canvas.drawText(subStr, 990f, 1276f, totalPaint)
 
-        // Row 2: Discount (y=1315..1375, white box x=790..995)
-        if (data.discount > 0.0) {
-            val discPaint = Paint().apply {
-                isAntiAlias = true
-                isSubpixelText = true
-                color = Color.rgb(46, 125, 50)
-                textSize = 22f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val discRaw = data.discount.toInt().toString()
-            val discStr = if (isEn) "- ₹$discRaw" else "- ₹" + BanglaNumberUtil.toBangla(discRaw)
-            canvas.drawText(discStr, 980f, 1350f, discPaint)
+        // Row 3: ছাড় (-) / Discount (y=1298..1358, white box x=[790..1005], center y=1328f)
+        val discPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.rgb(22, 101, 52) // Dark forest green bold
+            textSize = 28f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
         }
-
-        // Row 3: Grand Total (y=1405..1465, white box x=790..995)
-        if (data.grandTotal > 0.0) {
-            val gtPaint = Paint().apply {
-                isAntiAlias = true
-                isSubpixelText = true
-                color = Color.rgb(220, 38, 38)
-                textSize = 25f
-                typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-                textAlign = Paint.Align.RIGHT
-            }
-            val gtRaw = data.grandTotal.toInt().toString()
-            val gtStr = if (isEn) "₹$gtRaw" else "₹" + BanglaNumberUtil.toBangla(gtRaw)
-            canvas.drawText(gtStr, 980f, 1445f, gtPaint)
+        val discRaw = data.discount.toInt().toString()
+        val discStr = if (data.discount > 0.0) {
+            if (isEn) "- ₹$discRaw" else "- ₹" + BanglaNumberUtil.toBangla(discRaw)
+        } else {
+            if (isEn) "₹0" else "₹০"
         }
+        canvas.drawText(discStr, 990f, 1337f, discPaint)
 
-        // 7. PAYMENT STATUS STAMP (PAID / DUE)
+        // Row 4: সর্বমোট টাকা / Grand Total (y=1360..1430, white box x=[788..1005], center y=1395f)
+        val gtPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = if (data.paymentType.equals("CREDIT", ignoreCase = true)) Color.rgb(220, 38, 38) else Color.rgb(185, 28, 28)
+            textSize = 32f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+        val gtRaw = data.grandTotal.toInt().toString()
+        val gtStr = if (isEn) "₹$gtRaw" else "₹" + BanglaNumberUtil.toBangla(gtRaw)
+        canvas.drawText(gtStr, 990f, 1406f, gtPaint)
+
+        // 7. PAYMENT STATUS STAMP / BOKEYA (পরিশোধিত / বকেয়া)
+        // Positioned neatly in the payment status badge area (x=380..520, y=1380..1425)
         if (data.paymentType.equals("CASH", ignoreCase = true)) {
             val stampText = if (isEn) "PAID" else "পরিশোধিত"
-            drawStamp(canvas, stampText, Color.rgb(22, 163, 74), 395f, 1410f, -8f)
+            drawStamp(canvas, stampText, Color.rgb(22, 163, 74), 450f, 1405f, 0f)
         } else {
-            val stampText = if (isEn) "DUE / CREDIT" else "বকেয়া / বাকি"
-            drawStamp(canvas, stampText, Color.rgb(220, 38, 38), 395f, 1410f, -8f)
+            val stampText = if (isEn) "DUE / বকেয়া" else "বকেয়া (DUE)"
+            drawStamp(canvas, stampText, Color.rgb(220, 38, 38), 450f, 1405f, 0f)
         }
 
         return bitmap
