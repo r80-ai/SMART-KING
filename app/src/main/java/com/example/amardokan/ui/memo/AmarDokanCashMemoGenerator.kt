@@ -177,12 +177,12 @@ object AmarDokanCashMemoGenerator {
         val canvas = Canvas(bitmap)
 
         // 1. RECEIPT / BILL NUMBER (Printed bold next to "নং:" / "No:" inside the yellow box)
-        // Yellow box span: x=[38..274], label occupies x=[75..185], blank space starts at x=190
+        // Printed "নং:" ends around x=115f, dots continue. Bill number starts right after label at x=175f
         val billNoPaint = Paint().apply {
             isAntiAlias = true
             isSubpixelText = true
             color = Color.rgb(211, 47, 47) // Bold Red text
-            textSize = 21f
+            textSize = 23f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.LEFT
         }
@@ -192,15 +192,15 @@ object AmarDokanCashMemoGenerator {
             "1001"
         }
         val billNumStr = if (isEn) billNumClean else BanglaNumberUtil.toBangla(billNumClean)
-        canvas.drawText(billNumStr, 192f, 482f, billNoPaint)
+        canvas.drawText(billNumStr, 175f, 482f, billNoPaint)
 
         // 2. DATE (Printed bold next to "তারিখ:" / "Date:" inside the yellow box)
-        // Yellow box span: x=[854..1005], label occupies x=[855..920], blank space starts at x=922
+        // Printed "তারিখ:" / "Date:" label occupies x=[855..915], date text starts at x=918f
         val datePaint = Paint().apply {
             isAntiAlias = true
             isSubpixelText = true
             color = Color.rgb(30, 41, 59)
-            textSize = 17f
+            textSize = 18f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.LEFT
         }
@@ -211,15 +211,15 @@ object AmarDokanCashMemoGenerator {
             sdf.format(Date())
         }
         val dateDisplay = if (isEn) dateClean else BanglaNumberUtil.toBangla(dateClean)
-        canvas.drawText(dateDisplay, 922f, 482f, datePaint)
+        canvas.drawText(dateDisplay, 918f, 482f, datePaint)
 
         // 3. CUSTOMER NAME & PHONE (Printed bold next to "গ্রাহকের নাম:" / "Customer Name:")
-        // Blank field starts right after the printed label around x=245f
+        // Blank field starts directly beside the printed label at x=220f
         val customerNamePaint = Paint().apply {
             isAntiAlias = true
             isSubpixelText = true
             color = Color.rgb(15, 23, 42)
-            textSize = 21f
+            textSize = 23f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.LEFT
         }
@@ -227,13 +227,13 @@ object AmarDokanCashMemoGenerator {
             isAntiAlias = true
             isSubpixelText = true
             color = Color.rgb(30, 41, 59)
-            textSize = 19f
+            textSize = 20f
             typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
             textAlign = Paint.Align.LEFT
         }
         if (data.customerName.isNotBlank()) {
-            val nameStartX = if (isEn) 250f else 242f
-            val maxNameW = 480f
+            val nameStartX = if (isEn) 225f else 220f
+            val maxNameW = 500f
             val nameStr = truncateText(data.customerName, customerNamePaint, maxNameW)
             canvas.drawText(nameStr, nameStartX, 528f, customerNamePaint)
         }
@@ -292,15 +292,15 @@ object AmarDokanCashMemoGenerator {
             canvas.drawText(amtStr, 985f, textBaseY, tableBoldTextPaint)
         }
 
-        // 5. SCANNABLE DYNAMIC UPI QR CODE (Box-fit exactly inside QR square: x=[35..246], y=[1245..1450])
+        // 5. SCANNABLE DYNAMIC UPI QR CODE (Box-fit snugly inside QR white square: x=[35..246], y=[1245..1450])
         val qrAmount = String.format(Locale.ENGLISH, "%.2f", data.grandTotal)
         val billEncoded = Uri.encode(data.billNumber)
         val upiUri = "upi://pay?pa=$MERCHANT_UPI_ID&pn=Telecom%20Cyber%20Cafe&am=$qrAmount&cu=INR&tn=Bill%20$billEncoded"
-        val qrBoxSize = 202
+        val qrBoxSize = 206
         val qrBmp = QrCodeGenerator.generateUpiQr(upiUri, qrBoxSize)
         if (qrBmp != null) {
-            // Centers nicely inside x=[36..245], y=[1246..1449]
-            canvas.drawBitmap(qrBmp, 39f, 1247f, null)
+            // Snugly fits container x=[36..245], y=[1245..1449]
+            canvas.drawBitmap(qrBmp, 37f, 1246f, null)
         }
 
         // 6. TOTALS PANEL VALUES (মোট টাকা, ছাড় (-), সর্বমোট টাকা / বকেয়া)
