@@ -57,13 +57,15 @@ fun PrintBillingScreen(
     var laminationCount by remember { mutableStateOf(0) }
     var onlineFormFees by remember { mutableStateOf(0) }
     var otherAmount by remember { mutableStateOf(0) }
+    var discountAmount by remember { mutableStateOf(0) }
 
     // Rates (defaults)
     val bwRate = 2
     val colorRate = 10
     val laminationRate = 15
 
-    val totalAmount = (bwCount * bwRate) + (colorCount * colorRate) + (laminationCount * laminationRate) + onlineFormFees + otherAmount
+    val subTotal = (bwCount * bwRate) + (colorCount * colorRate) + (laminationCount * laminationRate) + onlineFormFees + otherAmount
+    val totalAmount = (subTotal - discountAmount).coerceAtLeast(0)
 
     val upiId = "7718489@ybl"
     val upiUri = "upi://pay?pa=$upiId&pn=Telecom%20Cyber%20Cafe&am=$totalAmount&cu=INR"
@@ -118,12 +120,15 @@ fun PrintBillingScreen(
                     )
                     Text(
                         text = if (isBn) "চোরগেড়িয়া, সিহড়, কোতুলপুর, বাঁকুড়া" else "Chorgeriya, Sihar, Kotulpur, Bankura",
-                        style = MaterialTheme.typography.bodySmall
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
                         text = "Phone: 7718489405",
                         style = MaterialTheme.typography.bodySmall,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
             }
@@ -139,19 +144,31 @@ fun PrintBillingScreen(
                 OutlinedTextField(
                     value = if (onlineFormFees == 0) "" else onlineFormFees.toString(),
                     onValueChange = { onlineFormFees = it.toIntOrNull() ?: 0 },
-                    label = { Text(if (isBn) "অনলাইন ফর্ম ফিস (টাকা)" else "Online Form Fees (₹)") },
+                    label = { Text(if (isBn) "অনলাইন ফর্ম ফিস (টাকা)" else "Online Form Fees (₹)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
                     modifier = Modifier.fillMaxWidth(),
+                    textStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                    leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
                 )
 
                 OutlinedTextField(
                     value = if (otherAmount == 0) "" else otherAmount.toString(),
                     onValueChange = { otherAmount = it.toIntOrNull() ?: 0 },
-                    label = { Text(if (isBn) "অন্যান্য খরচ (টাকা)" else "Other Charges (₹)") },
+                    label = { Text(if (isBn) "অন্যান্য খরচ (টাকা)" else "Other Charges (₹)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
                     modifier = Modifier.fillMaxWidth(),
+                    textStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
-                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null) }
+                    leadingIcon = { Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
+                )
+
+                OutlinedTextField(
+                    value = if (discountAmount == 0) "" else discountAmount.toString(),
+                    onValueChange = { discountAmount = it.toIntOrNull() ?: 0 },
+                    label = { Text(if (isBn) "ছাড় / ডিসকাউন্ট (টাকা)" else "Discount (₹)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface) },
+                    modifier = Modifier.fillMaxWidth(),
+                    textStyle = LocalTextStyle.current.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number),
+                    leadingIcon = { Icon(Icons.Default.Discount, contentDescription = null, tint = MaterialTheme.colorScheme.primary) }
                 )
             }
 
@@ -168,8 +185,23 @@ fun PrintBillingScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text(if (isBn) "মোট টাকা" else "Total Amount", style = MaterialTheme.typography.titleMedium)
-                        Text("₹$totalAmount", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary))
+                        Text(
+                            text = if (isBn) "সাবটোটাল: ₹$subTotal" else "Sub-total: ₹$subTotal",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = if (isBn) "মোট টাকা (টোটাল):" else "Total Amount:",
+                            style = MaterialTheme.typography.bodyMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = "₹$totalAmount",
+                            style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        )
                     }
                     
                     if (qrBitmap != null) {
@@ -185,7 +217,7 @@ fun PrintBillingScreen(
                 }
             }
 
-            // ACTIONS
+            // ACTIONS - SINGLE CONSOLIDATED SAVE & PRINT INVOICE BUTTON
             Button(
                 onClick = {
                     scope.launch {
@@ -197,7 +229,7 @@ fun PrintBillingScreen(
             ) {
                 Icon(Icons.Default.Print, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text(if (isBn) "সেভ ও প্রিন্ট করুন" else "Save & Print Invoice")
+                Text(if (isBn) "Save & Print Invoice (সেভ ও প্রিন্ট করুন)" else "Save & Print Invoice", fontWeight = FontWeight.Bold, fontSize = 16.sp)
             }
             
             Text(

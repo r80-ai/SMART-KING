@@ -514,12 +514,19 @@ fun Screen2NewBill(
                                     .padding(horizontal = 12.dp, vertical = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                // Service name
+                                // Service name with dynamic localization
+                                val displayName = if (isEn) {
+                                    val matched = services.find { it.nameBn == item.serviceName || it.nameEn == item.serviceName }
+                                    if (matched != null && matched.nameEn.isNotBlank()) matched.nameEn else item.serviceName
+                                } else {
+                                    val matched = services.find { it.nameBn == item.serviceName || it.nameEn == item.serviceName }
+                                    if (matched != null && matched.nameBn.isNotBlank()) matched.nameBn else item.serviceName
+                                }
                                 Text(
-                                    text = item.serviceName,
+                                    text = displayName,
                                     modifier = Modifier.weight(2.2f),
                                     fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontWeight = FontWeight.Bold,
                                     color = AmarDokanColors.TextPrimary
                                 )
 
@@ -534,7 +541,7 @@ fun Screen2NewBill(
                                             if (item.quantity > 1.0) {
                                                 draftItems[index] = item.copy(quantity = item.quantity - 1.0)
                                             } else {
-                                                draftItems.removeAt(index)
+                                                draftItems.remove(item)
                                             }
                                         },
                                         modifier = Modifier.size(24.dp)
@@ -543,9 +550,10 @@ fun Screen2NewBill(
                                     }
 
                                     Text(
-                                        text = BanglaNumberUtil.toBangla(item.quantity.toInt().toString()),
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.Bold,
+                                        text = if (isEn) item.quantity.toInt().toString() else BanglaNumberUtil.toBangla(item.quantity.toInt().toString()),
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = AmarDokanColors.TextPrimary,
                                         modifier = Modifier.padding(horizontal = 4.dp)
                                     )
 
@@ -561,32 +569,33 @@ fun Screen2NewBill(
 
                                 // Unit Rate
                                 Text(
-                                    text = "₹" + BanglaNumberUtil.toBangla(item.unitRate.toInt().toString()),
+                                    text = "₹" + (if (isEn) item.unitRate.toInt().toString() else BanglaNumberUtil.toBangla(item.unitRate.toInt().toString())),
                                     modifier = Modifier.weight(1f),
                                     fontSize = 13.sp,
                                     textAlign = TextAlign.End,
-                                    color = AmarDokanColors.TextSecondary
+                                    fontWeight = FontWeight.Medium,
+                                    color = AmarDokanColors.TextPrimary
                                 )
 
                                 // Line Total
                                 Text(
-                                    text = "₹" + BanglaNumberUtil.toBangla(item.lineTotal.toInt().toString()),
+                                    text = "₹" + (if (isEn) item.lineTotal.toInt().toString() else BanglaNumberUtil.toBangla(item.lineTotal.toInt().toString())),
                                     modifier = Modifier.weight(1.2f),
                                     fontSize = 14.sp,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.ExtraBold,
                                     textAlign = TextAlign.End,
                                     color = AmarDokanColors.TextPrimary
                                 )
 
-                                // Delete button
+                                // Delete button - deletes only this targeted item
                                 IconButton(
-                                    onClick = { draftItems.removeAt(index) },
+                                    onClick = { draftItems.remove(item) },
                                     modifier = Modifier.size(32.dp)
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
                                         contentDescription = "মুছুন",
-                                        tint = Color.Gray,
+                                        tint = MaterialTheme.colorScheme.error,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -605,10 +614,21 @@ fun Screen2NewBill(
                         // Subtotal
                         Row(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("মোট সাবটোটাল:", color = AmarDokanColors.TextSecondary, fontSize = 14.sp)
-                            Text(BanglaNumberUtil.formatCurrencyBn(subtotal), fontWeight = FontWeight.SemiBold, fontSize = 15.sp)
+                            Text(
+                                text = if (isEn) "Sub-total:" else "মোট সাবটোটাল:",
+                                color = AmarDokanColors.TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
+                            Text(
+                                text = if (isEn) "₹${subtotal.toInt()}" else BanglaNumberUtil.formatCurrencyBn(subtotal),
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 16.sp,
+                                color = AmarDokanColors.TextPrimary
+                            )
                         }
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -619,17 +639,27 @@ fun Screen2NewBill(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text("ছাড় / ডিসকাউন্ট (₹):", color = AmarDokanColors.TextSecondary, fontSize = 14.sp)
+                            Text(
+                                text = if (isEn) "Discount (₹):" else "ছাড় / ডিসকাউন্ট (₹):",
+                                color = AmarDokanColors.TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 14.sp
+                            )
                             OutlinedTextField(
                                 value = discountInput,
                                 onValueChange = { discountInput = it },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                placeholder = { Text("০") },
+                                placeholder = { Text("0", fontWeight = FontWeight.Bold, color = AmarDokanColors.TextPrimary.copy(alpha = 0.6f)) },
                                 singleLine = true,
                                 modifier = Modifier
-                                    .width(100.dp)
-                                    .height(48.dp),
-                                textStyle = LocalTextStyle.current.copy(textAlign = TextAlign.End, fontSize = 14.sp)
+                                    .width(110.dp)
+                                    .height(50.dp),
+                                textStyle = LocalTextStyle.current.copy(
+                                    textAlign = TextAlign.End,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = AmarDokanColors.TextPrimary
+                                )
                             )
                         }
 
@@ -644,13 +674,13 @@ fun Screen2NewBill(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "সর্বমোট প্রদেয় বিল:",
+                                text = if (isEn) "Grand Total Payable:" else "সর্বমোট প্রদেয় বিল:",
                                 fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.ExtraBold,
                                 color = AmarDokanColors.TextPrimary
                             )
                             Text(
-                                text = BanglaNumberUtil.formatCurrencyBn(grandTotal),
+                                text = if (isEn) "₹${grandTotal.toInt()}" else BanglaNumberUtil.formatCurrencyBn(grandTotal),
                                 fontSize = 22.sp,
                                 fontWeight = FontWeight.ExtraBold,
                                 color = if (paymentType == "CASH") AmarDokanColors.CashGreen else AmarDokanColors.DueRed
@@ -661,23 +691,21 @@ fun Screen2NewBill(
             }
         }
 
-        // ---------------- ACTION BUTTONS: SAVE & PRINT ----------------
+        // ---------------- ACTION BUTTON: SINGLE CONSOLIDATED SAVE & PRINT INVOICE ----------------
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
             ) {
-                // Save Bill Button
                 Button(
                     onClick = {
                         if (draftItems.isEmpty()) {
-                            viewModel.showMessage("❌ বিলে অন্তত একটি আইটেম যোগ করুন")
+                            viewModel.showMessage(if (isEn) "❌ No items in bill" else "❌ বিলে অন্তত একটি আইটেম যোগ করুন")
                             return@Button
                         }
                         if (paymentType == "CREDIT" && isCashCustomer) {
-                            viewModel.showMessage("❌ বাকি বিলের জন্য একজন নির্দিষ্ট কাস্টমার নির্বাচন করুন")
+                            viewModel.showMessage(if (isEn) "❌ Select a customer for credit bill" else "❌ বাকি বিলের জন্য একজন নির্দিষ্ট কাস্টমার নির্বাচন করুন")
                             return@Button
                         }
 
@@ -730,58 +758,17 @@ fun Screen2NewBill(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(52.dp)
-                        .testTag("btn_save_bill"),
+                        .height(54.dp)
+                        .testTag("btn_save_print_invoice"),
                     colors = ButtonDefaults.buttonColors(containerColor = if (isEn) Color(0xFF0F2042) else AmarDokanColors.PrimaryBlue),
-                    shape = RoundedCornerShape(10.dp)
+                    shape = RoundedCornerShape(12.dp)
                 ) {
-                    Icon(Icons.Default.Save, contentDescription = null)
+                    Icon(Icons.Default.Print, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = if (isEn) "Save Bill (English)" else "বিল সেভ করুন (Save Bill)",
+                        text = if (isEn) "Save & Print Invoice" else "ইনভয়েস সেভ ও প্রিন্ট করুন (Save & Print Invoice)",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
-                    )
-                }
-
-                // Print Receipt Button (Cash Memo preview)
-                OutlinedButton(
-                    onClick = {
-                        if (draftItems.isEmpty()) {
-                            viewModel.showMessage(if (isEn) "❌ No items in bill" else "❌ বিলে কোনো আইটেম নেই")
-                            return@OutlinedButton
-                        }
-                        val defaultCashName = if (isEn) "Cash Customer" else "নগদ কাউন্টার খদ্দের"
-                        val custName = if (isCashCustomer) defaultCashName else (selectedCustomer?.name ?: (if (isEn) "Cash Customer" else "নগদ খদ্দের"))
-                        val custPhone = selectedCustomer?.phone ?: ""
-                        val previewBillNo = if (isEn) "NEW-BILL" else "নতুন বিল"
-                        activeCashMemoData = AmarDokanCashMemoGenerator.MemoData.fromDraft(
-                            billNumber = previewBillNo,
-                            customerName = custName,
-                            customerPhone = custPhone,
-                            dateStr = dateFormatted,
-                            items = draftItems.toList(),
-                            subtotal = subtotal,
-                            discount = discount,
-                            grandTotal = grandTotal,
-                            paymentType = paymentType,
-                            language = billLanguage
-                        )
-                        shouldExitAfterMemoDismiss = false
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(50.dp)
-                        .testTag("btn_print_bill"),
-                    shape = RoundedCornerShape(10.dp)
-                ) {
-                    Icon(Icons.Default.ReceiptLong, contentDescription = null, tint = if (isEn) Color(0xFF0F2042) else AmarDokanColors.PrimaryBlue)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (isEn) "View & Print English Cash Memo" else "ক্যাশ মেমো দেখুন ও প্রিন্ট করুন",
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = if (isEn) Color(0xFF0F2042) else AmarDokanColors.PrimaryBlue
                     )
                 }
             }

@@ -81,7 +81,11 @@ fun AmarDokanCashMemoDialog(
             color = Color.White,
             tonalElevation = 6.dp
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+            ) {
                 // Top Header Bar
                 Row(
                     modifier = Modifier
@@ -122,7 +126,6 @@ fun AmarDokanCashMemoDialog(
                 // Scrollable Cash Memo Preview
                 Box(
                     modifier = Modifier
-                        .weight(1f)
                         .fillMaxWidth()
                         .background(Color(0xFFF1F5F9))
                         .padding(horizontal = 12.dp, vertical = 8.dp),
@@ -130,9 +133,7 @@ fun AmarDokanCashMemoDialog(
                 ) {
                     if (memoBitmap != null) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .verticalScroll(rememberScrollState()),
+                            modifier = Modifier.fillMaxWidth(),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Surface(
