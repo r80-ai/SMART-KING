@@ -79,7 +79,7 @@ fun PhotoToolsScreen(
     }
 
     val tools = listOf(
-        ToolDefinition("doc_enhancer", "Doc Scanner & Auto-Brightness", "Import Document / Photocopy", "Clean photocopy, B&W whitening, Magic Color & High-Res PDF/JPG export", Icons.Default.AutoAwesome, ToolPurple, ActiveModal.DOC_ENHANCER, "HOT"),
+        ToolDefinition("doc_enhancer", "Doc Scanner", "Import Document / Photocopy", "Clean photocopy, B&W whitening, Magic Color & High-Res PDF/JPG export", Icons.Default.AutoAwesome, ToolPurple, ActiveModal.DOC_ENHANCER, "HOT"),
         ToolDefinition("name_date_photo", "Name & Date on Photo", "Candidate Name, Date & Border", "Add candidate name, DOP/DOB date & black border on/off switch for exam photos", Icons.Default.TextFields, ToolOrange, ActiveModal.NAME_DATE_PHOTO, "PRO"),
         ToolDefinition("pvc_smart_card", "PVC Smart Card Maker & Printer", "Standard CR80 300 DPI", "e-Aadhaar, PAN, Voter, Ayushman, Auto-Crop, De-Skew & A4/4×6 Print Sheets", Icons.Default.Badge, CrimsonPrimary, ActiveModal.PVC_CARD_MAKER),
         ToolDefinition("split_camera", "Split Camera", "Live Dual-View Camera", "Interactive split screen comparison with real-time natural enhancement", Icons.Default.CameraAlt, CrimsonPrimary, ActiveModal.SPLIT_CAMERA),
