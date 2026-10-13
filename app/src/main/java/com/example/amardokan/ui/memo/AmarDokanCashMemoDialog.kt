@@ -64,7 +64,7 @@ fun AmarDokanCashMemoDialog(
 
     LaunchedEffect(memoData) {
         memoBitmap = withContext(Dispatchers.Default) {
-            AmarDokanCashMemoGenerator.generateMemoBitmap(memoData)
+            AmarDokanCashMemoGenerator.generateMemoBitmap(memoData, context)
         }
     }
 

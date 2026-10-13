@@ -14,6 +14,11 @@ import kotlinx.coroutines.launch
 
 class AmarDokanApp : Application(), Configuration.Provider {
 
+    companion object {
+        lateinit var instance: AmarDokanApp
+            private set
+    }
+
     override val workManagerConfiguration: Configuration
         get() = Configuration.Builder()
             .setMinimumLoggingLevel(android.util.Log.INFO)
@@ -21,6 +26,7 @@ class AmarDokanApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
 
         try {
             if (!WorkManager.isInitialized()) {
