@@ -40,6 +40,7 @@ class BackupWorker(
 
         BackupManager.setBackupRunning(true)
         BackupManager.updateStatus(applicationContext, "ক্লাউড ব্যাকআপ শুরু হচ্ছে...")
+        com.example.util.NotificationHelper.showNotification(applicationContext, "ব্যাকআপ", "ক্লাউড ব্যাকআপ শুরু হচ্ছে...")
 
         try {
             // 1. Check network connectivity upfront
@@ -197,6 +198,7 @@ class BackupWorker(
             val summary = "সফল: ${bills.size}টি বিল, ${customers.size} জন গ্রাহক, ৫টি শিট সিঙ্ক, $pdfUploadedCount PDF আপলোড হয়েছে"
             Log.i(tag, "Backup complete: $summary")
             BackupManager.updateSuccess(applicationContext, summary, userKey)
+            com.example.util.NotificationHelper.showNotification(applicationContext, "ব্যাকআপ", "ব্যাকআপ সফল হয়েছে।")
             BackupManager.setBackupRunning(false)
             BackupManager.releaseBackupLock()
             Result.success()
@@ -228,6 +230,7 @@ class BackupWorker(
             }
             Log.e(tag, "GoogleJsonResponseException $code: $details", e)
             BackupManager.updateStatus(applicationContext, "ব্যর্থ: $errorMsg")
+            com.example.util.NotificationHelper.showNotification(applicationContext, "ব্যাকআপ", "ব্যাকআপ ব্যর্থ হয়েছে: $errorMsg")
             BackupManager.setBackupRunning(false)
             BackupManager.releaseBackupLock()
             Result.failure()
@@ -235,6 +238,7 @@ class BackupWorker(
             val errorMsg = "গুগল অনুমতি প্রয়োজন (User consent required). অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।"
             Log.e(tag, errorMsg, e)
             BackupManager.updateStatus(applicationContext, "ব্যর্থ: $errorMsg")
+            com.example.util.NotificationHelper.showNotification(applicationContext, "ব্যাকআপ", "ব্যাকআপ ব্যর্থ হয়েছে: $errorMsg")
             BackupManager.setBackupRunning(false)
             BackupManager.releaseBackupLock()
             Result.failure()
@@ -246,6 +250,7 @@ class BackupWorker(
             }
             Log.e(tag, "Backup encountered an error: $errorMsg", e)
             BackupManager.updateStatus(applicationContext, "ব্যর্থ: $errorMsg")
+            com.example.util.NotificationHelper.showNotification(applicationContext, "ব্যাকআপ", "ব্যাকআপ ব্যর্থ হয়েছে: $errorMsg")
             BackupManager.setBackupRunning(false)
             BackupManager.releaseBackupLock()
             Result.failure()

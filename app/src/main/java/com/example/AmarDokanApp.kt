@@ -32,5 +32,8 @@ class AmarDokanApp : Application(), Configuration.Provider {
 
         // Initialize user management
         UserManager.init(this)
+        
+        // Initialize notification channel
+        com.example.util.NotificationHelper.createNotificationChannel(this)
     }
 }

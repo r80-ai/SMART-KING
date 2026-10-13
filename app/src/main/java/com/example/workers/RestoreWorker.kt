@@ -29,6 +29,7 @@ class RestoreWorker(
         val userKey = UserManager.computeUserKey(account)
         Log.i(tag, "Starting automated Google Drive folder check for $userKey (${account.email})...")
         BackupManager.updateStatus(applicationContext, "ক্লাউড থেকে আগের ফোল্ডার স্ট্রাকচার চেক করা হচ্ছে...", userKey)
+        com.example.util.NotificationHelper.showNotification(applicationContext, "রিস্টোর", "রিস্টোর শুরু হচ্ছে...")
 
         try {
             val apiService = GoogleApiService(applicationContext)
@@ -76,11 +77,13 @@ class RestoreWorker(
 
             Log.i(tag, "Restore check completed successfully.")
             BackupManager.updateSuccess(applicationContext, "রিস্টোর চেক সম্পন্ন", userKey)
+            com.example.util.NotificationHelper.showNotification(applicationContext, "রিস্টোর", "রিস্টোর সফল হয়েছে।")
             Result.success()
         } catch (e: Exception) {
             Log.e(tag, "Restore check failed for user $userKey", e)
             val errorSummary = "ব্যর্থ: রিস্টোর চেক সম্পন্ন করা যায়নি (${e.message ?: "Error"})"
             BackupManager.updateStatus(applicationContext, errorSummary, userKey)
+            com.example.util.NotificationHelper.showNotification(applicationContext, "রিস্টোর", "রিস্টোর ব্যর্থ হয়েছে: ${e.message ?: "Error"}")
             Result.failure()
         }
     }

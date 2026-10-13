@@ -65,6 +65,7 @@ fun HomeScreen(
     val recentFiles by viewModel.recentFiles.collectAsState()
     val pinnedTools by viewModel.pinnedTools.collectAsState()
     val language by viewModel.appLanguage.collectAsState()
+    val lastBackupTime by com.example.workers.BackupManager.lastBackupTime.collectAsState()
 
     val headerTitle = stringResource(viewModel, "PDF Master", "পিডিএফ মাস্টার", "पीडीएफ मास्टर")
     val headerSub = stringResource(viewModel, "All PDF Tools in One App", "সব টুলস এক অ্যাপে", "सभी पीडीएफ टूल्स")
@@ -158,6 +159,14 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         modifier = Modifier.size(24.dp)
                     )
                 }
+            }
+            if (lastBackupTime > 0) {
+                Text(
+                    text = "Last backup: ${java.text.SimpleDateFormat("MMM d, HH:mm", java.util.Locale.getDefault()).format(java.util.Date(lastBackupTime))}",
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
 
