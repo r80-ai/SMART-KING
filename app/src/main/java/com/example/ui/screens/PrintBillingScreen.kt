@@ -130,9 +130,9 @@ fun PrintBillingScreen(
 
             // BILLING ITEMS
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                BillingItemRow(if (isBn) "ব্ল্যাক অ্যান্ড হোয়াইট (২৳)" else "B&W Xerox/Print (₹2)", bwCount) { bwCount = it }
-                BillingItemRow(if (isBn) "কালার প্রিন্ট (১০৳)" else "Color Print (₹10)", colorCount) { colorCount = it }
-                BillingItemRow(if (isBn) "ল্যামিনেশন/স্ক্যান (১৫৳)" else "Lamination/Scan (₹15)", laminationCount) { laminationCount = it }
+                BillingItemRow("ব্ল্যাক অ্যান্ড হোয়াইট (২৳)", "B&W Xerox/Print (₹2)", isBn, bwCount, { bwCount = it }, { bwCount = 0 })
+                BillingItemRow("কালার প্রিন্ট (১০৳)", "Color Print (₹10)", isBn, colorCount, { colorCount = it }, { colorCount = 0 })
+                BillingItemRow("ল্যামিনেশন/স্ক্যান (১৫৳)", "Lamination/Scan (₹15)", isBn, laminationCount, { laminationCount = it }, { laminationCount = 0 })
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -169,7 +169,7 @@ fun PrintBillingScreen(
                 ) {
                     Column {
                         Text(if (isBn) "মোট টাকা" else "Total Amount", style = MaterialTheme.typography.titleMedium)
-                        Text("₹$totalAmount", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary)
+                        Text("₹$totalAmount", style = MaterialTheme.typography.headlineMedium.copy(fontWeight = FontWeight.ExtraBold, color = MaterialTheme.colorScheme.primary))
                     }
                     
                     if (qrBitmap != null) {
@@ -186,37 +186,18 @@ fun PrintBillingScreen(
             }
 
             // ACTIONS
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Button(
+                onClick = {
+                    scope.launch {
+                        generateAndSaveBill(context, viewModel, isBn, bwCount, colorCount, laminationCount, onlineFormFees, otherAmount, totalAmount, upiUri, "PDF")
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                shape = RoundedCornerShape(12.dp)
             ) {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            generateAndSaveBill(context, viewModel, isBn, bwCount, colorCount, laminationCount, onlineFormFees, otherAmount, totalAmount, upiUri, "PDF")
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.PictureAsPdf, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Save PDF")
-                }
-                
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                             generateAndSaveBill(context, viewModel, isBn, bwCount, colorCount, laminationCount, onlineFormFees, otherAmount, totalAmount, upiUri, "JPG")
-                        }
-                    },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Image, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text("Save JPG")
-                }
+                Icon(Icons.Default.Print, contentDescription = null)
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(if (isBn) "সেভ ও প্রিন্ট করুন" else "Save & Print Invoice")
             }
             
             Text(
@@ -231,30 +212,41 @@ fun PrintBillingScreen(
 }
 
 @Composable
-fun BillingItemRow(label: String, count: Int, onCountChange: (Int) -> Unit) {
+fun BillingItemRow(labelBn: String, labelEn: String, isBn: Boolean, count: Int, onCountChange: (Int) -> Unit, onRemove: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             .padding(horizontal = 12.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        Text(
+            text = if (isBn) labelBn else labelEn,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
+        )
         Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(
+                onClick = onRemove,
+                modifier = Modifier.size(32.dp)
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Remove Item", tint = MaterialTheme.colorScheme.error)
+            }
             IconButton(
                 onClick = { if (count > 0) onCountChange(count - 1) },
                 modifier = Modifier.size(32.dp)
             ) {
-                Icon(Icons.Default.RemoveCircleOutline, contentDescription = "Decrease", tint = MaterialTheme.colorScheme.error)
+                Icon(Icons.Default.RemoveCircleOutline, contentDescription = "Decrease", tint = MaterialTheme.colorScheme.primary)
             }
             Text(
                 text = count.toString(),
                 modifier = Modifier.width(40.dp),
                 textAlign = TextAlign.Center,
-                fontWeight = FontWeight.Bold,
-                style = MaterialTheme.typography.titleMedium
+                fontWeight = FontWeight.ExtraBold,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurface
             )
             IconButton(
                 onClick = { onCountChange(count + 1) },
