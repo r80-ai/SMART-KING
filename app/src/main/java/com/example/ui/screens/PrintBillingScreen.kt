@@ -130,9 +130,9 @@ fun PrintBillingScreen(
 
             // BILLING ITEMS
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                BillingItemRow("ব্ল্যাক অ্যান্ড হোয়াইট (২৳)", "B&W Xerox/Print (₹2)", isBn, bwCount, { bwCount = it }, { bwCount = 0 })
-                BillingItemRow("কালার প্রিন্ট (১০৳)", "Color Print (₹10)", isBn, colorCount, { colorCount = it }, { colorCount = 0 })
-                BillingItemRow("ল্যামিনেশন/স্ক্যান (১৫৳)", "Lamination/Scan (₹15)", isBn, laminationCount, { laminationCount = it }, { laminationCount = 0 })
+                BillingItemRow("ব্ল্যাক অ্যান্ড হোয়াইট (২৳)", "B&W Xerox/Print (₹2)", isBn, bwCount) { bwCount = it }
+                BillingItemRow("কালার প্রিন্ট (১০৳)", "Color Print (₹10)", isBn, colorCount) { colorCount = it }
+                BillingItemRow("ল্যামিনেশন/স্ক্যান (১৫৳)", "Lamination/Scan (₹15)", isBn, laminationCount) { laminationCount = it }
                 
                 Spacer(modifier = Modifier.height(8.dp))
                 
@@ -212,14 +212,12 @@ fun PrintBillingScreen(
 }
 
 @Composable
-fun BillingItemRow(labelBn: String, labelEn: String, isBn: Boolean, count: Int, onCountChange: (Int) -> Unit, onRemove: () -> Unit) {
+fun BillingItemRow(labelBn: String, labelEn: String, isBn: Boolean, count: Int, onCountChange: (Int) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
+            .padding(8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
@@ -228,30 +226,19 @@ fun BillingItemRow(labelBn: String, labelEn: String, isBn: Boolean, count: Int, 
             style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
         )
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(
-                onClick = onRemove,
-                modifier = Modifier.size(32.dp)
-            ) {
-                Icon(Icons.Default.Close, contentDescription = "Remove Item", tint = MaterialTheme.colorScheme.error)
+            IconButton(onClick = { onCountChange(0) }) {
+                Icon(Icons.Default.Close, contentDescription = "Remove", tint = MaterialTheme.colorScheme.error)
             }
-            IconButton(
-                onClick = { if (count > 0) onCountChange(count - 1) },
-                modifier = Modifier.size(32.dp)
-            ) {
+            IconButton(onClick = { if (count > 0) onCountChange(count - 1) }) {
                 Icon(Icons.Default.RemoveCircleOutline, contentDescription = "Decrease", tint = MaterialTheme.colorScheme.primary)
             }
             Text(
                 text = count.toString(),
-                modifier = Modifier.width(40.dp),
-                textAlign = TextAlign.Center,
                 fontWeight = FontWeight.ExtraBold,
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            IconButton(
-                onClick = { onCountChange(count + 1) },
-                modifier = Modifier.size(32.dp)
-            ) {
+            IconButton(onClick = { onCountChange(count + 1) }) {
                 Icon(Icons.Default.AddCircleOutline, contentDescription = "Increase", tint = MaterialTheme.colorScheme.primary)
             }
         }
