@@ -1007,8 +1007,9 @@ object AmarDokanCashMemoGenerator {
         canvas.drawBitmap(bitmap, 0f, 0f, null)
         pdfDocument.finishPage(page)
 
+        val sanitizedCustomerName = data.customerName.ifBlank { "Unknown" }.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
         val sanitizedBillNo = data.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-        val fileName = "CashMemo_${sanitizedBillNo}_${System.currentTimeMillis()}.pdf"
+        val fileName = "${sanitizedCustomerName}-${sanitizedBillNo}.pdf"
         val outputDir = File(context.cacheDir, "memos").apply { mkdirs() }
         val outputFile = File(outputDir, fileName)
 
@@ -1024,8 +1025,9 @@ object AmarDokanCashMemoGenerator {
      */
     fun generateImageFile(context: Context, data: MemoData): File {
         val bitmap = generateMemoBitmap(data)
+        val sanitizedCustomerName = data.customerName.ifBlank { "Unknown" }.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
         val sanitizedBillNo = data.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-        val fileName = "CashMemo_${sanitizedBillNo}_${System.currentTimeMillis()}.jpg"
+        val fileName = "${sanitizedCustomerName}-${sanitizedBillNo}.jpg"
         val outputDir = File(context.cacheDir, "memos").apply { mkdirs() }
         val outputFile = File(outputDir, fileName)
 
