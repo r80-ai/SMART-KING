@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -128,6 +129,42 @@ fun Screen1HomeDashboard(
                             )
                         }
                     }
+                }
+            }
+        }
+
+        item {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        Brush.horizontalGradient(
+                            colors = listOf(Color(0xFF0D47A1), Color(0xFF1976D2))
+                        )
+                    )
+                    .clickable {
+                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse("https://rofikulgayenrg.github.io/smartking-print/dashboard.html"))
+                        context.startActivity(intent)
+                    }
+                    .padding(12.dp)
+            ) {
+                Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                            .padding(8.dp)
+                    ) {
+                        Icon(androidx.compose.material.icons.Icons.Rounded.Print, contentDescription = null, tint = Color.White, modifier = Modifier.size(24.dp))
+                    }
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("SMART KING - লাইভ প্রিন্ট ড্যাশবোর্ড", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("কাস্টমারের পাঠানো ফাইল দেখুন ও কন্ট্রোল করুন", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                    }
+                    Icon(androidx.compose.material.icons.Icons.Rounded.ArrowForwardIos, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
                 }
             }
         }
