@@ -17,6 +17,12 @@ interface AmarDokanDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCustomer(customer: Customer): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllCustomers(customers: List<Customer>)
+
+    @Query("DELETE FROM ad_customers")
+    suspend fun deleteAllCustomers()
+
     @Update
     suspend fun updateCustomer(customer: Customer)
 
@@ -39,6 +45,12 @@ interface AmarDokanDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertServices(services: List<ServiceItem>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllServices(services: List<ServiceItem>)
+
+    @Query("DELETE FROM ad_services")
+    suspend fun deleteAllServices()
+
     @Update
     suspend fun updateService(service: ServiceItem)
 
@@ -57,6 +69,12 @@ interface AmarDokanDao {
     // ---------------- BILLS ----------------
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBill(bill: Bill): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllBills(bills: List<Bill>)
+
+    @Query("DELETE FROM ad_bills")
+    suspend fun deleteAllBills()
 
     @Update
     suspend fun updateBill(bill: Bill)
@@ -83,6 +101,12 @@ interface AmarDokanDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBillItems(items: List<BillItem>)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllBillItems(items: List<BillItem>)
+
+    @Query("DELETE FROM ad_bill_items")
+    suspend fun deleteAllBillItems()
+
     @Query("SELECT * FROM ad_bill_items WHERE billId = :billId ORDER BY id ASC")
     fun getBillItemsByBillId(billId: Long): Flow<List<BillItem>>
 
@@ -98,6 +122,12 @@ interface AmarDokanDao {
     // ---------------- PAYMENTS ----------------
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: Payment): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllPayments(payments: List<Payment>)
+
+    @Query("DELETE FROM ad_payments")
+    suspend fun deleteAllPayments()
 
     @Update
     suspend fun updatePayment(payment: Payment)
@@ -132,6 +162,27 @@ interface AmarDokanDao {
         deleteBillItemsByBillId(bill.id)
         val itemsWithBillId = items.map { it.copy(billId = bill.id) }
         insertBillItems(itemsWithBillId)
+    }
+
+    @Transaction
+    suspend fun restoreAllData(
+        customers: List<Customer>,
+        services: List<ServiceItem>,
+        bills: List<Bill>,
+        billItems: List<BillItem>,
+        payments: List<Payment>
+    ) {
+        deleteAllCustomers()
+        deleteAllServices()
+        deleteAllBills()
+        deleteAllBillItems()
+        deleteAllPayments()
+
+        insertAllCustomers(customers)
+        insertAllServices(services)
+        insertAllBills(bills)
+        insertAllBillItems(billItems)
+        insertAllPayments(payments)
     }
 
     @Transaction

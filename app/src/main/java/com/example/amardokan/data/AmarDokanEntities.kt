@@ -4,10 +4,12 @@ import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import com.squareup.moshi.JsonClass
 
 /**
  * Customer entity for Amar Dokan.
  */
+@JsonClass(generateAdapter = true)
 @Entity(tableName = "ad_customers")
 data class Customer(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -21,6 +23,7 @@ data class Customer(
 /**
  * Service/Product rate configuration.
  */
+@JsonClass(generateAdapter = true)
 @Entity(tableName = "ad_services")
 data class ServiceItem(
     @PrimaryKey(autoGenerate = true) val id: Long = 0,
@@ -34,6 +37,7 @@ data class ServiceItem(
 /**
  * Master Bill record.
  */
+@JsonClass(generateAdapter = true)
 @Entity(
     tableName = "ad_bills",
     indices = [
@@ -62,6 +66,7 @@ data class Bill(
 /**
  * Individual items inside a Bill.
  */
+@JsonClass(generateAdapter = true)
 @Entity(
     tableName = "ad_bill_items",
     foreignKeys = [
@@ -86,6 +91,7 @@ data class BillItem(
 /**
  * Payment received from a customer to clear outstanding dues.
  */
+@JsonClass(generateAdapter = true)
 @Entity(
     tableName = "ad_payments",
     indices = [
@@ -144,4 +150,16 @@ data class SyncMetadata(
     val entityId: Long,
     val lastSyncedAt: Long = 0,
     val isPending: Boolean = true
+)
+
+/**
+ * Container for full database backup.
+ */
+@JsonClass(generateAdapter = true)
+data class DatabaseBackup(
+    val customers: List<Customer>,
+    val services: List<ServiceItem>,
+    val bills: List<Bill>,
+    val billItems: List<BillItem>,
+    val payments: List<Payment>
 )

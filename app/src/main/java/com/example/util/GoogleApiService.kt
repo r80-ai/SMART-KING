@@ -10,6 +10,7 @@ import com.google.api.client.json.gson.GsonFactory
 import com.google.api.services.drive.Drive
 import com.google.api.services.drive.DriveScopes
 import java.io.File
+import java.io.FileOutputStream
 import java.util.Collections
 
 class GoogleApiService(private val context: Context) {
@@ -134,5 +135,10 @@ class GoogleApiService(private val context: Context) {
             .execute()
         Log.d(tag, "Uploaded '$fileName' successfully (id: ${created.id})")
         return created.id
+    }
+
+    fun downloadFile(fileId: String, outputFile: File) {
+        val drive = getDriveService()
+        drive.files().get(fileId).executeMediaAndDownloadTo(FileOutputStream(outputFile))
     }
 }

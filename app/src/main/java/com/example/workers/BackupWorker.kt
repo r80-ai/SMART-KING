@@ -104,6 +104,16 @@ class BackupWorker(
             val cashMemoFolderId = apiService.findOrCreateFolder("Cash_Memo_PDF", rootFolderId)
             BackupManager.saveCashMemoFolderId(applicationContext, cashMemoFolderId, userKey)
 
+            // 5.5 Database JSON Backup
+            BackupManager.updateStatus(applicationContext, "ডেটাবেজ ব্যাকআপ হচ্ছে...", userKey)
+            val dbBackup = com.example.amardokan.data.DatabaseBackup(customers, services, bills, billItems, payments)
+            val moshi = com.squareup.moshi.Moshi.Builder().build()
+            val adapter = moshi.adapter(com.example.amardokan.data.DatabaseBackup::class.java)
+            val json = adapter.toJson(dbBackup)
+            val backupFile = java.io.File(applicationContext.cacheDir, "database_backup.json")
+            backupFile.writeText(json)
+            apiService.uploadFile(backupFile, rootFolderId, "database_backup.json", "application/json")
+
             // 6. PDF Backup
             BackupManager.updateStatus(applicationContext, "PDF ব্যাকআপ শুরু হচ্ছে...", userKey)
             val syncTimestamp = System.currentTimeMillis()
