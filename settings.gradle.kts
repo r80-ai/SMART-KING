@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "PDF Master"
+rootProject.name = "SMART KING"
 
 include(":app")
