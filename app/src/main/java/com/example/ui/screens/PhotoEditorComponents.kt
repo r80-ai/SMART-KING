@@ -83,11 +83,16 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.photo.CropPreset
+import com.example.photo.DrawingStroke
 import com.example.photo.PhotoFonts
 import com.example.photo.TextAlignment
 import com.example.photo.TextItem
 import com.example.photo.MaskStroke
 import com.example.photo.BgRefineMode
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
 import com.example.ui.theme.CrimsonPrimary
 import kotlin.math.abs
 import kotlin.math.atan2
@@ -532,6 +537,156 @@ fun TouchStrokeCanvas(
                             cap = androidx.compose.ui.graphics.StrokeCap.Round,
                             join = androidx.compose.ui.graphics.StrokeJoin.Round
                         )
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Dedicated Drawing Canvas supporting accurate per-stroke colors, brush sizes, opacities,
+ * eraser strokes, seamless zoom-and-draw without panning the image, and immediate touch response.
+ */
+@Composable
+fun DrawingOverlayCanvas(
+    strokes: List<DrawingStroke>,
+    currentStrokePoints: List<PointF>,
+    currentColor: Int,
+    currentBrushSizeDp: Float,
+    currentOpacity: Float,
+    isEraser: Boolean,
+    isPanMode: Boolean,
+    onStrokePointAdded: (PointF) -> Unit,
+    onStrokeCompleted: () -> Unit,
+    onStrokeCancelled: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val widthPx = constraints.maxWidth.toFloat()
+        val heightPx = constraints.maxHeight.toFloat()
+        val density = LocalDensity.current
+
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                .then(
+                    if (!isPanMode) {
+                        Modifier.pointerInput(widthPx, heightPx, isPanMode) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                val initialPt = PointF(
+                                    (down.position.x / widthPx).coerceIn(0f, 1f),
+                                    (down.position.y / heightPx).coerceIn(0f, 1f)
+                                )
+                                onStrokePointAdded(initialPt)
+                                down.consume()
+
+                                var isMultiTouch = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val pressed = event.changes.filter { it.pressed }
+                                    if (pressed.isEmpty()) break
+
+                                    // If a second finger touches down (for zooming/panning), cancel drawing stroke
+                                    if (pressed.size > 1) {
+                                        isMultiTouch = true
+                                        break
+                                    }
+
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    change.consume()
+                                    val pt = PointF(
+                                        (change.position.x / widthPx).coerceIn(0f, 1f),
+                                        (change.position.y / heightPx).coerceIn(0f, 1f)
+                                    )
+                                    onStrokePointAdded(pt)
+                                }
+
+                                if (isMultiTouch) {
+                                    onStrokeCancelled()
+                                } else {
+                                    onStrokeCompleted()
+                                }
+                            }
+                        }
+                    } else Modifier
+                )
+        ) {
+            // Draw completed strokes
+            for (stroke in strokes) {
+                if (stroke.points.isEmpty()) continue
+                val strokeColor = if (stroke.isEraser) {
+                    Color.Transparent
+                } else {
+                    Color(stroke.color).copy(alpha = stroke.opacity.coerceIn(0.05f, 1f))
+                }
+                val strokeBrushRadius = with(density) { (stroke.brushSizePx / 2f).dp.toPx() }
+                val blend = if (stroke.isEraser) BlendMode.Clear else BlendMode.SrcOver
+
+                if (stroke.points.size == 1) {
+                    val pt = stroke.points.first()
+                    drawCircle(
+                        color = strokeColor,
+                        radius = strokeBrushRadius,
+                        center = Offset(pt.x * size.width, pt.y * size.height),
+                        blendMode = blend
+                    )
+                } else {
+                    val path = Path().apply {
+                        moveTo(stroke.points[0].x * size.width, stroke.points[0].y * size.height)
+                        for (i in 1 until stroke.points.size) {
+                            lineTo(stroke.points[i].x * size.width, stroke.points[i].y * size.height)
+                        }
+                    }
+                    drawPath(
+                        path = path,
+                        color = strokeColor,
+                        style = Stroke(
+                            width = strokeBrushRadius * 2f,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        ),
+                        blendMode = blend
+                    )
+                }
+            }
+
+            // Draw actively ongoing stroke
+            if (currentStrokePoints.isNotEmpty()) {
+                val activeColor = if (isEraser) {
+                    Color.Transparent
+                } else {
+                    Color(currentColor).copy(alpha = currentOpacity.coerceIn(0.05f, 1f))
+                }
+                val activeRadius = with(density) { (currentBrushSizeDp / 2f).dp.toPx() }
+                val blend = if (isEraser) BlendMode.Clear else BlendMode.SrcOver
+
+                if (currentStrokePoints.size == 1) {
+                    val pt = currentStrokePoints.first()
+                    drawCircle(
+                        color = activeColor,
+                        radius = activeRadius,
+                        center = Offset(pt.x * size.width, pt.y * size.height),
+                        blendMode = blend
+                    )
+                } else {
+                    val path = Path().apply {
+                        moveTo(currentStrokePoints[0].x * size.width, currentStrokePoints[0].y * size.height)
+                        for (i in 1 until currentStrokePoints.size) {
+                            lineTo(currentStrokePoints[i].x * size.width, currentStrokePoints[i].y * size.height)
+                        }
+                    }
+                    drawPath(
+                        path = path,
+                        color = activeColor,
+                        style = Stroke(
+                            width = activeRadius * 2f,
+                            cap = StrokeCap.Round,
+                            join = StrokeJoin.Round
+                        ),
+                        blendMode = blend
                     )
                 }
             }
