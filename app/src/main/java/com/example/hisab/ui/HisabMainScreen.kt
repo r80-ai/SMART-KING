@@ -355,12 +355,12 @@ fun HisabMainScreen(
  */
 @Composable
 private fun HisabCalculatorHomeScreen(
-    onOpenAmarDokan: () -> Unit,
+    onOpenAmarDokan: () -> Unit = {},
     onOpenShopHisab: () -> Unit,
     onOpenAgeCalculator: () -> Unit,
     onOpenNormalCalculator: () -> Unit,
-    onOpenPrintBilling: () -> Unit,
-    onOpenQuickUpi: () -> Unit,
+    onOpenPrintBilling: () -> Unit = {},
+    onOpenQuickUpi: () -> Unit = {},
     onOpenHistory: () -> Unit
 ) {
     val historyList by HisabHistoryManager.history.collectAsState()
@@ -372,57 +372,6 @@ private fun HisabCalculatorHomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // AMAR DOKAN SHOP MANAGEMENT HERO BANNER
-        Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onOpenAmarDokan),
-            shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF0F2042)),
-            elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(Color.White.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Storefront,
-                        contentDescription = null,
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
-                Spacer(modifier = Modifier.width(14.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "আমার দোকান – Xerox & Service Hisab",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 15.sp
-                    )
-                    Text(
-                        text = "৮-স্ক্রিন পূর্ণাঙ্গ জেরক্স, সার্ভিস বিলিং ও বাকি খাতা",
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 12.sp
-                    )
-                }
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForwardIos,
-                    contentDescription = null,
-                    tint = Color.White.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
         // HEADER HERO CARD (PDF MASTER PREMIUM DARK STYLE)
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -472,39 +421,6 @@ private fun HisabCalculatorHomeScreen(
                     }
                 }
             }
-        }
-
-        // 3 LARGE MAIN CATEGORY CARDS
-        Text(
-            text = "সাইবার ক্যাফ ও ব্যবসা টুলস",
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-        )
-
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HisabCategoryBigCard(
-                categoryNumber = "৪",
-                titleEn = "Billing Memo",
-                titleBn = "জেরক্স ও প্রিন্ট বিল",
-                description = "দোকানের ক্যাশ মেমো তৈরি এবং পেমেন্ট QR জেনারেটর",
-                icon = Icons.Default.ReceiptLong,
-                accentColor = ToolTeal,
-                testTag = "card_nav_print_bill",
-                onClick = onOpenPrintBilling,
-                modifier = Modifier.weight(1f)
-            )
-            HisabCategoryBigCard(
-                categoryNumber = "৫",
-                titleEn = "Quick QR",
-                titleBn = "দ্রুত পেমেন্ট QR",
-                description = "টাকার পরিমাণ লিখে সরাসরি পেমেন্ট QR দেখান",
-                icon = Icons.Default.QrCode,
-                accentColor = ToolPurple,
-                testTag = "card_nav_quick_qr",
-                onClick = onOpenQuickUpi,
-                modifier = Modifier.weight(1f)
-            )
         }
 
         Text(
