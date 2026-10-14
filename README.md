@@ -1,4 +1,4 @@
-# PDF Master
+# SMART KING
 
 All PDF Tools in One App: Merge, Split, Compress, Convert, Edit, Scanner, AI Tools, and File Manager.
 

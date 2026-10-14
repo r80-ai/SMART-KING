@@ -5,7 +5,7 @@ import com.example.model.PdfFileRecord
 import com.example.ui.screens.RemovePagesScreen
 
 /**
- * Route identifiers and navigation endpoints for PDF Master tools.
+ * Route identifiers and navigation endpoints for SMART KING tools.
  */
 object PdfNavRoutes {
     const val ROUTE_HOME = "home"

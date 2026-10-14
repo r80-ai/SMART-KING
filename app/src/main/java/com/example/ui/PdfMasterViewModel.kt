@@ -1277,7 +1277,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
                 putExtra(Intent.EXTRA_STREAM, uri)
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            context.startActivity(Intent.createChooser(intent, "Share ${record.name} via PDF Master"))
+            context.startActivity(Intent.createChooser(intent, "Share ${record.name} via SMART KING"))
         } catch (e: Exception) {
             _notification.value = UiNotification("Share error: ${e.message}", false)
         }

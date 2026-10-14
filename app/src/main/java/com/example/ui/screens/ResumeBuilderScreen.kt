@@ -1421,7 +1421,7 @@ fun ResumePreviewSection(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        "Enter a file name for your resume. It will be saved into the PDF Master folder on your device.",
+                        "Enter a file name for your resume. It will be saved into the SMART KING folder on your device.",
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

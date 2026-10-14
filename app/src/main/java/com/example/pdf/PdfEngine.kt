@@ -290,7 +290,7 @@ object PdfEngine {
         }
 
         // Header
-        canvas.drawText("PDF MASTER ENTERPRISE", 40f, 60f, titlePaint)
+        canvas.drawText("SMART KING ENTERPRISE", 40f, 60f, titlePaint)
         titlePaint.textSize = 12f
         titlePaint.color = Color.rgb(100, 116, 139)
         canvas.drawText("Comprehensive Cloud Solutions Agreement", 40f, 80f, titlePaint)
@@ -344,7 +344,7 @@ object PdfEngine {
         // Footer
         canvas.drawLine(40f, 790f, 555f, 790f, linePaint)
         bodyPaint.color = Color.rgb(148, 163, 184)
-        canvas.drawText("PDF Master Agreement • Page 1 of 2", 40f, 810f, bodyPaint)
+        canvas.drawText("SMART KING Agreement • Page 1 of 2", 40f, 810f, bodyPaint)
     }
 
     private fun drawSampleAgreementPage2(canvas: Canvas) {
@@ -403,7 +403,7 @@ object PdfEngine {
 
         // Footer
         canvas.drawLine(40f, 790f, 555f, 790f, linePaint)
-        canvas.drawText("PDF Master Agreement • Page 2 of 2", 40f, 810f, bodyPaint)
+        canvas.drawText("SMART KING Agreement • Page 2 of 2", 40f, 810f, bodyPaint)
     }
 
     fun generateSampleProjectNotesPdf(file: File) {
@@ -433,13 +433,13 @@ object PdfEngine {
                 isAntiAlias = true
             }
 
-            canvas.drawText("AI PDF MASTER — TECHNICAL SPECIFICATION", 40f, 60f, titlePaint)
+            canvas.drawText("AI SMART KING — TECHNICAL SPECIFICATION", 40f, 60f, titlePaint)
             titlePaint.textSize = 12f
             titlePaint.color = Color.rgb(100, 116, 139)
             canvas.drawText("Architecture, Algorithms, and Multi-Tool Pipeline", 40f, 80f, titlePaint)
 
             canvas.drawText("EXECUTIVE OVERVIEW:", 40f, 120f, headerPaint)
-            canvas.drawText("PDF Master is an all-in-one local-first document utility designed with zero dependency", 40f, 140f, textPaint)
+            canvas.drawText("SMART KING is an all-in-one local-first document utility designed with zero dependency", 40f, 140f, textPaint)
             canvas.drawText("on external servers for core manipulation (merge, split, compress, crop, watermark).", 40f, 158f, textPaint)
             canvas.drawText("AI capabilities integrate Gemini 3.5 Flash for document summarization and translation.", 40f, 176f, textPaint)
 
@@ -453,7 +453,7 @@ object PdfEngine {
             FileOutputStream(file).use { doc.writeTo(it) }
         } catch (e: Throwable) {
             Log.e("PdfEngine", "Error generating sample project notes PDF, using fallback", e)
-            generateMinimalValidPdf("AI PDF Master - Technical Specification", "Architecture, Algorithms, and Multi-Tool Pipeline", file)
+            generateMinimalValidPdf("AI SMART KING - Technical Specification", "Architecture, Algorithms, and Multi-Tool Pipeline", file)
         } finally {
             try { doc?.close() } catch (_: Throwable) {}
         }
@@ -484,7 +484,7 @@ object PdfEngine {
             canvas.drawText("Merchant: Tech Hub Solutions Inc.", 40f, 90f, textPaint)
             canvas.drawText("Receipt #: RCP-99412 • Date: 2026-09-06", 40f, 110f, textPaint)
             canvas.drawText("----------------------------------------------------------------", 40f, 130f, textPaint)
-            canvas.drawText("1x PDF Master Pro Subscription ................. $49.00", 40f, 155f, textPaint)
+            canvas.drawText("1x SMART KING Pro Subscription ................. $49.00", 40f, 155f, textPaint)
             canvas.drawText("1x Cloud OCR Addon Token Pack ................. $19.00", 40f, 175f, textPaint)
             canvas.drawText("Subtotal: $68.00 • Tax (10%): $6.80 • TOTAL: $74.80", 40f, 205f, textPaint)
             canvas.drawText("Payment Method: Digital Wallet (Verified)", 40f, 230f, textPaint)
@@ -1881,7 +1881,7 @@ object PdfEngine {
         when {
             file.name.contains("Agreement", ignoreCase = true) || file.name.contains("Contract", ignoreCase = true) -> {
                 """
-                DOCUMENT TITLE: PDF Master Enterprise Service Level Agreement
+                DOCUMENT TITLE: SMART KING Enterprise Service Level Agreement
                 DOCUMENT ID: DOC-2026-9812
                 DATE: September 2026
                 PARTIES: Service Provider (Sarah Connor) and Client Entity (Rafikul Gayen).
@@ -1903,11 +1903,11 @@ object PdfEngine {
             }
             file.name.contains("Notes", ignoreCase = true) || file.name.contains("Documentation", ignoreCase = true) -> {
                 """
-                DOCUMENT TITLE: AI PDF Master Technical Specification
+                DOCUMENT TITLE: AI SMART KING Technical Specification
                 TOPIC: Architecture, Algorithms, and Multi-Tool Pipeline
                 
                 EXECUTIVE OVERVIEW:
-                PDF Master is an all-in-one local-first document utility designed with zero dependency on external servers for core manipulation (merge, split, compress, crop, watermark). AI capabilities integrate Gemini 3.5 Flash for document summarization and translation.
+                SMART KING is an all-in-one local-first document utility designed with zero dependency on external servers for core manipulation (merge, split, compress, crop, watermark). AI capabilities integrate Gemini 3.5 Flash for document summarization and translation.
                 
                 CORE CAPABILITIES MATRIX:
                 1. Organize: Merge multiple files, Split by page ranges, Reorder, Remove unwanted pages.
@@ -1921,7 +1921,7 @@ object PdfEngine {
                 SCANNED RECEIPT / TAX INVOICE
                 Merchant: Tech Hub Solutions Inc.
                 Receipt #: RCP-99412 • Date: 2026-09-06
-                1x PDF Master Pro Subscription: $49.00
+                1x SMART KING Pro Subscription: $49.00
                 1x Cloud OCR Addon Token Pack: $19.00
                 Subtotal: $68.00 • Tax (10%): $6.80 • TOTAL: $74.80
                 Payment Method: Digital Wallet (Verified)
@@ -1934,7 +1934,7 @@ object PdfEngine {
                 Total Pages: ${getPageCount(file)}
                 Last Modified: ${SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(file.lastModified()))}
                 
-                Summary: This document is stored in the PDF Master library. Contains formatted pages, graphics, and structure ready for conversion, compression, editing, or AI processing.
+                Summary: This document is stored in the SMART KING library. Contains formatted pages, graphics, and structure ready for conversion, compression, editing, or AI processing.
                 """.trimIndent()
             }
         }

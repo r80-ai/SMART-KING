@@ -73,7 +73,7 @@ jobs:
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: PDF-Master-Debug-APK
+          name: SMART-KING-Debug-APK
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
 
@@ -82,7 +82,7 @@ jobs:
         if: success()
         with:
           tag_name: build-${{ github.run_number }}
-          name: PDF Master Debug Build #${{ github.run_number }}
+          name: SMART KING Debug Build #${{ github.run_number }}
           files: app/build/outputs/apk/debug/*.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

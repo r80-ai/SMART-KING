@@ -54,7 +54,7 @@ fun RepairModalDialog(
                     .verticalScroll(rememberScrollState())
             ) {
                 Text(
-                    text = "PDF Master will scan and rebuild corrupted cross-reference tables (xref), repair broken trailer dictionaries, and re-index page objects for \"${file.name}\".",
+                    text = "SMART KING will scan and rebuild corrupted cross-reference tables (xref), repair broken trailer dictionaries, and re-index page objects for \"${file.name}\".",
                     style = MaterialTheme.typography.bodyMedium
                 )
                 Spacer(modifier = Modifier.height(14.dp))

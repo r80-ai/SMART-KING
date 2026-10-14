@@ -609,14 +609,14 @@ AppScreen(modifier = modifier, isScrollable = false) {
                     ) {
                         Icon(
                             imageVector = Icons.Default.PictureAsPdf,
-                            contentDescription = "PDF Master",
+                            contentDescription = "SMART KING",
                             tint = Color.White,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "PDF Master – All PDF Tools",
+                        text = "SMART KING – All PDF Tools",
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(

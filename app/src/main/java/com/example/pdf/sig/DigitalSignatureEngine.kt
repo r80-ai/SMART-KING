@@ -272,7 +272,7 @@ BT
 (DIGITAL SIGNATURE VERIFICATION NOTE:) Tj
 0 -16 Td
 /F1 9 Tf
-(Open this document in PDF Master or Adobe Acrobat Reader to view the live signature banner) Tj
+(Open this document in SMART KING or Adobe Acrobat Reader to view the live signature banner) Tj
 0 -14 Td
 (and full X.509 certificate chain details.) Tj
 ET

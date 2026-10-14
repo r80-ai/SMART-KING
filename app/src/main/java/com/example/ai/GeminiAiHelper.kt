@@ -45,7 +45,7 @@ object GeminiAiHelper {
         }
 
         val prompt = """
-            You are PDF Master's AI Document Assistant. Analyze the following document text and generate an accurate, structured executive summary.
+            You are SMART KING's AI Document Assistant. Analyze the following document text and generate an accurate, structured executive summary.
             Include:
             1. Key Takeaways (3-4 bullet points)
             2. Executive Overview
@@ -65,7 +65,7 @@ object GeminiAiHelper {
         }
 
         val prompt = """
-            You are PDF Master's AI Assistant. Answer the user's question directly and thoroughly based on the provided document text.
+            You are SMART KING's AI Assistant. Answer the user's question directly and thoroughly based on the provided document text.
             If the answer cannot be found in the document, explicitly say so.
             
             User Question:
@@ -85,7 +85,7 @@ object GeminiAiHelper {
         }
 
         val prompt = """
-            You are a professional document translator for PDF Master.
+            You are a professional document translator for SMART KING.
             Translate the following document text accurately into $targetLanguage.
             Maintain the formal tone, headers, and structure of the original document.
             
@@ -103,7 +103,7 @@ object GeminiAiHelper {
         }
 
         val prompt = """
-            You are an educational study guide generator for PDF Master.
+            You are an educational study guide generator for SMART KING.
             Convert the following document into comprehensive study notes including:
             1. Core Concepts & Definitions
             2. Key Formulas / Principles / Timeline

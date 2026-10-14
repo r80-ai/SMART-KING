@@ -67,7 +67,7 @@ fun HisabMainScreen(
 
     // BACK NAVIGATION LOGIC:
     // Sub-screens navigate back to HISAB HOME
-    // HISAB HOME navigates back to PDF MASTER HOME
+    // HISAB HOME navigates back to SMART KING HOME
     BackHandler {
         if (currentSubScreen != HisabSubScreen.HOME) {
             currentSubScreen = HisabSubScreen.HOME
@@ -372,7 +372,7 @@ private fun HisabCalculatorHomeScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        // HEADER HERO CARD (PDF MASTER PREMIUM DARK STYLE)
+        // HEADER HERO CARD (SMART KING PREMIUM DARK STYLE)
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),

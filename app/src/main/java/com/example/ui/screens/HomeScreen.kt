@@ -67,7 +67,7 @@ fun HomeScreen(
     val language by viewModel.appLanguage.collectAsState()
     val lastBackupTime by com.example.workers.BackupManager.lastBackupTime.collectAsState()
 
-    val headerTitle = stringResource(viewModel, "PDF Master", "পিডিএফ মাস্টার", "पीडीएफ मास्टर")
+    val headerTitle = stringResource(viewModel, "SMART KING", "স্মার্ট কিং", "स्मार्ट किंग")
     val headerSub = stringResource(viewModel, "All PDF Tools in One App", "সব টুলস এক অ্যাপে", "सभी पीडीएफ टूल्स")
     val pdfBtnSub = stringResource(viewModel, "All PDF Tools", "সব পিডিএফ টুলস", "सभी पीडीएफ टूल्स")
     val photoBtnSub = stringResource(viewModel, "Photo Tools", "ফটো টুলস", "फोटो टूल्स")
@@ -125,7 +125,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
                     ) {
                         Icon(
                             imageVector = Icons.Default.PictureAsPdf,
-                            contentDescription = "PDF Master Logo",
+                            contentDescription = "SMART KING Logo",
                             tint = Color.White,
                             modifier = Modifier.size(22.dp)
                         )
