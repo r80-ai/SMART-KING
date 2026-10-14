@@ -53,13 +53,17 @@ import android.app.Activity
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.testTag
 import kotlinx.coroutines.launch
 
 @Composable
 fun AddCustomerDialog(
     customerToEdit: Customer? = null,
     onDismiss: () -> Unit,
-    onSave: (name: String, phone: String, address: String, notes: String) -> Unit
+    onDelete: (() -> Unit)? = null,
+    onSave: (name: String, phone: String, address: String, notes: String) -> Unit,
+    viewModel: AmarDokanViewModel = viewModel()
 ) {
     var name by remember { mutableStateOf(customerToEdit?.name ?: "") }
     var phone by remember { mutableStateOf(customerToEdit?.phone ?: "") }
@@ -118,7 +122,35 @@ fun AddCustomerDialog(
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("বাতিল") }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (customerToEdit != null) {
+                    TextButton(
+                        onClick = {
+                            if (onDelete != null) {
+                                onDelete()
+                            } else {
+                                viewModel.deleteCustomer(customerToEdit)
+                                onDismiss()
+                            }
+                        },
+                        colors = ButtonDefaults.textButtonColors(contentColor = Color.Red),
+                        modifier = Modifier.testTag("delete_customer_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = "Delete",
+                            modifier = Modifier.size(16.dp),
+                            tint = Color.Red
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Delete", color = Color.Red, fontWeight = FontWeight.Bold)
+                    }
+                }
+                TextButton(onClick = onDismiss) { Text("বাতিল") }
+            }
         }
     )
 }
