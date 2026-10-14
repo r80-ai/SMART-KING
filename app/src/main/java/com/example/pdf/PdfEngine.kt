@@ -1903,7 +1903,7 @@ object PdfEngine {
             }
             file.name.contains("Notes", ignoreCase = true) || file.name.contains("Documentation", ignoreCase = true) -> {
                 """
-                DOCUMENT TITLE: AI SMART KING Technical Specification
+                DOCUMENT TITLE: SMART KING Technical Specification
                 TOPIC: Architecture, Algorithms, and Multi-Tool Pipeline
                 
                 EXECUTIVE OVERVIEW:

@@ -291,7 +291,7 @@ fun DigitalSignatureValidationScreen(
                                         }
                                         append("\n")
                                     }
-                                    append("Verified via AI SMART KING")
+                                    append("Verified via SMART KING")
                                 }
                                 val sendIntent = Intent().apply {
                                     action = Intent.ACTION_SEND
