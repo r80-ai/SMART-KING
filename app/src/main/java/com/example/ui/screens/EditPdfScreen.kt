@@ -78,7 +78,7 @@ fun EditPdfScreen(
             topBar = {
                 TopAppBar(
                     title = {
-                        Text("Edit PDF", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                        Text("PDF Edit", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     },
                     navigationIcon = {
                         IconButton(onClick = onBack) {
@@ -129,7 +129,7 @@ fun EditPdfScreen(
                         ) {
                             Icon(Icons.Default.UploadFile, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Select PDF to Edit", fontWeight = FontWeight.Bold)
+                            Text("Select PDF File", fontWeight = FontWeight.Bold)
                         }
                     }
                 }

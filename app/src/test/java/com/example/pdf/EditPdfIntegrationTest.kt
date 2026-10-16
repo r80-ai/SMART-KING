@@ -25,6 +25,14 @@ class EditPdfIntegrationTest {
     }
 
     @Test
+    fun testPdfEditToolDefinition() {
+        val tool = com.example.ui.screens.getToolById("edit_pdf")
+        assertNotNull(tool)
+        assertEquals("PDF Edit", tool?.title)
+        assertEquals(ActiveModal.EDIT, tool?.modal)
+    }
+
+    @Test
     fun testOcrReplacementAnnotationItemStructure() {
         val mask = Rect(50, 100, 250, 140)
         val item = PdfEngine.EditItem(

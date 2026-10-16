@@ -190,7 +190,7 @@ fun ToolsScreen(
                     ToolDefinition("doc_enhancer", "Doc Scanner & Auto-Brightness", "ডকুমেন্ট ও ফটোকপি পরিষ্কার", "Clean photocopy, B&W whitening & magic color", Icons.Default.AutoAwesome, ToolPurple, ActiveModal.DOC_ENHANCER, "HOT"),
                     ToolDefinition("name_date_photo", "Name & Date on Photo", "ছবিতে নাম, তারিখ ও বর্ডার", "Candidate Name, DOP/DOB date & black border on/off switch", Icons.Default.TextFields, ToolOrange, ActiveModal.NAME_DATE_PHOTO, "PRO"),
                     ToolDefinition("jpg_to_pdf", "JPG to PDF", "ছবি থেকে PDF", "Convert JPG/PNG images to PDF", Icons.Default.PictureAsPdf, CrimsonPrimary, ActiveModal.SCANNER),
-                    ToolDefinition("edit_pdf", "Edit PDF", "ডকুমেন্ট এডিট", "Full document editor with text and stamps", Icons.Default.Edit, ToolBlue, ActiveModal.EDIT),
+                    ToolDefinition("edit_pdf", "PDF Edit", "ডকুমেন্ট এডিট", "Full document editor with text and stamps", Icons.Default.Edit, ToolBlue, ActiveModal.EDIT),
                     ToolDefinition("crop_pdf", "Crop PDF", "মার্জিন কাটা", "Trim margins and adjust page dimensions", Icons.Default.Crop, ToolTeal, ActiveModal.CROP),
                     ToolDefinition("rotate_pdf", "Rotate PDF", "পৃষ্ঠা ঘোরানো", "Rotate landscape or upside-down pages", Icons.Default.RotateRight, ToolBlue, ActiveModal.ROTATE),
                     ToolDefinition("add_watermark", "Watermark", "জলছাপ যোগ", "Custom diagonal watermark stamp", Icons.Default.Draw, ToolPink, ActiveModal.WATERMARK),
@@ -243,7 +243,7 @@ fun ToolsScreen(
                 )
             }
             "edit_pdf" -> {
-                pdfPickerForEditLauncher.launch(arrayOf("application/pdf"))
+                viewModel.openModal(ActiveModal.EDIT)
             }
             else -> {
                 viewModel.openModal(tool.modal)

@@ -182,7 +182,8 @@ AppScreen(modifier = modifier, isScrollable = false) {
                     modifier = Modifier
                         .weight(1f)
                         .height(110.dp)
-                        .clickable { viewModel.setTab(NavigationTab.TOOLS) },
+                        .clickable { viewModel.setTab(NavigationTab.TOOLS) }
+                        .testTag("card_pdf_tools"),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = CrimsonPrimary),
                     elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
@@ -192,9 +193,9 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF", tint = Color.White, modifier = Modifier.size(36.dp))
+                        Icon(Icons.Default.PictureAsPdf, contentDescription = "PDF Tools", tint = Color.White, modifier = Modifier.size(36.dp))
                         Spacer(modifier = Modifier.height(8.dp))
-                        Text("PDF", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
+                        Text("PDF TOOLS", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold), color = Color.White)
                         Text(pdfBtnSub, style = MaterialTheme.typography.bodySmall, color = Color.White.copy(alpha = 0.8f))
                     }
                 }
@@ -630,7 +631,7 @@ fun getToolById(id: String): ToolDefinition? {
         "rotate_pdf" -> ToolDefinition("rotate_pdf", "Rotate PDF", "ঘোরানো", "Rotate pages", Icons.Default.RotateRight, ToolBlue, ActiveModal.ROTATE)
         "add_watermark" -> ToolDefinition("add_watermark", "Add Watermark", "জলছাপ", "Diagonal text", Icons.Default.Draw, Color(0xFFEC4899), ActiveModal.WATERMARK)
         "add_page_nums" -> ToolDefinition("add_page_nums", "Page Numbers", "নম্বর যোগ", "Footer numbers", Icons.Default.Description, Color(0xFF6366F1), ActiveModal.PAGE_NUMBERS)
-        "edit_pdf" -> ToolDefinition("edit_pdf", "Edit PDF", "টেক্সট এডিট", "Full editor", Icons.Default.Edit, ToolBlue, ActiveModal.EDIT)
+        "edit_pdf" -> ToolDefinition("edit_pdf", "PDF Edit", "টেক্সট এডিট", "Full editor", Icons.Default.Edit, ToolBlue, ActiveModal.EDIT)
         "draw_annotate" -> ToolDefinition("draw_annotate", "Draw & Annotate", "ফ্রিহ্যান্ড আঁকা", "Pen, brush, shapes", Icons.Default.Highlight, ToolOrange, ActiveModal.DRAW_ANNOTATE)
         "extract_pages" -> ToolDefinition("extract_pages", "Extract Pages", "আলাদা করে নতুন PDF", "Select and export specific pages", Icons.Default.Description, Color(0xFF14B8A6), ActiveModal.EXTRACT_PAGES)
         "jpg_to_pdf" -> ToolDefinition("jpg_to_pdf", "JPG to PDF", "ছবি থেকে সরাসরি PDF তৈরি", "Convert JPG/PNG gallery images to PDF", Icons.Default.PictureAsPdf, CrimsonPrimary, ActiveModal.SCANNER)
