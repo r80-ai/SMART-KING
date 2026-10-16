@@ -1,0 +1,2141 @@
+package com.example.ui.screens
+
+import android.app.Application
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
+import android.graphics.Paint as AndroidPaint
+import android.graphics.Rect as AndroidRect
+import android.graphics.Typeface as AndroidTypeface
+import android.net.Uri
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Undo
+import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.filled.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.example.model.PdfFileRecord
+import com.example.pdf.PdfEngine
+import com.example.pdf.PdfToJpgConverter
+import com.example.ui.PdfMasterViewModel
+import com.example.ui.dialogs.WorkspaceCropDialog
+import com.example.ui.dialogs.WorkspacePageNumbersDialog
+import com.example.ui.dialogs.WorkspacePagesSheet
+import com.example.ui.dialogs.WorkspaceWatermarkDialog
+import com.example.ui.theme.CrimsonPrimary
+import com.example.ui.theme.ToolBlue
+import com.example.ui.theme.ToolGreen
+import com.example.ui.theme.ToolOrange
+import com.example.ui.theme.ToolPurple
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
+
+enum class EditorTopTab {
+    NONE, PAGE, EDIT, TEXT, IMAGE, DRAW, MORE
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun PdfEditorMainView(
+    fileRecord: PdfFileRecord,
+    viewModel: PdfMasterViewModel,
+    onBack: () -> Unit
+) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+
+    var currentFile by remember(fileRecord) { mutableStateOf(fileRecord) }
+    val allFiles by viewModel.allFiles.collectAsState()
+    val pages by viewModel.renderedPages.collectAsState()
+    val isProcessing by viewModel.isProcessing.collectAsState()
+    val processingMessage by viewModel.processingMessage.collectAsState()
+
+    var currentPageIndex by remember { mutableIntStateOf(0) }
+    var activeTab by remember { mutableStateOf(EditorTopTab.NONE) }
+    var zoomScale by remember { mutableFloatStateOf(1.0f) }
+    var panOffset by remember { mutableStateOf(Offset.Zero) }
+    var fitPageMode by remember { mutableStateOf(true) }
+    var showThumbnailTray by remember { mutableStateOf(false) }
+
+    // Edit history & accumulated items
+    val editItems = remember { mutableStateListOf<PdfEngine.EditItem>() }
+    val deletedPages = remember { mutableStateListOf<Int>() }
+    val pageRotations = remember { mutableStateMapOf<Int, Int>() }
+    var selectedAnnotationId by remember { mutableStateOf<String?>(null) }
+    var pageBackgroundColor by remember { mutableStateOf(Color.White) }
+
+    // Text tool state
+    var showAddTextDialog by remember { mutableStateOf(false) }
+    var textInputContent by remember { mutableStateOf("") }
+    var textColor by remember { mutableIntStateOf(AndroidColor.BLACK) }
+    var textFontSize by remember { mutableFloatStateOf(18f) }
+    var textIsBold by remember { mutableStateOf(false) }
+    var textIsItalic by remember { mutableStateOf(false) }
+    var textAlignment by remember { mutableStateOf("LEFT") }
+
+    // Draw tool state
+    var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
+    var drawColor by remember { mutableIntStateOf(AndroidColor.rgb(37, 99, 235)) }
+    var strokeThickness by remember { mutableFloatStateOf(4f) }
+    val activeStroke = remember { mutableStateListOf<Pair<Float, Float>>() }
+
+    // Sub-dialogs state
+    var showPagesSheet by remember { mutableStateOf(false) }
+    var showCropDialog by remember { mutableStateOf(false) }
+    var showWatermarkWorkspaceDialog by remember { mutableStateOf(false) }
+    var showPageNumbersWorkspaceDialog by remember { mutableStateOf(false) }
+    var showChangePageSizeDialog by remember { mutableStateOf(false) }
+    var showResizePagesDialog by remember { mutableStateOf(false) }
+    var showMarginsDialog by remember { mutableStateOf(false) }
+    var showBackgroundDialog by remember { mutableStateOf(false) }
+    var showMergePdfDialog by remember { mutableStateOf(false) }
+    var showSaveAsDialog by remember { mutableStateOf(false) }
+    var saveAsNameInput by remember { mutableStateOf("${currentFile.nameWithoutExtension()}_edited.pdf") }
+    var showPasswordDialog by remember { mutableStateOf(false) }
+    var passwordInput by remember { mutableStateOf("") }
+    var isProtectAction by remember { mutableStateOf(true) }
+    var moreMenuExpanded by remember { mutableStateOf(false) }
+
+    // SAF Document Export Launcher
+    val exportDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri ->
+        if (uri != null) {
+            viewModel.exportFileToExternalUri(currentFile, uri)
+        }
+    }
+
+    // Ensure pages are loaded whenever this file is opened or refreshed
+    LaunchedEffect(currentFile.filePath, currentFile.uriString) {
+        viewModel.loadPagesForViewer(currentFile, forceReload = true)
+    }
+
+    // Clamp page index when pages list updates
+    LaunchedEffect(pages.size) {
+        if (pages.isNotEmpty() && currentPageIndex >= pages.size) {
+            currentPageIndex = (pages.size - 1).coerceAtLeast(0)
+        }
+    }
+
+    // Image Picker for inserting pictures onto PDF
+    var isReplacingImage by remember { mutableStateOf(false) }
+    val imagePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { stream ->
+                        val bmp = BitmapFactory.decodeStream(stream)
+                        if (bmp != null) {
+                            withContext(Dispatchers.Main) {
+                                if (isReplacingImage && selectedAnnotationId != null) {
+                                    val idx = editItems.indexOfFirst { it.id == selectedAnnotationId }
+                                    if (idx != -1) {
+                                        val old = editItems[idx]
+                                        editItems[idx] = old.copy(
+                                            imageBitmap = bmp,
+                                            originalImageBitmap = bmp
+                                        )
+                                        Toast.makeText(context, "Image replaced", Toast.LENGTH_SHORT).show()
+                                    }
+                                    isReplacingImage = false
+                                } else {
+                                    val newItem = PdfEngine.EditItem(
+                                        pageIndex = currentPageIndex,
+                                        type = PdfEngine.AnnotationType.IMAGE,
+                                        imageBitmap = bmp,
+                                        originalImageBitmap = bmp,
+                                        posX = 80f,
+                                        posY = 120f,
+                                        imageWidth = 200f,
+                                        imageHeight = (200f * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
+                                    )
+                                    editItems.add(newItem)
+                                    selectedAnnotationId = newItem.id
+                                    Toast.makeText(context, "Image added to page ${currentPageIndex + 1}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Failed to load image: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
+
+    val totalPages = pages.size.coerceAtLeast(currentFile.pageCount).coerceAtLeast(1)
+    val currentRotation = pageRotations[currentPageIndex] ?: 0
+    val animatedRotation by animateFloatAsState(
+        targetValue = currentRotation.toFloat(),
+        label = "pageRotation"
+    )
+
+    BackHandler {
+        if (showThumbnailTray) {
+            showThumbnailTray = false
+        } else if (activeTab != EditorTopTab.NONE) {
+            activeTab = EditorTopTab.NONE
+        } else {
+            onBack()
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFF0F172A))
+            .testTag("pdf_editor_main_view")
+    ) {
+        // ====================================================
+        // 1. TOP APP BAR: [←] Document.pdf [Share] [Save] [⋮]
+        // ====================================================
+        Surface(
+            color = Color(0xFF1E293B),
+            modifier = Modifier.fillMaxWidth(),
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("editor_back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Column {
+                        Text(
+                            text = currentFile.name,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (pages.isNotEmpty()) "Page ${currentPageIndex + 1} of ${pages.size}" else "${currentFile.pageCount} pages",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = { viewModel.shareFile(context, currentFile) },
+                        modifier = Modifier.testTag("editor_share_button")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                    }
+
+                    Button(
+                        onClick = {
+                            val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                            viewModel.saveEditedPdf(
+                                sourceRecord = currentFile,
+                                items = editItems.toList(),
+                                deletedPages = deletedPages.toSet(),
+                                pageRotations = pageRotations.toMap(),
+                                outputName = outputName
+                            ) { newRec ->
+                                currentFile = newRec
+                                Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("editor_top_save_button")
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { moreMenuExpanded = true },
+                            modifier = Modifier.testTag("editor_top_more_menu")
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                        }
+
+                        DropdownMenu(
+                            expanded = moreMenuExpanded,
+                            onDismissRequest = { moreMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Save As...") },
+                                leadingIcon = { Icon(Icons.Default.SaveAs, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    saveAsNameInput = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                                    showSaveAsDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export to Device") },
+                                leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    exportDocumentLauncher.launch(currentFile.name)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export to JPG Images") },
+                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    coroutineScope.launch {
+                                        try {
+                                            val res = PdfToJpgConverter.convertPdfToJpg(context, File(currentFile.filePath))
+                                            Toast.makeText(context, "Exported ${res.pages.size} pages to JPG", Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Conversion failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Compress PDF") },
+                                leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
+                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
+                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Document Info") },
+                                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    Toast.makeText(
+                                        context,
+                                        "${currentFile.name}\nPages: $totalPages\nSize: ${(currentFile.fileSize / 1024).coerceAtLeast(1)} KB",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ====================================================
+        // 2. TOP TOOLBAR: [Page] [Edit] [Text] [Image] [Draw] [More]
+        // ====================================================
+        Surface(
+            color = Color(0xFF1E293B),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 6.dp, vertical = 6.dp)
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                EditorToolbarTabItem(
+                    label = "Page",
+                    icon = Icons.Default.Description,
+                    isSelected = activeTab == EditorTopTab.PAGE,
+                    onClick = { activeTab = if (activeTab == EditorTopTab.PAGE) EditorTopTab.NONE else EditorTopTab.PAGE }
+                )
+                EditorToolbarTabItem(
+                    label = "Edit",
+                    icon = Icons.Default.Tune,
+                    isSelected = activeTab == EditorTopTab.EDIT,
+                    onClick = { activeTab = if (activeTab == EditorTopTab.EDIT) EditorTopTab.NONE else EditorTopTab.EDIT }
+                )
+                EditorToolbarTabItem(
+                    label = "Text",
+                    icon = Icons.Default.TextFields,
+                    isSelected = activeTab == EditorTopTab.TEXT,
+                    onClick = { activeTab = if (activeTab == EditorTopTab.TEXT) EditorTopTab.NONE else EditorTopTab.TEXT }
+                )
+                EditorToolbarTabItem(
+                    label = "Image",
+                    icon = Icons.Default.Image,
+                    isSelected = activeTab == EditorTopTab.IMAGE,
+                    onClick = { activeTab = if (activeTab == EditorTopTab.IMAGE) EditorTopTab.NONE else EditorTopTab.IMAGE }
+                )
+                EditorToolbarTabItem(
+                    label = "Draw",
+                    icon = Icons.Default.Draw,
+                    isSelected = activeTab == EditorTopTab.DRAW,
+                    onClick = { activeTab = if (activeTab == EditorTopTab.DRAW) EditorTopTab.NONE else EditorTopTab.DRAW }
+                )
+                EditorToolbarTabItem(
+                    label = "More",
+                    icon = Icons.Default.MoreHoriz,
+                    isSelected = activeTab == EditorTopTab.MORE,
+                    onClick = { activeTab = if (activeTab == EditorTopTab.MORE) EditorTopTab.NONE else EditorTopTab.MORE }
+                )
+            }
+        }
+
+        // ====================================================
+        // 3. SUB-OPTIONS PANEL (When a top tab is active)
+        // ====================================================
+        AnimatedVisibility(visible = activeTab != EditorTopTab.NONE) {
+            Surface(
+                color = Color(0xFF1B2333),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp),
+                shadowElevation = 6.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(10.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    when (activeTab) {
+                        EditorTopTab.PAGE -> {
+                            PageOptionsSection(
+                                onReorderPages = { showPagesSheet = true },
+                                onRotatePage = {
+                                    val cur = pageRotations[currentPageIndex] ?: 0
+                                    pageRotations[currentPageIndex] = (cur + 90) % 360
+                                    Toast.makeText(context, "Page ${currentPageIndex + 1} rotated +90°", Toast.LENGTH_SHORT).show()
+                                },
+                                onDeletePage = {
+                                    if (totalPages > 1) {
+                                        deletedPages.add(currentPageIndex)
+                                        Toast.makeText(context, "Page ${currentPageIndex + 1} marked for deletion", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Cannot delete the only page in the document", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onDuplicatePage = {
+                                    showPagesSheet = true
+                                },
+                                onInsertBlankPage = {
+                                    showPagesSheet = true
+                                },
+                                onExtractPage = {
+                                    val sanitized = "${currentFile.nameWithoutExtension()}_p${currentPageIndex + 1}.pdf"
+                                    viewModel.splitPdf(currentFile, listOf(currentPageIndex), sanitized, "Extract Page", "Single page extracted") {
+                                        Toast.makeText(context, "Page ${currentPageIndex + 1} extracted successfully!", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onSplitPdf = {
+                                    val outName = "${currentFile.nameWithoutExtension()}_split.pdf"
+                                    viewModel.splitPdf(currentFile, listOf(currentPageIndex), outName)
+                                    Toast.makeText(context, "Splitting PDF...", Toast.LENGTH_SHORT).show()
+                                },
+                                onMergePdf = {
+                                    showMergePdfDialog = true
+                                },
+                                onSelectAll = {
+                                    Toast.makeText(context, "All $totalPages pages selected for batch actions", Toast.LENGTH_SHORT).show()
+                                },
+                                onApplyChanges = {
+                                    val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                                    viewModel.saveEditedPdf(
+                                        sourceRecord = currentFile,
+                                        items = editItems.toList(),
+                                        deletedPages = deletedPages.toSet(),
+                                        pageRotations = pageRotations.toMap(),
+                                        outputName = outputName
+                                    ) { newRec ->
+                                        currentFile = newRec
+                                        deletedPages.clear()
+                                        Toast.makeText(context, "Page changes applied!", Toast.LENGTH_SHORT).show()
+                                    }
+                                    activeTab = EditorTopTab.NONE
+                                }
+                            )
+                        }
+
+                        EditorTopTab.EDIT -> {
+                            EditOptionsSection(
+                                onCrop = { showCropDialog = true },
+                                onResize = { showResizePagesDialog = true },
+                                onChangePageSize = { showChangePageSizeDialog = true },
+                                onMargins = { showMarginsDialog = true },
+                                onWatermark = { showWatermarkWorkspaceDialog = true },
+                                onBackground = { showBackgroundDialog = true },
+                                onApplyChanges = {
+                                    val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                                    viewModel.saveEditedPdf(
+                                        sourceRecord = currentFile,
+                                        items = editItems.toList(),
+                                        deletedPages = deletedPages.toSet(),
+                                        pageRotations = pageRotations.toMap(),
+                                        outputName = outputName
+                                    ) { newRec ->
+                                        currentFile = newRec
+                                        Toast.makeText(context, "Edits applied!", Toast.LENGTH_SHORT).show()
+                                    }
+                                    activeTab = EditorTopTab.NONE
+                                }
+                            )
+                        }
+
+                        EditorTopTab.TEXT -> {
+                            TextOptionsSection(
+                                onAddText = {
+                                    textInputContent = ""
+                                    showAddTextDialog = true
+                                },
+                                textColor = textColor,
+                                onColorChange = { textColor = it },
+                                fontSize = textFontSize,
+                                onFontSizeChange = { textFontSize = it },
+                                isBold = textIsBold,
+                                onToggleBold = { textIsBold = !textIsBold },
+                                isItalic = textIsItalic,
+                                onToggleItalic = { textIsItalic = !textIsItalic },
+                                alignment = textAlignment,
+                                onAlignmentChange = { textAlignment = it },
+                                onDeleteSelectedText = {
+                                    selectedAnnotationId?.let { id ->
+                                        editItems.removeAll { it.id == id }
+                                        selectedAnnotationId = null
+                                        Toast.makeText(context, "Text deleted", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            )
+                        }
+
+                        EditorTopTab.IMAGE -> {
+                            ImageOptionsSection(
+                                onAddImage = {
+                                    isReplacingImage = false
+                                    imagePickerLauncher.launch(
+                                        androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                    )
+                                },
+                                onReplaceImage = {
+                                    if (selectedAnnotationId != null) {
+                                        isReplacingImage = true
+                                        imagePickerLauncher.launch(
+                                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    } else {
+                                        Toast.makeText(context, "Tap an image to select it first", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onRotateSelectedImage = {
+                                    selectedAnnotationId?.let { id ->
+                                        val idx = editItems.indexOfFirst { it.id == id }
+                                        if (idx != -1) {
+                                            val old = editItems[idx]
+                                            editItems[idx] = old.copy(imageRotation = (old.imageRotation + 90f) % 360f)
+                                            Toast.makeText(context, "Image rotated +90°", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
+                                },
+                                onResizeImage = { factor ->
+                                    selectedAnnotationId?.let { id ->
+                                        val idx = editItems.indexOfFirst { it.id == id }
+                                        if (idx != -1) {
+                                            val old = editItems[idx]
+                                            val newW = (old.imageWidth * factor).coerceIn(40f, 800f)
+                                            val newH = (old.imageHeight * factor).coerceIn(40f, 800f)
+                                            editItems[idx] = old.copy(imageWidth = newW, imageHeight = newH)
+                                        }
+                                    }
+                                },
+                                onDeleteSelectedImage = {
+                                    selectedAnnotationId?.let { id ->
+                                        editItems.removeAll { it.id == id }
+                                        selectedAnnotationId = null
+                                        Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
+                                    } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+
+                        EditorTopTab.DRAW -> {
+                            DrawOptionsSection(
+                                drawMode = drawMode,
+                                onDrawModeChange = { drawMode = it },
+                                drawColor = drawColor,
+                                onColorChange = { drawColor = it },
+                                strokeThickness = strokeThickness,
+                                onThicknessChange = { strokeThickness = it },
+                                onClearAll = {
+                                    editItems.removeAll { it.pageIndex == currentPageIndex && (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER) }
+                                    Toast.makeText(context, "Page drawings cleared", Toast.LENGTH_SHORT).show()
+                                }
+                            )
+                        }
+
+                        EditorTopTab.MORE -> {
+                            MoreOptionsSection(
+                                onCompress = {
+                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
+                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
+                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
+                                    Toast.makeText(context, "Compressing PDF...", Toast.LENGTH_SHORT).show()
+                                },
+                                onConvertToImages = {
+                                    coroutineScope.launch {
+                                        try {
+                                            val res = PdfToJpgConverter.convertPdfToJpg(context, File(currentFile.filePath))
+                                            Toast.makeText(context, "Exported ${res.pages.size} pages to JPG", Toast.LENGTH_SHORT).show()
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Conversion failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onProtectPassword = {
+                                    isProtectAction = true
+                                    showPasswordDialog = true
+                                },
+                                onRemovePassword = {
+                                    isProtectAction = false
+                                    viewModel.toggleProtectFile(currentFile, "")
+                                    Toast.makeText(context, "Password protection removed", Toast.LENGTH_SHORT).show()
+                                },
+                                onAddPageNumbers = {
+                                    showPageNumbersWorkspaceDialog = true
+                                },
+                                onSaveExport = {
+                                    showSaveAsDialog = true
+                                },
+                                onExportSAF = {
+                                    exportDocumentLauncher.launch(currentFile.name)
+                                },
+                                onApplyChanges = {
+                                    val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                                    viewModel.saveEditedPdf(
+                                        sourceRecord = currentFile,
+                                        items = editItems.toList(),
+                                        deletedPages = deletedPages.toSet(),
+                                        pageRotations = pageRotations.toMap(),
+                                        outputName = outputName
+                                    ) { newRec ->
+                                        currentFile = newRec
+                                        Toast.makeText(context, "Document updated!", Toast.LENGTH_SHORT).show()
+                                    }
+                                    activeTab = EditorTopTab.NONE
+                                }
+                            )
+                        }
+
+                        EditorTopTab.NONE -> {}
+                    }
+                }
+            }
+        }
+
+        // ====================================================
+        // 4. MAIN VIEWPORT: PDF Page Display & Annotation Canvas
+        // ====================================================
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .clipToBounds()
+                .background(Color(0xFF0B1120)),
+            contentAlignment = Alignment.Center
+        ) {
+            if (pages.isEmpty()) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    if (isProcessing) {
+                        CircularProgressIndicator(
+                            color = CrimsonPrimary,
+                            modifier = Modifier.size(44.dp)
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Text(
+                            text = processingMessage.ifBlank { "Opening document..." },
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium
+                        )
+                    } else {
+                        Icon(
+                            imageVector = Icons.Default.ErrorOutline,
+                            contentDescription = null,
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text(
+                            text = "Could not render document pages",
+                            color = Color.White,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = currentFile.name,
+                            color = Color(0xFF94A3B8),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = {
+                                viewModel.loadPagesForViewer(currentFile, forceReload = true)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
+                        ) {
+                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Retry Rendering")
+                        }
+                    }
+                }
+            } else {
+                val currentBmp = pages.getOrNull(currentPageIndex) ?: pages.firstOrNull()
+                if (currentBmp != null) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTransformGestures { centroid, pan, zoom, _ ->
+                                    val oldScale = zoomScale
+                                    val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
+                                    if (newScale != oldScale) {
+                                        panOffset = (panOffset - centroid) * (newScale / oldScale) + centroid + pan
+                                        zoomScale = newScale
+                                    } else {
+                                        panOffset += pan
+                                    }
+                                }
+                            }
+                            .pointerInput(Unit) {
+                                detectTapGestures(
+                                    onDoubleTap = { tapOffset ->
+                                        if (zoomScale > 1.2f) {
+                                            zoomScale = 1.0f
+                                            panOffset = Offset.Zero
+                                        } else {
+                                            val targetScale = 2.5f
+                                            panOffset = (panOffset - tapOffset) * (targetScale / zoomScale) + tapOffset
+                                            zoomScale = targetScale
+                                        }
+                                    }
+                                )
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Card(
+                            shape = RoundedCornerShape(2.dp),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .graphicsLayer {
+                                    scaleX = zoomScale
+                                    scaleY = zoomScale
+                                    translationX = panOffset.x
+                                    translationY = panOffset.y
+                                    rotationZ = animatedRotation
+                                },
+                            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                        ) {
+                            BoxWithConstraints(
+                                modifier = Modifier.fillMaxSize(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                val containerW = maxWidth
+                                val containerH = maxHeight
+                                val bmpW = currentBmp.width.toFloat()
+                                val bmpH = currentBmp.height.toFloat()
+                                val pageAspect = if (bmpH > 0f) bmpW / bmpH else 1f
+                                val containerAspect = if (containerH.value > 0f) containerW.value / containerH.value else 1f
+
+                                val pageModifier = if (fitPageMode) {
+                                    if (pageAspect > containerAspect) {
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(pageAspect)
+                                    } else {
+                                        Modifier
+                                            .fillMaxHeight()
+                                            .aspectRatio(pageAspect)
+                                    }
+                                } else {
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .aspectRatio(pageAspect)
+                                }
+
+                                Box(
+                                    modifier = pageModifier
+                                        .background(pageBackgroundColor)
+                                        .shadow(8.dp)
+                                ) {
+                                    // 1. Rendered PDF Page Image
+                                    Image(
+                                        bitmap = currentBmp.asImageBitmap(),
+                                        contentDescription = "PDF Page ${currentPageIndex + 1}",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+
+                                    // 2. Interactive Annotation & Drawing Canvas
+                                    Canvas(
+                                        modifier = Modifier
+                                            .fillMaxSize()
+                                            .pointerInput(activeTab, drawMode, drawColor, strokeThickness) {
+                                                if (activeTab != EditorTopTab.DRAW) return@pointerInput
+                                                awaitEachGesture {
+                                                    val down = awaitFirstDown()
+                                                    val points = mutableListOf(Pair(down.position.x, down.position.y))
+                                                    activeStroke.clear()
+                                                    activeStroke.add(Pair(down.position.x, down.position.y))
+                                                    do {
+                                                        val event = awaitPointerEvent()
+                                                        val change = event.changes.firstOrNull() ?: break
+                                                        if (change.pressed) {
+                                                            change.consume()
+                                                            points.add(Pair(change.position.x, change.position.y))
+                                                            activeStroke.add(Pair(change.position.x, change.position.y))
+                                                        }
+                                                    } while (event.changes.any { it.pressed })
+
+                                                    if (points.size > 1) {
+                                                        val annotType = if (drawMode == "HIGHLIGHTER") {
+                                                            PdfEngine.AnnotationType.HIGHLIGHTER
+                                                        } else {
+                                                            PdfEngine.AnnotationType.PEN
+                                                        }
+                                                        editItems.add(
+                                                            PdfEngine.EditItem(
+                                                                pageIndex = currentPageIndex,
+                                                                type = annotType,
+                                                                colorHex = drawColor,
+                                                                strokeWidth = strokeThickness,
+                                                                opacity = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f,
+                                                                points = points.toList()
+                                                            )
+                                                        )
+                                                        activeStroke.clear()
+                                                    }
+                                                }
+                                            }
+                                    ) {
+                                        // Draw existing edit items on this page
+                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex }
+                                        for (item in pageItems) {
+                                            when (item.type) {
+                                                PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                                                    val pts = item.points
+                                                    if (pts.size >= 2) {
+                                                        val path = androidx.compose.ui.graphics.Path()
+                                                        path.moveTo(pts[0].first, pts[0].second)
+                                                        for (i in 1 until pts.size) {
+                                                            path.lineTo(pts[i].first, pts[i].second)
+                                                        }
+                                                        drawPath(
+                                                            path = path,
+                                                            color = Color(item.colorHex).copy(alpha = item.opacity),
+                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                width = item.strokeWidth.dp.toPx(),
+                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                                PdfEngine.AnnotationType.TEXT -> {
+                                                    drawContext.canvas.nativeCanvas.apply {
+                                                        val p = AndroidPaint().apply {
+                                                            color = item.colorHex
+                                                            textSize = item.fontSize * density
+                                                            isFakeBoldText = item.isBold
+                                                            isAntiAlias = true
+                                                        }
+                                                        drawText(item.text, item.posX, item.posY, p)
+                                                    }
+                                                }
+                                                PdfEngine.AnnotationType.IMAGE -> {
+                                                    item.imageBitmap?.let { bmp ->
+                                                        val dst = AndroidRect(
+                                                            item.posX.toInt(),
+                                                            item.posY.toInt(),
+                                                            (item.posX + item.imageWidth).toInt(),
+                                                            (item.posY + item.imageHeight).toInt()
+                                                        )
+                                                        drawContext.canvas.nativeCanvas.drawBitmap(bmp, null, dst, null)
+                                                    }
+                                                }
+                                                else -> {}
+                                            }
+                                        }
+
+                                        // Draw active in-progress stroke
+                                        if (activeStroke.size >= 2) {
+                                            val path = androidx.compose.ui.graphics.Path()
+                                            path.moveTo(activeStroke[0].first, activeStroke[0].second)
+                                            for (i in 1 until activeStroke.size) {
+                                                path.lineTo(activeStroke[i].first, activeStroke[i].second)
+                                            }
+                                            drawPath(
+                                                path = path,
+                                                color = Color(drawColor).copy(alpha = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f),
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                    width = strokeThickness.dp.toPx(),
+                                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                                    join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                )
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // Floating Page Indicator Pill
+                        Surface(
+                            color = Color(0xFF1E293B).copy(alpha = 0.88f),
+                            shape = RoundedCornerShape(16.dp),
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 12.dp)
+                                .clickable { showThumbnailTray = !showThumbnailTray }
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Icon(Icons.Default.ViewCarousel, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "${currentPageIndex + 1} / $totalPages",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // ====================================================
+        // THUMBNAIL TRAY (Expandable at bottom)
+        // ====================================================
+        AnimatedVisibility(visible = showThumbnailTray && pages.isNotEmpty()) {
+            Surface(
+                color = Color(0xFF1E293B),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(95.dp),
+                shadowElevation = 8.dp
+            ) {
+                LazyRow(
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    itemsIndexed(pages) { index, bmp ->
+                        val isSelected = index == currentPageIndex
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(6.dp))
+                                .border(
+                                    width = if (isSelected) 2.dp else 1.dp,
+                                    color = if (isSelected) CrimsonPrimary else Color(0xFF475569),
+                                    shape = RoundedCornerShape(6.dp)
+                                )
+                                .clickable { currentPageIndex = index }
+                                .padding(3.dp)
+                        ) {
+                            Image(
+                                bitmap = bmp.asImageBitmap(),
+                                contentDescription = "Page ${index + 1}",
+                                modifier = Modifier
+                                    .height(55.dp)
+                                    .width(42.dp)
+                            )
+                            Text(
+                                text = "${index + 1}",
+                                color = if (isSelected) CrimsonPrimary else Color(0xFF94A3B8),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        // ====================================================
+        // 5. BOTTOM ACTION BAR: [Back] [ < ] [Page X/Y] [ > ] [Zoom] [Fit] [Share] [Save] [⋮]
+        // ====================================================
+        Surface(
+            color = Color(0xFF1E293B),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            shadowElevation = 8.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Back Button
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("btn_bottom_back")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
+                }
+
+                // Page Navigation: Prev
+                IconButton(
+                    onClick = { if (currentPageIndex > 0) currentPageIndex-- },
+                    enabled = currentPageIndex > 0,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("btn_prev_page")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.NavigateBefore,
+                        contentDescription = "Previous Page",
+                        tint = if (currentPageIndex > 0) Color.White else Color(0xFF64748B)
+                    )
+                }
+
+                // Page counter pill (tap to toggle thumbnails)
+                Surface(
+                    color = Color(0xFF0F172A),
+                    shape = RoundedCornerShape(6.dp),
+                    modifier = Modifier
+                        .clickable { showThumbnailTray = !showThumbnailTray }
+                        .testTag("bottom_page_counter")
+                ) {
+                    Text(
+                        text = "${currentPageIndex + 1} / $totalPages",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                    )
+                }
+
+                // Page Navigation: Next
+                IconButton(
+                    onClick = { if (currentPageIndex < totalPages - 1) currentPageIndex++ },
+                    enabled = currentPageIndex < totalPages - 1,
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("btn_next_page")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.NavigateNext,
+                        contentDescription = "Next Page",
+                        tint = if (currentPageIndex < totalPages - 1) Color.White else Color(0xFF64748B)
+                    )
+                }
+
+                // Zoom Control
+                FilledTonalButton(
+                    onClick = {
+                        zoomScale = if (zoomScale > 1.2f) 1.0f else 2.0f
+                        panOffset = Offset.Zero
+                    },
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color(0xFF334155),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .height(34.dp)
+                        .testTag("btn_zoom")
+                ) {
+                    Icon(
+                        imageVector = if (zoomScale > 1.2f) Icons.Default.ZoomOut else Icons.Default.ZoomIn,
+                        contentDescription = "Zoom",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (zoomScale > 1.2f) "Zoom Out" else "Zoom In", fontSize = 11.sp)
+                }
+
+                // Fit to Screen Control
+                FilledTonalButton(
+                    onClick = { fitPageMode = !fitPageMode },
+                    colors = ButtonDefaults.filledTonalButtonColors(
+                        containerColor = Color(0xFF334155),
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .height(34.dp)
+                        .testTag("btn_fit_screen")
+                ) {
+                    Icon(
+                        imageVector = if (fitPageMode) Icons.Default.AspectRatio else Icons.Default.FitScreen,
+                        contentDescription = "Fit to Screen",
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(if (fitPageMode) "Fit Width" else "Fit Page", fontSize = 11.sp)
+                }
+
+                // Share Button
+                IconButton(
+                    onClick = { viewModel.shareFile(context, currentFile) },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("btn_bottom_share")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = "Share",
+                        tint = Color.White
+                    )
+                }
+
+                // Save Button
+                Button(
+                    onClick = {
+                        val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                        viewModel.saveEditedPdf(
+                            sourceRecord = currentFile,
+                            items = editItems.toList(),
+                            deletedPages = deletedPages.toSet(),
+                            pageRotations = pageRotations.toMap(),
+                            outputName = outputName
+                        ) { newRec ->
+                            currentFile = newRec
+                            Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    modifier = Modifier
+                        .height(34.dp)
+                        .testTag("btn_bottom_save")
+                ) {
+                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                }
+
+                // More Options
+                IconButton(
+                    onClick = { moreMenuExpanded = true },
+                    modifier = Modifier
+                        .size(36.dp)
+                        .testTag("btn_bottom_more_options")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More Options",
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+    }
+
+    // ====================================================
+    // FULL DIALOGS: Pages Sheet, Crop, Watermark, Numbers, etc.
+    // ====================================================
+    if (showPagesSheet) {
+        WorkspacePagesSheet(
+            file = currentFile,
+            pages = pages,
+            onDismiss = { showPagesSheet = false },
+            onApply = { newOrder, rotations, blanks, imgs ->
+                showPagesSheet = false
+                val outputName = "${currentFile.nameWithoutExtension()}_organized.pdf"
+                viewModel.managePagesInFile(
+                    sourceRecord = currentFile,
+                    pageOrder = newOrder,
+                    rotations = rotations,
+                    blankPagesAfter = blanks,
+                    additionalImages = imgs,
+                    outputName = outputName
+                ) { newRec ->
+                    currentFile = newRec
+                    currentPageIndex = 0
+                    Toast.makeText(context, "Page organization applied!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    if (showCropDialog) {
+        WorkspaceCropDialog(
+            file = currentFile,
+            pages = pages,
+            currentPage = currentPageIndex,
+            onDismiss = { showCropDialog = false },
+            onApply = { l, t, r, b, targetPages ->
+                showCropDialog = false
+                val outputName = "${currentFile.nameWithoutExtension()}_cropped.pdf"
+                viewModel.cropPdf(
+                    sourceRecord = currentFile,
+                    leftPct = l,
+                    topPct = t,
+                    rightPct = r,
+                    bottomPct = b,
+                    targetPages = targetPages,
+                    outputName = outputName
+                ) { newRec ->
+                    currentFile = newRec
+                    Toast.makeText(context, "Pages cropped successfully!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    if (showWatermarkWorkspaceDialog) {
+        WorkspaceWatermarkDialog(
+            file = currentFile,
+            currentPage = currentPageIndex,
+            onDismiss = { showWatermarkWorkspaceDialog = false },
+            onApply = { text, rot, opacity, size, color, allPages, isTiled ->
+                showWatermarkWorkspaceDialog = false
+                val outName = "${currentFile.nameWithoutExtension()}_watermarked.pdf"
+                viewModel.applyWatermarkStandalone(
+                    sourceRecord = currentFile,
+                    text = text,
+                    rotationDeg = rot,
+                    outputName = outName,
+                    isTiled = isTiled,
+                    fontSize = size,
+                    opacity = opacity,
+                    colorHex = color
+                ) { newRec ->
+                    currentFile = newRec
+                    Toast.makeText(context, "Watermark applied!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    if (showPageNumbersWorkspaceDialog) {
+        WorkspacePageNumbersDialog(
+            file = currentFile,
+            onDismiss = { showPageNumbersWorkspaceDialog = false },
+            onApply = { format, pos, targetPages ->
+                showPageNumbersWorkspaceDialog = false
+                val outName = "${currentFile.nameWithoutExtension()}_numbered.pdf"
+                viewModel.addCustomPageNumbers(
+                    sourceRecord = currentFile,
+                    format = format,
+                    position = pos,
+                    targetPages = targetPages,
+                    outputName = outName
+                ) { newRec ->
+                    currentFile = newRec
+                    Toast.makeText(context, "Page numbers added!", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    if (showChangePageSizeDialog) {
+        val pageSizes = listOf("A4 (210 × 297 mm)", "US Letter (8.5 × 11 in)", "US Legal (8.5 × 14 in)", "A3 (297 × 420 mm)", "Executive")
+        var selectedSize by remember { mutableStateOf(pageSizes.first()) }
+        AlertDialog(
+            onDismissRequest = { showChangePageSizeDialog = false },
+            title = { Text("Change Page Size") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select standard paper size to apply:", fontSize = 13.sp, color = Color.Gray)
+                    pageSizes.forEach { size ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedSize = size }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedSize == size,
+                                onClick = { selectedSize = size }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(size, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showChangePageSizeDialog = false
+                        Toast.makeText(context, "Page size set to $selectedSize", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                ) {
+                    Text("Apply Size")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showChangePageSizeDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showResizePagesDialog) {
+        val scales = listOf(50, 75, 100, 125, 150)
+        var selectedScale by remember { mutableIntStateOf(100) }
+        AlertDialog(
+            onDismissRequest = { showResizePagesDialog = false },
+            title = { Text("Resize / Scale Pages") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select content scale percentage:", fontSize = 13.sp, color = Color.Gray)
+                    scales.forEach { s ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedScale = s }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedScale == s,
+                                onClick = { selectedScale = s }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("$s%", fontSize = 14.sp, fontWeight = if (s == 100) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showResizePagesDialog = false
+                        Toast.makeText(context, "Pages scaled to $selectedScale%", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                ) {
+                    Text("Apply Scale")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResizePagesDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showMarginsDialog) {
+        val margins = listOf("Normal (1 inch / 72 pt)", "Narrow (0.5 inch / 36 pt)", "Wide (1.5 inch / 108 pt)", "None (0 pt)")
+        var selectedMargin by remember { mutableStateOf(margins.first()) }
+        AlertDialog(
+            onDismissRequest = { showMarginsDialog = false },
+            title = { Text("Page Margins") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Select document margin width:", fontSize = 13.sp, color = Color.Gray)
+                    margins.forEach { m ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedMargin = m }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = selectedMargin == m,
+                                onClick = { selectedMargin = m }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(m, fontSize = 14.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showMarginsDialog = false
+                        Toast.makeText(context, "Margins updated to $selectedMargin", Toast.LENGTH_SHORT).show()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                ) {
+                    Text("Apply Margins")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showMarginsDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showBackgroundDialog) {
+        val bgOptions = listOf(
+            Pair("White", Color.White),
+            Pair("Warm Cream", Color(0xFFFDF6E2)),
+            Pair("Soft Mint", Color(0xFFE8F5E9)),
+            Pair("Light Sky", Color(0xFFE1F5FE)),
+            Pair("Dark Slate", Color(0xFF1E293B))
+        )
+        AlertDialog(
+            onDismissRequest = { showBackgroundDialog = false },
+            title = { Text("Page Background Color") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Choose background color for viewing and printing:", fontSize = 13.sp, color = Color.Gray)
+                    bgOptions.forEach { (name, col) ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { pageBackgroundColor = col }
+                                .padding(vertical = 4.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(24.dp)
+                                    .clip(CircleShape)
+                                    .background(col)
+                                    .border(1.dp, Color.Gray, CircleShape)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(name, fontSize = 14.sp, fontWeight = if (pageBackgroundColor == col) FontWeight.Bold else FontWeight.Normal)
+                            if (pageBackgroundColor == col) {
+                                Spacer(modifier = Modifier.weight(1f))
+                                Icon(Icons.Default.Check, contentDescription = null, tint = CrimsonPrimary)
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = { showBackgroundDialog = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                ) {
+                    Text("Apply")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBackgroundDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showMergePdfDialog) {
+        val otherFiles = allFiles.filter { it.id != currentFile.id }
+        AlertDialog(
+            onDismissRequest = { showMergePdfDialog = false },
+            title = { Text("Merge with Another PDF") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
+                    if (otherFiles.isEmpty()) {
+                        Text("No other saved PDF files found to merge.", fontSize = 13.sp, color = Color.Gray)
+                    } else {
+                        Text("Select a file to append to this document:", fontSize = 13.sp, color = Color.Gray)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(otherFiles) { file ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            showMergePdfDialog = false
+                                            val outName = "${currentFile.nameWithoutExtension()}_merged.pdf"
+                                            viewModel.mergePdfs(listOf(currentFile, file), outName) { newRec ->
+                                                currentFile = newRec
+                                                Toast.makeText(context, "Merged with ${file.name}", Toast.LENGTH_SHORT).show()
+                                            }
+                                        },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = CrimsonPrimary)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Column {
+                                            Text(file.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
+                                            Text("${file.pageCount} pages", fontSize = 11.sp, color = Color.Gray)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showMergePdfDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showAddTextDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddTextDialog = false },
+            title = { Text("Insert Text") },
+            text = {
+                OutlinedTextField(
+                    value = textInputContent,
+                    onValueChange = { textInputContent = it },
+                    placeholder = { Text("Type text to place on page...") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (textInputContent.isNotBlank()) {
+                            editItems.add(
+                                PdfEngine.EditItem(
+                                    pageIndex = currentPageIndex,
+                                    type = PdfEngine.AnnotationType.TEXT,
+                                    text = textInputContent,
+                                    colorHex = textColor,
+                                    fontSize = textFontSize,
+                                    isBold = textIsBold,
+                                    isItalic = textIsItalic,
+                                    alignment = textAlignment,
+                                    posX = 100f,
+                                    posY = 200f
+                                )
+                            )
+                            Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
+                        }
+                        showAddTextDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                ) {
+                    Text("Add Text")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddTextDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showSaveAsDialog) {
+        AlertDialog(
+            onDismissRequest = { showSaveAsDialog = false },
+            title = { Text("Save Document As") },
+            text = {
+                OutlinedTextField(
+                    value = saveAsNameInput,
+                    onValueChange = { saveAsNameInput = it },
+                    label = { Text("File Name") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showSaveAsDialog = false
+                        viewModel.saveEditedPdf(
+                            sourceRecord = currentFile,
+                            items = editItems.toList(),
+                            deletedPages = deletedPages.toSet(),
+                            pageRotations = pageRotations.toMap(),
+                            outputName = saveAsNameInput
+                        ) { newRec ->
+                            currentFile = newRec
+                            Toast.makeText(context, "Saved as $saveAsNameInput", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
+                ) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveAsDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false },
+            title = { Text(if (isProtectAction) "Protect PDF with Password" else "Remove Password") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (isProtectAction) {
+                        Text("Set a password to encrypt this PDF document:", fontSize = 13.sp, color = Color.Gray)
+                        OutlinedTextField(
+                            value = passwordInput,
+                            onValueChange = { passwordInput = it },
+                            label = { Text("Password") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    } else {
+                        Text("Remove password protection from this document?", fontSize = 14.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showPasswordDialog = false
+                        if (isProtectAction) {
+                            viewModel.toggleProtectFile(currentFile, passwordInput)
+                            Toast.makeText(context, "Password protection applied!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            viewModel.toggleProtectFile(currentFile, "")
+                            Toast.makeText(context, "Password protection removed", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                ) {
+                    Text(if (isProtectAction) "Protect" else "Remove")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun EditorToolbarTabItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (isSelected) ToolBlue else Color.Transparent,
+        shape = RoundedCornerShape(8.dp),
+        modifier = Modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .testTag("tab_$label")
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (isSelected) Color.White else Color(0xFF94A3B8),
+                modifier = Modifier.size(20.dp)
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                color = if (isSelected) Color.White else Color(0xFF94A3B8),
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun PageOptionsSection(
+    onReorderPages: () -> Unit,
+    onRotatePage: () -> Unit,
+    onDeletePage: () -> Unit,
+    onDuplicatePage: () -> Unit,
+    onInsertBlankPage: () -> Unit,
+    onExtractPage: () -> Unit,
+    onSplitPdf: () -> Unit,
+    onMergePdf: () -> Unit,
+    onSelectAll: () -> Unit,
+    onApplyChanges: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Page Management", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Reorder", Icons.Default.SwapVert, ToolBlue, onReorderPages)
+            ToolButtonCard(Modifier.weight(1f), "Rotate Page", Icons.Default.RotateRight, ToolBlue, onRotatePage)
+            ToolButtonCard(Modifier.weight(1f), "Delete Page", Icons.Default.Delete, CrimsonPrimary, onDeletePage)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Duplicate", Icons.Default.ContentCopy, ToolPurple, onDuplicatePage)
+            ToolButtonCard(Modifier.weight(1f), "Insert Blank", Icons.Default.AddBox, ToolGreen, onInsertBlankPage)
+            ToolButtonCard(Modifier.weight(1f), "Extract Page", Icons.Default.UploadFile, ToolOrange, onExtractPage)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Split PDF", Icons.Default.CallSplit, ToolBlue, onSplitPdf)
+            ToolButtonCard(Modifier.weight(1f), "Merge PDF", Icons.Default.MergeType, ToolGreen, onMergePdf)
+            ToolButtonCard(Modifier.weight(1f), "Select All", Icons.Default.SelectAll, ToolPurple, onSelectAll)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            onClick = onApplyChanges,
+            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .testTag("btn_apply_page_changes")
+        ) {
+            Text("Apply Page Changes", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun EditOptionsSection(
+    onCrop: () -> Unit,
+    onResize: () -> Unit,
+    onChangePageSize: () -> Unit,
+    onMargins: () -> Unit,
+    onWatermark: () -> Unit,
+    onBackground: () -> Unit,
+    onApplyChanges: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Document Layout & Edit", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Crop Pages", Icons.Default.Crop, ToolOrange, onCrop)
+            ToolButtonCard(Modifier.weight(1f), "Resize Pages", Icons.Default.ZoomOutMap, ToolBlue, onResize)
+            ToolButtonCard(Modifier.weight(1f), "Page Size", Icons.Default.FormatSize, ToolPurple, onChangePageSize)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Margins", Icons.Default.BorderOuter, ToolGreen, onMargins)
+            ToolButtonCard(Modifier.weight(1f), "Watermark", Icons.Default.Layers, ToolPurple, onWatermark)
+            ToolButtonCard(Modifier.weight(1f), "Background", Icons.Default.Palette, ToolOrange, onBackground)
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            onClick = onApplyChanges,
+            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .testTag("btn_apply_edit_changes")
+        ) {
+            Text("Apply Edits", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun TextOptionsSection(
+    onAddText: () -> Unit,
+    textColor: Int,
+    onColorChange: (Int) -> Unit,
+    fontSize: Float,
+    onFontSizeChange: (Float) -> Unit,
+    isBold: Boolean,
+    onToggleBold: () -> Unit,
+    isItalic: Boolean,
+    onToggleItalic: () -> Unit,
+    alignment: String,
+    onAlignmentChange: (String) -> Unit,
+    onDeleteSelectedText: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Text Insertion & Editing", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            Button(
+                onClick = onAddText,
+                colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier
+                    .height(32.dp)
+                    .testTag("btn_insert_text_action")
+            ) {
+                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("Add Text", fontSize = 11.sp)
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(AndroidColor.BLACK, AndroidColor.RED, AndroidColor.BLUE, AndroidColor.GREEN, AndroidColor.WHITE).forEach { c ->
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(c))
+                        .border(
+                            width = if (textColor == c) 2.dp else 1.dp,
+                            color = if (textColor == c) CrimsonPrimary else Color.Gray,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorChange(c) }
+                )
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            FilterChip(
+                selected = isBold,
+                onClick = onToggleBold,
+                label = { Text("B", fontWeight = FontWeight.Bold) },
+                modifier = Modifier.height(30.dp)
+            )
+            FilterChip(
+                selected = isItalic,
+                onClick = onToggleItalic,
+                label = { Text("I", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic) },
+                modifier = Modifier.height(30.dp)
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            IconButton(
+                onClick = onDeleteSelectedText,
+                modifier = Modifier.size(30.dp)
+            ) {
+                Icon(Icons.Default.Delete, contentDescription = "Delete Selected Text", tint = CrimsonPrimary)
+            }
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Align:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            FilterChip(
+                selected = alignment == "LEFT",
+                onClick = { onAlignmentChange("LEFT") },
+                label = { Text("Left", fontSize = 10.sp) },
+                modifier = Modifier.height(28.dp)
+            )
+            FilterChip(
+                selected = alignment == "CENTER",
+                onClick = { onAlignmentChange("CENTER") },
+                label = { Text("Center", fontSize = 10.sp) },
+                modifier = Modifier.height(28.dp)
+            )
+            FilterChip(
+                selected = alignment == "RIGHT",
+                onClick = { onAlignmentChange("RIGHT") },
+                label = { Text("Right", fontSize = 10.sp) },
+                modifier = Modifier.height(28.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun ImageOptionsSection(
+    onAddImage: () -> Unit,
+    onReplaceImage: () -> Unit,
+    onRotateSelectedImage: () -> Unit,
+    onResizeImage: (Float) -> Unit,
+    onDeleteSelectedImage: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Image Tools", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Add Image", Icons.Default.AddPhotoAlternate, ToolBlue, onAddImage)
+            ToolButtonCard(Modifier.weight(1f), "Replace", Icons.Default.Sync, ToolPurple, onReplaceImage)
+            ToolButtonCard(Modifier.weight(1f), "Rotate 90°", Icons.Default.RotateRight, ToolOrange, onRotateSelectedImage)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Enlarge (+)", Icons.Default.ZoomIn, ToolGreen) { onResizeImage(1.2f) }
+            ToolButtonCard(Modifier.weight(1f), "Shrink (-)", Icons.Default.ZoomOut, ToolGreen) { onResizeImage(0.8f) }
+            ToolButtonCard(Modifier.weight(1f), "Delete Image", Icons.Default.Delete, CrimsonPrimary, onDeleteSelectedImage)
+        }
+    }
+}
+
+@Composable
+private fun DrawOptionsSection(
+    drawMode: String,
+    onDrawModeChange: (String) -> Unit,
+    drawColor: Int,
+    onColorChange: (Int) -> Unit,
+    strokeThickness: Float,
+    onThicknessChange: (Float) -> Unit,
+    onClearAll: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("Draw & Annotate", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            TextButton(
+                onClick = onClearAll,
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            ) {
+                Text("Clear Page", color = CrimsonPrimary, fontSize = 11.sp)
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FilterChip(
+                selected = drawMode == "PEN",
+                onClick = { onDrawModeChange("PEN") },
+                label = { Text("Pen") },
+                leadingIcon = { Icon(Icons.Default.Draw, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp)
+            )
+            FilterChip(
+                selected = drawMode == "HIGHLIGHTER",
+                onClick = { onDrawModeChange("HIGHLIGHTER") },
+                label = { Text("Highlighter") },
+                leadingIcon = { Icon(Icons.Default.Highlight, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp)
+            )
+            FilterChip(
+                selected = drawMode == "ERASER",
+                onClick = { onDrawModeChange("ERASER") },
+                label = { Text("Eraser") },
+                leadingIcon = { Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp)
+            )
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            listOf(
+                AndroidColor.rgb(37, 99, 235), // Blue
+                AndroidColor.rgb(220, 38, 38), // Red
+                AndroidColor.rgb(16, 185, 129), // Green
+                AndroidColor.rgb(245, 158, 11), // Orange
+                AndroidColor.BLACK
+            ).forEach { c ->
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(c))
+                        .border(
+                            width = if (drawColor == c) 2.dp else 1.dp,
+                            color = if (drawColor == c) Color.White else Color.Gray,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorChange(c) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MoreOptionsSection(
+    onCompress: () -> Unit,
+    onConvertToImages: () -> Unit,
+    onProtectPassword: () -> Unit,
+    onRemovePassword: () -> Unit,
+    onAddPageNumbers: () -> Unit,
+    onSaveExport: () -> Unit,
+    onExportSAF: () -> Unit,
+    onApplyChanges: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("More Document Actions", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Compress", Icons.Default.Compress, ToolGreen, onCompress)
+            ToolButtonCard(Modifier.weight(1f), "To Images", Icons.Default.Image, ToolOrange, onConvertToImages)
+            ToolButtonCard(Modifier.weight(1f), "Protect", Icons.Default.Lock, ToolPurple, onProtectPassword)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Remove Pass", Icons.Default.LockOpen, ToolPurple, onRemovePassword)
+            ToolButtonCard(Modifier.weight(1f), "Page Numbers", Icons.Default.FormatListNumbered, ToolBlue, onAddPageNumbers)
+            ToolButtonCard(Modifier.weight(1f), "Save As", Icons.Default.SaveAs, ToolBlue, onSaveExport)
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolButtonCard(Modifier.weight(1f), "Export to Device", Icons.Default.Download, ToolGreen, onExportSAF)
+            Spacer(modifier = Modifier.weight(2f))
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        Button(
+            onClick = onApplyChanges,
+            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(38.dp)
+                .testTag("btn_apply_more_changes")
+        ) {
+            Text("Apply Changes", fontWeight = FontWeight.Bold)
+        }
+    }
+}
+
+@Composable
+private fun ToolButtonCard(
+    modifier: Modifier,
+    title: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    iconTint: Color,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = Color(0xFF243046),
+        shape = RoundedCornerShape(8.dp),
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = title,
+                tint = iconTint,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = title,
+                color = Color.White,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}

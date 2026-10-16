@@ -62,14 +62,14 @@ fun EditPdfScreen(
     }
 
     if (activeFile != null) {
-        viewModel.setWorkspaceEditMode(true)
-        PdfWorkspaceDialog(
-            initialFile = activeFile!!,
+        PdfEditorMainView(
+            fileRecord = activeFile!!,
             viewModel = viewModel,
-            startInEditMode = true,
-            onDismiss = {
+            onBack = {
                 activeFile = null
-                onBack()
+                if (initialFile != null) {
+                    onBack()
+                }
             }
         )
     } else {
