@@ -79,6 +79,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -581,6 +582,18 @@ fun PdfWorkspaceDialog(
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        // Edit Mode Toggle Button
+                        IconButton(
+                            onClick = { isEditMode = !isEditMode },
+                            modifier = Modifier.testTag("workspace_top_edit_button")
+                        ) {
+                            Icon(
+                                imageVector = if (isEditMode) Icons.Default.Check else Icons.Default.Edit,
+                                contentDescription = if (isEditMode) "Done Editing" else "Edit PDF",
+                                tint = if (isEditMode) Color(0xFF4ADE80) else Color.White
+                            )
+                        }
+
                         // Search Toggle
                         IconButton(
                             onClick = { isSearchActive = !isSearchActive },
@@ -935,16 +948,39 @@ fun PdfWorkspaceDialog(
                                         },
                                     colors = CardDefaults.cardColors(containerColor = Color.Transparent)
                                 ) {
-                                    Box(
+                                    BoxWithConstraints(
                                         modifier = Modifier.fillMaxSize(),
                                         contentAlignment = Alignment.Center
                                     ) {
+                                        val containerW = maxWidth
+                                        val containerH = maxHeight
+                                        val bmpW = currentBmp.width.toFloat()
+                                        val bmpH = currentBmp.height.toFloat()
+                                        val pageAspect = if (bmpH > 0f) bmpW / bmpH else 1f
+                                        val containerAspect = if (containerH.value > 0f) containerW.value / containerH.value else 1f
+
+                                        // Constrain strictly within container bounds to prevent clipping or distortion
+                                        val pageModifier = if (fitPageMode) {
+                                            if (pageAspect > containerAspect) {
+                                                // Page is wider than container -> bound width to containerW
+                                                Modifier
+                                                    .fillMaxWidth()
+                                                    .aspectRatio(pageAspect)
+                                            } else {
+                                                // Page is taller than container -> bound height to containerH
+                                                Modifier
+                                                    .fillMaxHeight()
+                                                    .aspectRatio(pageAspect)
+                                            }
+                                        } else {
+                                            // Fit Width mode
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(pageAspect)
+                                        }
+
                                         Box(
-                                            modifier = Modifier
-                                                .then(
-                                                    if (fitPageMode) Modifier.fillMaxHeight(1.0f) else Modifier.fillMaxWidth(1.0f)
-                                                )
-                                                .aspectRatio(currentBmp.width.toFloat() / currentBmp.height.toFloat())
+                                            modifier = pageModifier
                                                 .background(Color.White)
                                                 .shadow(8.dp)
                                         ) {
@@ -952,6 +988,7 @@ fun PdfWorkspaceDialog(
                                             Image(
                                                 bitmap = currentBmp.asImageBitmap(),
                                                 contentDescription = "PDF Page ${currentPageIndex + 1}",
+                                                contentScale = ContentScale.Fit,
                                                 modifier = Modifier.fillMaxSize()
                                             )
 
@@ -2400,7 +2437,9 @@ fun PdfWorkspaceDialog(
                         color = Color(0xFF1E293B),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .zIndex(5f)
+                            .navigationBarsPadding()
+                            .zIndex(10f),
+                        shadowElevation = 8.dp
                     ) {
                         Column(modifier = Modifier.fillMaxWidth()) {
                             // In-Workspace Editing Header Controls (Undo / Redo / Done)
@@ -4263,15 +4302,16 @@ fun PdfWorkspaceDialog(
                 }
 
                 // ====================================================
-                // 5. PRIMARY WORKSPACE ACTION DOCK (Quick Access)
+                // 5. PRIMARY WORKSPACE ACTION DOCK (Visible when NOT in edit mode)
                 // ====================================================
-                Surface(
-                    color = Color(0xFF1E293B),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .zIndex(10f),
-                    shadowElevation = 8.dp
-                ) {
+                if (!isEditMode) {
+                    Surface(
+                        color = Color(0xFF1E293B),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .zIndex(10f),
+                        shadowElevation = 8.dp
+                    ) {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -4356,9 +4396,9 @@ fun PdfWorkspaceDialog(
                             // Prominent EDIT button
                             item {
                                 Button(
-                                    onClick = { isEditMode = !isEditMode },
+                                    onClick = { isEditMode = true },
                                     colors = ButtonDefaults.buttonColors(
-                                        containerColor = if (isEditMode) Color(0xFF22C55E) else CrimsonPrimary
+                                        containerColor = CrimsonPrimary
                                     ),
                                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp),
                                     modifier = Modifier
@@ -4366,13 +4406,13 @@ fun PdfWorkspaceDialog(
                                         .testTag("workspace_primary_edit_button")
                                 ) {
                                     Icon(
-                                        imageVector = if (isEditMode) Icons.Default.Check else Icons.Default.Edit,
+                                        imageVector = Icons.Default.Edit,
                                         contentDescription = null,
                                         modifier = Modifier.size(16.dp)
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = if (isEditMode) "Done" else "✏️ EDIT",
+                                        text = "✏️ EDIT",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 12.sp
                                     )
@@ -4456,6 +4496,7 @@ fun PdfWorkspaceDialog(
                         }
                     }
                 }
+            }
             }
 
             // ====================================================
