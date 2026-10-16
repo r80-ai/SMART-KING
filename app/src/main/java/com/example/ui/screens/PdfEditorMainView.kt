@@ -1,13 +1,9 @@
 package com.example.ui.screens
 
-import android.app.Application
 import android.content.Context
-import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
-import android.graphics.Paint as AndroidPaint
-import android.graphics.Rect as AndroidRect
 import android.graphics.Typeface as AndroidTypeface
 import android.net.Uri
 import android.widget.Toast
@@ -24,22 +20,20 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.Redo
+import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -53,23 +47,25 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.PdfFileRecord
 import com.example.pdf.PdfEngine
-import com.example.pdf.PdfToJpgConverter
 import com.example.ui.PdfMasterViewModel
-import com.example.ui.dialogs.WorkspaceCropDialog
-import com.example.ui.dialogs.WorkspacePageNumbersDialog
-import com.example.ui.dialogs.WorkspacePagesSheet
-import com.example.ui.dialogs.WorkspaceWatermarkDialog
 import com.example.ui.theme.CrimsonPrimary
 import com.example.ui.theme.ToolBlue
 import com.example.ui.theme.ToolGreen
@@ -79,12 +75,53 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.io.FileOutputStream
+import kotlin.math.roundToInt
 
-enum class EditorTopTab {
-    NONE, PAGE, EDIT, TEXT, IMAGE, DRAW, MORE
+/**
+ * Editor tools enum
+ */
+enum class EditorTool {
+    VIEW, TEXT, IMAGE, DRAW, HIGHLIGHTER, ERASER
 }
 
+/**
+ * History action for Undo / Redo
+ */
+sealed class EditHistoryAction {
+    data class AddItem(val item: PdfEngine.EditItem) : EditHistoryAction()
+    data class RemoveItem(val item: PdfEngine.EditItem) : EditHistoryAction()
+    data class ModifyItem(val oldItem: PdfEngine.EditItem, val newItem: PdfEngine.EditItem) : EditHistoryAction()
+}
+
+/**
+ * Font option with label and font identifier
+ */
+data class FontOption(
+    val id: String,
+    val displayName: String,
+    val previewText: String,
+    val fontFamily: FontFamily = FontFamily.Default
+)
+
+/**
+ * PDFViewerEditor alias for PdfEditorMainView
+ */
+@Composable
+fun PDFViewerEditor(
+    fileRecord: PdfFileRecord,
+    viewModel: PdfMasterViewModel,
+    onBack: () -> Unit
+) {
+    PdfEditorMainView(
+        fileRecord = fileRecord,
+        viewModel = viewModel,
+        onBack = onBack
+    )
+}
+
+/**
+ * PdfEditorMainView - Simplified, high-performance PDF editor
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PdfEditorMainView(
@@ -93,75 +130,106 @@ fun PdfEditorMainView(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val coroutineScope = rememberCoroutineScope()
 
     var currentFile by remember(fileRecord) { mutableStateOf(fileRecord) }
-    val allFiles by viewModel.allFiles.collectAsState()
     val pages by viewModel.renderedPages.collectAsState()
     val isProcessing by viewModel.isProcessing.collectAsState()
     val processingMessage by viewModel.processingMessage.collectAsState()
 
     var currentPageIndex by remember { mutableIntStateOf(0) }
-    var activeTab by remember { mutableStateOf(EditorTopTab.NONE) }
+    var currentTool by remember { mutableStateOf(EditorTool.VIEW) }
+
+    // Viewport transforms
     var zoomScale by remember { mutableFloatStateOf(1.0f) }
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var fitPageMode by remember { mutableStateOf(true) }
     var showThumbnailTray by remember { mutableStateOf(false) }
 
-    // Edit history & accumulated items
+    // Edit items & history
     val editItems = remember { mutableStateListOf<PdfEngine.EditItem>() }
     val deletedPages = remember { mutableStateListOf<Int>() }
     val pageRotations = remember { mutableStateMapOf<Int, Int>() }
     var selectedAnnotationId by remember { mutableStateOf<String?>(null) }
-    var pageBackgroundColor by remember { mutableStateOf(Color.White) }
+    val undoStack = remember { mutableStateListOf<EditHistoryAction>() }
+    val redoStack = remember { mutableStateListOf<EditHistoryAction>() }
+
+    // Active page size in pixels
+    var pageContainerSize by remember { mutableStateOf(IntSize(1, 1)) }
+
+    // Undo / Redo helpers
+    fun pushAction(action: EditHistoryAction) {
+        undoStack.add(action)
+        redoStack.clear()
+    }
+
+    fun handleUndo() {
+        if (undoStack.isEmpty()) return
+        val action = undoStack.removeAt(undoStack.lastIndex)
+        when (action) {
+            is EditHistoryAction.AddItem -> {
+                editItems.removeAll { it.id == action.item.id }
+                if (selectedAnnotationId == action.item.id) selectedAnnotationId = null
+            }
+            is EditHistoryAction.RemoveItem -> {
+                editItems.add(action.item)
+                selectedAnnotationId = action.item.id
+            }
+            is EditHistoryAction.ModifyItem -> {
+                val idx = editItems.indexOfFirst { it.id == action.newItem.id }
+                if (idx != -1) {
+                    editItems[idx] = action.oldItem
+                }
+            }
+        }
+        redoStack.add(action)
+    }
+
+    fun handleRedo() {
+        if (redoStack.isEmpty()) return
+        val action = redoStack.removeAt(redoStack.lastIndex)
+        when (action) {
+            is EditHistoryAction.AddItem -> {
+                editItems.add(action.item)
+                selectedAnnotationId = action.item.id
+            }
+            is EditHistoryAction.RemoveItem -> {
+                editItems.removeAll { it.id == action.item.id }
+                if (selectedAnnotationId == action.item.id) selectedAnnotationId = null
+            }
+            is EditHistoryAction.ModifyItem -> {
+                val idx = editItems.indexOfFirst { it.id == action.oldItem.id }
+                if (idx != -1) {
+                    editItems[idx] = action.newItem
+                }
+            }
+        }
+        undoStack.add(action)
+    }
 
     // Text tool state
     var showAddTextDialog by remember { mutableStateOf(false) }
     var textInputContent by remember { mutableStateOf("") }
     var textColor by remember { mutableIntStateOf(AndroidColor.BLACK) }
-    var textFontSize by remember { mutableFloatStateOf(18f) }
+    var textFontSize by remember { mutableFloatStateOf(24f) }
+    var textFontFamily by remember { mutableStateOf("BENGALI") }
     var textIsBold by remember { mutableStateOf(false) }
     var textIsItalic by remember { mutableStateOf(false) }
-    var textAlignment by remember { mutableStateOf("LEFT") }
 
-    // Draw tool state
-    var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
-    var drawColor by remember { mutableIntStateOf(AndroidColor.rgb(37, 99, 235)) }
+    // Drawing state
+    var drawColor by remember { mutableIntStateOf(AndroidColor.rgb(220, 38, 38)) }
     var strokeThickness by remember { mutableFloatStateOf(4f) }
+    var highlighterWidth by remember { mutableFloatStateOf(28f) }
+    var highlighterColor by remember { mutableIntStateOf(AndroidColor.rgb(250, 204, 21)) }
     val activeStroke = remember { mutableStateListOf<Pair<Float, Float>>() }
 
-    // Sub-dialogs state
-    var showPagesSheet by remember { mutableStateOf(false) }
-    var showCropDialog by remember { mutableStateOf(false) }
-    var showWatermarkWorkspaceDialog by remember { mutableStateOf(false) }
-    var showPageNumbersWorkspaceDialog by remember { mutableStateOf(false) }
-    var showChangePageSizeDialog by remember { mutableStateOf(false) }
-    var showResizePagesDialog by remember { mutableStateOf(false) }
-    var showMarginsDialog by remember { mutableStateOf(false) }
-    var showBackgroundDialog by remember { mutableStateOf(false) }
-    var showMergePdfDialog by remember { mutableStateOf(false) }
-    var showSaveAsDialog by remember { mutableStateOf(false) }
-    var saveAsNameInput by remember { mutableStateOf("${currentFile.nameWithoutExtension()}_edited.pdf") }
-    var showPasswordDialog by remember { mutableStateOf(false) }
-    var passwordInput by remember { mutableStateOf("") }
-    var isProtectAction by remember { mutableStateOf(true) }
-    var moreMenuExpanded by remember { mutableStateOf(false) }
-
-    // SAF Document Export Launcher
-    val exportDocumentLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/pdf")
-    ) { uri ->
-        if (uri != null) {
-            viewModel.exportFileToExternalUri(currentFile, uri)
-        }
-    }
-
-    // Ensure pages are loaded whenever this file is opened or refreshed
+    // Ensure pages are loaded
     LaunchedEffect(currentFile.filePath, currentFile.uriString) {
         viewModel.loadPagesForViewer(currentFile, forceReload = true)
     }
 
-    // Clamp page index when pages list updates
+    // Clamp page index
     LaunchedEffect(pages.size) {
         if (pages.isNotEmpty() && currentPageIndex >= pages.size) {
             currentPageIndex = (pages.size - 1).coerceAtLeast(0)
@@ -180,32 +248,28 @@ fun PdfEditorMainView(
                         val bmp = BitmapFactory.decodeStream(stream)
                         if (bmp != null) {
                             withContext(Dispatchers.Main) {
-                                if (isReplacingImage && selectedAnnotationId != null) {
-                                    val idx = editItems.indexOfFirst { it.id == selectedAnnotationId }
-                                    if (idx != -1) {
-                                        val old = editItems[idx]
-                                        editItems[idx] = old.copy(
-                                            imageBitmap = bmp,
-                                            originalImageBitmap = bmp
-                                        )
-                                        Toast.makeText(context, "Image replaced", Toast.LENGTH_SHORT).show()
-                                    }
-                                    isReplacingImage = false
-                                } else {
-                                    val newItem = PdfEngine.EditItem(
-                                        pageIndex = currentPageIndex,
-                                        type = PdfEngine.AnnotationType.IMAGE,
-                                        imageBitmap = bmp,
-                                        originalImageBitmap = bmp,
-                                        posX = 80f,
-                                        posY = 120f,
-                                        imageWidth = 200f,
-                                        imageHeight = (200f * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
-                                    )
-                                    editItems.add(newItem)
-                                    selectedAnnotationId = newItem.id
-                                    Toast.makeText(context, "Image added to page ${currentPageIndex + 1}", Toast.LENGTH_SHORT).show()
-                                }
+                                val targetW = (pageContainerSize.width * 0.45f).coerceIn(120f, 400f)
+                                val targetH = (targetW * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
+                                val startX = ((pageContainerSize.width - targetW) / 2f).coerceAtLeast(20f)
+                                val startY = ((pageContainerSize.height - targetH) / 2f).coerceAtLeast(20f)
+
+                                val newItem = PdfEngine.EditItem(
+                                    pageIndex = currentPageIndex,
+                                    type = PdfEngine.AnnotationType.IMAGE,
+                                    imageBitmap = bmp,
+                                    originalImageBitmap = bmp,
+                                    posX = startX,
+                                    posY = startY,
+                                    imageWidth = targetW,
+                                    imageHeight = targetH,
+                                    baseWidth = pageContainerSize.width.toFloat(),
+                                    baseHeight = pageContainerSize.height.toFloat()
+                                )
+                                editItems.add(newItem)
+                                selectedAnnotationId = newItem.id
+                                pushAction(EditHistoryAction.AddItem(newItem))
+                                currentTool = EditorTool.VIEW
+                                Toast.makeText(context, "Image added. Drag & resize freely!", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
@@ -226,10 +290,10 @@ fun PdfEditorMainView(
     )
 
     BackHandler {
-        if (showThumbnailTray) {
+        if (selectedAnnotationId != null) {
+            selectedAnnotationId = null
+        } else if (showThumbnailTray) {
             showThumbnailTray = false
-        } else if (activeTab != EditorTopTab.NONE) {
-            activeTab = EditorTopTab.NONE
         } else {
             onBack()
         }
@@ -242,7 +306,8 @@ fun PdfEditorMainView(
             .testTag("pdf_editor_main_view")
     ) {
         // ====================================================
-        // 1. TOP APP BAR: [←] Document.pdf [Share] [Save] [⋮]
+        // 1. TOP APP BAR: [←] Document.pdf [Undo] [Redo] [Share] [Save]
+        // Three-dot menu removed; Undo and Redo added near Share and Save!
         // ====================================================
         Surface(
             color = Color(0xFF1E293B),
@@ -253,10 +318,11 @@ fun PdfEditorMainView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+                // Back button + Document title
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.weight(1f)
@@ -291,7 +357,38 @@ fun PdfEditorMainView(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Actions: Undo, Redo, Share, Save (No three-dot menu)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
+                ) {
+                    // Undo
+                    IconButton(
+                        onClick = { handleUndo() },
+                        enabled = undoStack.isNotEmpty(),
+                        modifier = Modifier.testTag("editor_top_undo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Undo",
+                            tint = if (undoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                        )
+                    }
+
+                    // Redo
+                    IconButton(
+                        onClick = { handleRedo() },
+                        enabled = redoStack.isNotEmpty(),
+                        modifier = Modifier.testTag("editor_top_redo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "Redo",
+                            tint = if (redoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                        )
+                    }
+
+                    // Share
                     IconButton(
                         onClick = { viewModel.shareFile(context, currentFile) },
                         modifier = Modifier.testTag("editor_share_button")
@@ -299,6 +396,7 @@ fun PdfEditorMainView(
                         Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
                     }
 
+                    // Save
                     Button(
                         onClick = {
                             val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
@@ -323,384 +421,17 @@ fun PdfEditorMainView(
                         Spacer(modifier = Modifier.width(4.dp))
                         Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                     }
-
-                    Box {
-                        IconButton(
-                            onClick = { moreMenuExpanded = true },
-                            modifier = Modifier.testTag("editor_top_more_menu")
-                        ) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
-                        }
-
-                        DropdownMenu(
-                            expanded = moreMenuExpanded,
-                            onDismissRequest = { moreMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Save As...") },
-                                leadingIcon = { Icon(Icons.Default.SaveAs, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    saveAsNameInput = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    showSaveAsDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Export to Device") },
-                                leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    exportDocumentLauncher.launch(currentFile.name)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Export to JPG Images") },
-                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    coroutineScope.launch {
-                                        try {
-                                            val res = PdfToJpgConverter.convertPdfToJpg(context, File(currentFile.filePath))
-                                            Toast.makeText(context, "Exported ${res.pages.size} pages to JPG", Toast.LENGTH_SHORT).show()
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Conversion failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Compress PDF") },
-                                leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Document Info") },
-                                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    Toast.makeText(
-                                        context,
-                                        "${currentFile.name}\nPages: $totalPages\nSize: ${(currentFile.fileSize / 1024).coerceAtLeast(1)} KB",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            )
-                        }
-                    }
                 }
             }
         }
 
         // ====================================================
-        // 2. TOP TOOLBAR: [Page] [Edit] [Text] [Image] [Draw] [More]
-        // ====================================================
-        Surface(
-            color = Color(0xFF1E293B),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 6.dp)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                EditorToolbarTabItem(
-                    label = "Page",
-                    icon = Icons.Default.Description,
-                    isSelected = activeTab == EditorTopTab.PAGE,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.PAGE) EditorTopTab.NONE else EditorTopTab.PAGE }
-                )
-                EditorToolbarTabItem(
-                    label = "Edit",
-                    icon = Icons.Default.Tune,
-                    isSelected = activeTab == EditorTopTab.EDIT,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.EDIT) EditorTopTab.NONE else EditorTopTab.EDIT }
-                )
-                EditorToolbarTabItem(
-                    label = "Text",
-                    icon = Icons.Default.TextFields,
-                    isSelected = activeTab == EditorTopTab.TEXT,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.TEXT) EditorTopTab.NONE else EditorTopTab.TEXT }
-                )
-                EditorToolbarTabItem(
-                    label = "Image",
-                    icon = Icons.Default.Image,
-                    isSelected = activeTab == EditorTopTab.IMAGE,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.IMAGE) EditorTopTab.NONE else EditorTopTab.IMAGE }
-                )
-                EditorToolbarTabItem(
-                    label = "Draw",
-                    icon = Icons.Default.Draw,
-                    isSelected = activeTab == EditorTopTab.DRAW,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.DRAW) EditorTopTab.NONE else EditorTopTab.DRAW }
-                )
-                EditorToolbarTabItem(
-                    label = "More",
-                    icon = Icons.Default.MoreHoriz,
-                    isSelected = activeTab == EditorTopTab.MORE,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.MORE) EditorTopTab.NONE else EditorTopTab.MORE }
-                )
-            }
-        }
-
-        // ====================================================
-        // 3. SUB-OPTIONS PANEL (When a top tab is active)
-        // ====================================================
-        AnimatedVisibility(visible = activeTab != EditorTopTab.NONE) {
-            Surface(
-                color = Color(0xFF1B2333),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 260.dp),
-                shadowElevation = 6.dp
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    when (activeTab) {
-                        EditorTopTab.PAGE -> {
-                            PageOptionsSection(
-                                onReorderPages = { showPagesSheet = true },
-                                onRotatePage = {
-                                    val cur = pageRotations[currentPageIndex] ?: 0
-                                    pageRotations[currentPageIndex] = (cur + 90) % 360
-                                    Toast.makeText(context, "Page ${currentPageIndex + 1} rotated +90°", Toast.LENGTH_SHORT).show()
-                                },
-                                onDeletePage = {
-                                    if (totalPages > 1) {
-                                        deletedPages.add(currentPageIndex)
-                                        Toast.makeText(context, "Page ${currentPageIndex + 1} marked for deletion", Toast.LENGTH_SHORT).show()
-                                    } else {
-                                        Toast.makeText(context, "Cannot delete the only page in the document", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onDuplicatePage = {
-                                    showPagesSheet = true
-                                },
-                                onInsertBlankPage = {
-                                    showPagesSheet = true
-                                },
-                                onExtractPage = {
-                                    val sanitized = "${currentFile.nameWithoutExtension()}_p${currentPageIndex + 1}.pdf"
-                                    viewModel.splitPdf(currentFile, listOf(currentPageIndex), sanitized, "Extract Page", "Single page extracted") {
-                                        Toast.makeText(context, "Page ${currentPageIndex + 1} extracted successfully!", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onSplitPdf = {
-                                    val outName = "${currentFile.nameWithoutExtension()}_split.pdf"
-                                    viewModel.splitPdf(currentFile, listOf(currentPageIndex), outName)
-                                    Toast.makeText(context, "Splitting PDF...", Toast.LENGTH_SHORT).show()
-                                },
-                                onMergePdf = {
-                                    showMergePdfDialog = true
-                                },
-                                onSelectAll = {
-                                    Toast.makeText(context, "All $totalPages pages selected for batch actions", Toast.LENGTH_SHORT).show()
-                                },
-                                onApplyChanges = {
-                                    val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    viewModel.saveEditedPdf(
-                                        sourceRecord = currentFile,
-                                        items = editItems.toList(),
-                                        deletedPages = deletedPages.toSet(),
-                                        pageRotations = pageRotations.toMap(),
-                                        outputName = outputName
-                                    ) { newRec ->
-                                        currentFile = newRec
-                                        deletedPages.clear()
-                                        Toast.makeText(context, "Page changes applied!", Toast.LENGTH_SHORT).show()
-                                    }
-                                    activeTab = EditorTopTab.NONE
-                                }
-                            )
-                        }
-
-                        EditorTopTab.EDIT -> {
-                            EditOptionsSection(
-                                onCrop = { showCropDialog = true },
-                                onResize = { showResizePagesDialog = true },
-                                onChangePageSize = { showChangePageSizeDialog = true },
-                                onMargins = { showMarginsDialog = true },
-                                onWatermark = { showWatermarkWorkspaceDialog = true },
-                                onBackground = { showBackgroundDialog = true },
-                                onApplyChanges = {
-                                    val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    viewModel.saveEditedPdf(
-                                        sourceRecord = currentFile,
-                                        items = editItems.toList(),
-                                        deletedPages = deletedPages.toSet(),
-                                        pageRotations = pageRotations.toMap(),
-                                        outputName = outputName
-                                    ) { newRec ->
-                                        currentFile = newRec
-                                        Toast.makeText(context, "Edits applied!", Toast.LENGTH_SHORT).show()
-                                    }
-                                    activeTab = EditorTopTab.NONE
-                                }
-                            )
-                        }
-
-                        EditorTopTab.TEXT -> {
-                            TextOptionsSection(
-                                onAddText = {
-                                    textInputContent = ""
-                                    showAddTextDialog = true
-                                },
-                                textColor = textColor,
-                                onColorChange = { textColor = it },
-                                fontSize = textFontSize,
-                                onFontSizeChange = { textFontSize = it },
-                                isBold = textIsBold,
-                                onToggleBold = { textIsBold = !textIsBold },
-                                isItalic = textIsItalic,
-                                onToggleItalic = { textIsItalic = !textIsItalic },
-                                alignment = textAlignment,
-                                onAlignmentChange = { textAlignment = it },
-                                onDeleteSelectedText = {
-                                    selectedAnnotationId?.let { id ->
-                                        editItems.removeAll { it.id == id }
-                                        selectedAnnotationId = null
-                                        Toast.makeText(context, "Text deleted", Toast.LENGTH_SHORT).show()
-                                    }
-                                }
-                            )
-                        }
-
-                        EditorTopTab.IMAGE -> {
-                            ImageOptionsSection(
-                                onAddImage = {
-                                    isReplacingImage = false
-                                    imagePickerLauncher.launch(
-                                        androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                },
-                                onReplaceImage = {
-                                    if (selectedAnnotationId != null) {
-                                        isReplacingImage = true
-                                        imagePickerLauncher.launch(
-                                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                        )
-                                    } else {
-                                        Toast.makeText(context, "Tap an image to select it first", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onRotateSelectedImage = {
-                                    selectedAnnotationId?.let { id ->
-                                        val idx = editItems.indexOfFirst { it.id == id }
-                                        if (idx != -1) {
-                                            val old = editItems[idx]
-                                            editItems[idx] = old.copy(imageRotation = (old.imageRotation + 90f) % 360f)
-                                            Toast.makeText(context, "Image rotated +90°", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
-                                },
-                                onResizeImage = { factor ->
-                                    selectedAnnotationId?.let { id ->
-                                        val idx = editItems.indexOfFirst { it.id == id }
-                                        if (idx != -1) {
-                                            val old = editItems[idx]
-                                            val newW = (old.imageWidth * factor).coerceIn(40f, 800f)
-                                            val newH = (old.imageHeight * factor).coerceIn(40f, 800f)
-                                            editItems[idx] = old.copy(imageWidth = newW, imageHeight = newH)
-                                        }
-                                    }
-                                },
-                                onDeleteSelectedImage = {
-                                    selectedAnnotationId?.let { id ->
-                                        editItems.removeAll { it.id == id }
-                                        selectedAnnotationId = null
-                                        Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
-                                    } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-
-                        EditorTopTab.DRAW -> {
-                            DrawOptionsSection(
-                                drawMode = drawMode,
-                                onDrawModeChange = { drawMode = it },
-                                drawColor = drawColor,
-                                onColorChange = { drawColor = it },
-                                strokeThickness = strokeThickness,
-                                onThicknessChange = { strokeThickness = it },
-                                onClearAll = {
-                                    editItems.removeAll { it.pageIndex == currentPageIndex && (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER) }
-                                    Toast.makeText(context, "Page drawings cleared", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-
-                        EditorTopTab.MORE -> {
-                            MoreOptionsSection(
-                                onCompress = {
-                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
-                                    Toast.makeText(context, "Compressing PDF...", Toast.LENGTH_SHORT).show()
-                                },
-                                onConvertToImages = {
-                                    coroutineScope.launch {
-                                        try {
-                                            val res = PdfToJpgConverter.convertPdfToJpg(context, File(currentFile.filePath))
-                                            Toast.makeText(context, "Exported ${res.pages.size} pages to JPG", Toast.LENGTH_SHORT).show()
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Conversion failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
-                                },
-                                onProtectPassword = {
-                                    isProtectAction = true
-                                    showPasswordDialog = true
-                                },
-                                onRemovePassword = {
-                                    isProtectAction = false
-                                    viewModel.toggleProtectFile(currentFile, "")
-                                    Toast.makeText(context, "Password protection removed", Toast.LENGTH_SHORT).show()
-                                },
-                                onAddPageNumbers = {
-                                    showPageNumbersWorkspaceDialog = true
-                                },
-                                onSaveExport = {
-                                    showSaveAsDialog = true
-                                },
-                                onExportSAF = {
-                                    exportDocumentLauncher.launch(currentFile.name)
-                                },
-                                onApplyChanges = {
-                                    val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    viewModel.saveEditedPdf(
-                                        sourceRecord = currentFile,
-                                        items = editItems.toList(),
-                                        deletedPages = deletedPages.toSet(),
-                                        pageRotations = pageRotations.toMap(),
-                                        outputName = outputName
-                                    ) { newRec ->
-                                        currentFile = newRec
-                                        Toast.makeText(context, "Document updated!", Toast.LENGTH_SHORT).show()
-                                    }
-                                    activeTab = EditorTopTab.NONE
-                                }
-                            )
-                        }
-
-                        EditorTopTab.NONE -> {}
-                    }
-                }
-            }
-        }
-
-        // ====================================================
-        // 4. MAIN VIEWPORT: PDF Page Display & Annotation Canvas
+        // 2. MAIN PREVIEW CONTAINER
+        // - "Zoom In" and "Fit Width" relocated to TOP area of container
+        // - PDF Canvas with interactive draggable/resizable text & image manipulation
+        // - Canvas shift during drawing fixed
+        // - Highlighter with customizable touch size
+        // - Eraser effectively selects and deletes paths
         // ====================================================
         Box(
             modifier = Modifier
@@ -742,14 +473,6 @@ fun PdfEditorMainView(
                             fontSize = 15.sp,
                             fontWeight = FontWeight.SemiBold
                         )
-                        Spacer(modifier = Modifier.height(6.dp))
-                        Text(
-                            text = currentFile.name,
-                            color = Color(0xFF94A3B8),
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
                         Spacer(modifier = Modifier.height(14.dp))
                         Button(
                             onClick = {
@@ -766,18 +489,24 @@ fun PdfEditorMainView(
             } else {
                 val currentBmp = pages.getOrNull(currentPageIndex) ?: pages.firstOrNull()
                 if (currentBmp != null) {
+                    // FIX: Viewport pan/zoom is active ONLY when tool is VIEW.
+                    // This prevents canvas shift or resizing during drawing/highlighting!
+                    val isPanZoomEnabled = (currentTool == EditorTool.VIEW && selectedAnnotationId == null)
+
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTransformGestures { centroid, pan, zoom, _ ->
-                                    val oldScale = zoomScale
-                                    val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
-                                    if (newScale != oldScale) {
-                                        panOffset = (panOffset - centroid) * (newScale / oldScale) + centroid + pan
-                                        zoomScale = newScale
-                                    } else {
-                                        panOffset += pan
+                            .pointerInput(isPanZoomEnabled) {
+                                if (isPanZoomEnabled) {
+                                    detectTransformGestures { centroid, pan, zoom, _ ->
+                                        val oldScale = zoomScale
+                                        val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
+                                        if (newScale != oldScale) {
+                                            panOffset = (panOffset - centroid) * (newScale / oldScale) + centroid + pan
+                                            zoomScale = newScale
+                                        } else {
+                                            panOffset += pan
+                                        }
                                     }
                                 }
                             }
@@ -788,10 +517,14 @@ fun PdfEditorMainView(
                                             zoomScale = 1.0f
                                             panOffset = Offset.Zero
                                         } else {
-                                            val targetScale = 2.5f
+                                            val targetScale = 2.0f
                                             panOffset = (panOffset - tapOffset) * (targetScale / zoomScale) + tapOffset
                                             zoomScale = targetScale
                                         }
+                                    },
+                                    onTap = {
+                                        // Tap empty space deselects
+                                        selectedAnnotationId = null
                                     }
                                 )
                             },
@@ -838,12 +571,18 @@ fun PdfEditorMainView(
                                         .aspectRatio(pageAspect)
                                 }
 
+                                // Interactive PDF Page Canvas Container
                                 Box(
                                     modifier = pageModifier
-                                        .background(pageBackgroundColor)
+                                        .background(Color.White)
                                         .shadow(8.dp)
+                                        .onSizeChanged { size ->
+                                            if (size.width > 0 && size.height > 0) {
+                                                pageContainerSize = size
+                                            }
+                                        }
                                 ) {
-                                    // 1. Rendered PDF Page Image
+                                    // 1. Rendered PDF Page Background Image
                                     Image(
                                         bitmap = currentBmp.asImageBitmap(),
                                         contentDescription = "PDF Page ${currentPageIndex + 1}",
@@ -851,99 +590,113 @@ fun PdfEditorMainView(
                                         modifier = Modifier.fillMaxSize()
                                     )
 
-                                    // 2. Interactive Annotation & Drawing Canvas
+                                    // 2. Vector Drawing / Highlighter / Eraser Layer
                                     Canvas(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .pointerInput(activeTab, drawMode, drawColor, strokeThickness) {
-                                                if (activeTab != EditorTopTab.DRAW) return@pointerInput
+                                            .pointerInput(currentTool, drawColor, strokeThickness, highlighterColor, highlighterWidth) {
+                                                if (currentTool != EditorTool.DRAW && currentTool != EditorTool.HIGHLIGHTER && currentTool != EditorTool.ERASER) return@pointerInput
+
                                                 awaitEachGesture {
                                                     val down = awaitFirstDown()
-                                                    val points = mutableListOf(Pair(down.position.x, down.position.y))
-                                                    activeStroke.clear()
-                                                    activeStroke.add(Pair(down.position.x, down.position.y))
-                                                    do {
-                                                        val event = awaitPointerEvent()
-                                                        val change = event.changes.firstOrNull() ?: break
-                                                        if (change.pressed) {
-                                                            change.consume()
-                                                            points.add(Pair(change.position.x, change.position.y))
-                                                            activeStroke.add(Pair(change.position.x, change.position.y))
-                                                        }
-                                                    } while (event.changes.any { it.pressed })
+                                                    down.consume()
+                                                    val startX = down.position.x
+                                                    val startY = down.position.y
 
-                                                    if (points.size > 1) {
-                                                        val annotType = if (drawMode == "HIGHLIGHTER") {
-                                                            PdfEngine.AnnotationType.HIGHLIGHTER
-                                                        } else {
-                                                            PdfEngine.AnnotationType.PEN
+                                                    if (currentTool == EditorTool.ERASER) {
+                                                        // ERASER LOGIC: Check intersection with existing strokes
+                                                        fun eraseAt(x: Float, y: Float) {
+                                                            val radiusSq = 32f * 32f
+                                                            val toErase = editItems.filter { item ->
+                                                                item.pageIndex == currentPageIndex &&
+                                                                        (item.type == PdfEngine.AnnotationType.PEN || item.type == PdfEngine.AnnotationType.HIGHLIGHTER) &&
+                                                                        item.points.any { (px, py) ->
+                                                                            val dx = px - x
+                                                                            val dy = py - y
+                                                                            (dx * dx + dy * dy) <= radiusSq
+                                                                        }
+                                                            }
+                                                            toErase.forEach { item ->
+                                                                editItems.remove(item)
+                                                                pushAction(EditHistoryAction.RemoveItem(item))
+                                                            }
                                                         }
-                                                        editItems.add(
-                                                            PdfEngine.EditItem(
-                                                                pageIndex = currentPageIndex,
-                                                                type = annotType,
-                                                                colorHex = drawColor,
-                                                                strokeWidth = strokeThickness,
-                                                                opacity = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f,
-                                                                points = points.toList()
-                                                            )
-                                                        )
+
+                                                        eraseAt(startX, startY)
+                                                        do {
+                                                            val event = awaitPointerEvent()
+                                                            val change = event.changes.firstOrNull() ?: break
+                                                            if (change.pressed) {
+                                                                change.consume()
+                                                                eraseAt(change.position.x, change.position.y)
+                                                            }
+                                                        } while (event.changes.any { it.pressed })
+
+                                                    } else {
+                                                        // DRAW / HIGHLIGHTER LOGIC
+                                                        val points = mutableListOf(Pair(startX, startY))
                                                         activeStroke.clear()
+                                                        activeStroke.add(Pair(startX, startY))
+
+                                                        do {
+                                                            val event = awaitPointerEvent()
+                                                            val change = event.changes.firstOrNull() ?: break
+                                                            if (change.pressed) {
+                                                                change.consume()
+                                                                points.add(Pair(change.position.x, change.position.y))
+                                                                activeStroke.add(Pair(change.position.x, change.position.y))
+                                                            }
+                                                        } while (event.changes.any { it.pressed })
+
+                                                        if (points.size > 1) {
+                                                            val isHighlight = (currentTool == EditorTool.HIGHLIGHTER)
+                                                            val newItem = PdfEngine.EditItem(
+                                                                pageIndex = currentPageIndex,
+                                                                type = if (isHighlight) PdfEngine.AnnotationType.HIGHLIGHTER else PdfEngine.AnnotationType.PEN,
+                                                                colorHex = if (isHighlight) highlighterColor else drawColor,
+                                                                strokeWidth = if (isHighlight) highlighterWidth else strokeThickness,
+                                                                opacity = if (isHighlight) 0.40f else 1.0f,
+                                                                points = points.toList(),
+                                                                baseWidth = pageContainerSize.width.toFloat(),
+                                                                baseHeight = pageContainerSize.height.toFloat()
+                                                            )
+                                                            editItems.add(newItem)
+                                                            pushAction(EditHistoryAction.AddItem(newItem))
+                                                            activeStroke.clear()
+                                                        }
                                                     }
                                                 }
                                             }
                                     ) {
-                                        // Draw existing edit items on this page
-                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex }
-                                        for (item in pageItems) {
-                                            when (item.type) {
-                                                PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
-                                                    val pts = item.points
-                                                    if (pts.size >= 2) {
-                                                        val path = androidx.compose.ui.graphics.Path()
-                                                        path.moveTo(pts[0].first, pts[0].second)
-                                                        for (i in 1 until pts.size) {
-                                                            path.lineTo(pts[i].first, pts[i].second)
-                                                        }
-                                                        drawPath(
-                                                            path = path,
-                                                            color = Color(item.colorHex).copy(alpha = item.opacity),
-                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                                width = item.strokeWidth.dp.toPx(),
-                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                                                join = androidx.compose.ui.graphics.StrokeJoin.Round
-                                                            )
-                                                        )
-                                                    }
+                                        // Draw existing pen and highlighter strokes
+                                        val pageDrawings = editItems.filter {
+                                            it.pageIndex == currentPageIndex &&
+                                                    (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER)
+                                        }
+
+                                        for (item in pageDrawings) {
+                                            val pts = item.points
+                                            if (pts.size >= 2) {
+                                                val path = androidx.compose.ui.graphics.Path()
+                                                path.moveTo(pts[0].first, pts[0].second)
+                                                for (i in 1 until pts.size) {
+                                                    path.lineTo(pts[i].first, pts[i].second)
                                                 }
-                                                PdfEngine.AnnotationType.TEXT -> {
-                                                    drawContext.canvas.nativeCanvas.apply {
-                                                        val p = AndroidPaint().apply {
-                                                            color = item.colorHex
-                                                            textSize = item.fontSize * density
-                                                            isFakeBoldText = item.isBold
-                                                            isAntiAlias = true
-                                                        }
-                                                        drawText(item.text, item.posX, item.posY, p)
-                                                    }
-                                                }
-                                                PdfEngine.AnnotationType.IMAGE -> {
-                                                    item.imageBitmap?.let { bmp ->
-                                                        val dst = AndroidRect(
-                                                            item.posX.toInt(),
-                                                            item.posY.toInt(),
-                                                            (item.posX + item.imageWidth).toInt(),
-                                                            (item.posY + item.imageHeight).toInt()
-                                                        )
-                                                        drawContext.canvas.nativeCanvas.drawBitmap(bmp, null, dst, null)
-                                                    }
-                                                }
-                                                else -> {}
+                                                drawPath(
+                                                    path = path,
+                                                    color = Color(item.colorHex).copy(alpha = item.opacity),
+                                                    style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                        width = item.strokeWidth.dp.toPx(),
+                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                                        join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                    )
+                                                )
                                             }
                                         }
 
                                         // Draw active in-progress stroke
                                         if (activeStroke.size >= 2) {
+                                            val isHighlight = (currentTool == EditorTool.HIGHLIGHTER)
                                             val path = androidx.compose.ui.graphics.Path()
                                             path.moveTo(activeStroke[0].first, activeStroke[0].second)
                                             for (i in 1 until activeStroke.size) {
@@ -951,39 +704,347 @@ fun PdfEditorMainView(
                                             }
                                             drawPath(
                                                 path = path,
-                                                color = Color(drawColor).copy(alpha = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f),
+                                                color = Color(if (isHighlight) highlighterColor else drawColor).copy(
+                                                    alpha = if (isHighlight) 0.40f else 1.0f
+                                                ),
                                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                    width = strokeThickness.dp.toPx(),
+                                                    width = (if (isHighlight) highlighterWidth else strokeThickness).dp.toPx(),
                                                     cap = androidx.compose.ui.graphics.StrokeCap.Round,
                                                     join = androidx.compose.ui.graphics.StrokeJoin.Round
                                                 )
                                             )
                                         }
                                     }
+
+                                    // 3. Interactive Draggable & Resizable Overlays for TEXT and IMAGE items
+                                    val pageInteractiveItems = editItems.filter {
+                                        it.pageIndex == currentPageIndex &&
+                                                (it.type == PdfEngine.AnnotationType.TEXT || it.type == PdfEngine.AnnotationType.IMAGE)
+                                    }
+
+                                    for (item in pageInteractiveItems) {
+                                        key(item.id) {
+                                            if (item.type == PdfEngine.AnnotationType.TEXT) {
+                                                InteractiveTextOverlay(
+                                                    item = item,
+                                                    isSelected = (selectedAnnotationId == item.id),
+                                                    pageBounds = pageContainerSize,
+                                                    onSelect = { selectedAnnotationId = item.id },
+                                                    onPositionChange = { newX, newY ->
+                                                        val idx = editItems.indexOfFirst { it.id == item.id }
+                                                        if (idx != -1) {
+                                                            val old = editItems[idx]
+                                                            editItems[idx] = old.copy(posX = newX, posY = newY)
+                                                        }
+                                                    },
+                                                    onSizeScale = { scale ->
+                                                        val idx = editItems.indexOfFirst { it.id == item.id }
+                                                        if (idx != -1) {
+                                                            val old = editItems[idx]
+                                                            val updated = (old.fontSize * scale).coerceIn(10f, 120f)
+                                                            editItems[idx] = old.copy(fontSize = updated)
+                                                        }
+                                                    },
+                                                    onDelete = {
+                                                        editItems.remove(item)
+                                                        if (selectedAnnotationId == item.id) selectedAnnotationId = null
+                                                        pushAction(EditHistoryAction.RemoveItem(item))
+                                                        Toast.makeText(context, "Text removed", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                )
+                                            } else if (item.type == PdfEngine.AnnotationType.IMAGE) {
+                                                InteractiveImageOverlay(
+                                                    item = item,
+                                                    isSelected = (selectedAnnotationId == item.id),
+                                                    pageBounds = pageContainerSize,
+                                                    onSelect = { selectedAnnotationId = item.id },
+                                                    onPositionChange = { newX, newY ->
+                                                        val idx = editItems.indexOfFirst { it.id == item.id }
+                                                        if (idx != -1) {
+                                                            val old = editItems[idx]
+                                                            editItems[idx] = old.copy(posX = newX, posY = newY)
+                                                        }
+                                                    },
+                                                    onDimensionScale = { scale ->
+                                                        val idx = editItems.indexOfFirst { it.id == item.id }
+                                                        if (idx != -1) {
+                                                            val old = editItems[idx]
+                                                            val nw = (old.imageWidth * scale).coerceIn(40f, 800f)
+                                                            val nh = (old.imageHeight * scale).coerceIn(40f, 800f)
+                                                            editItems[idx] = old.copy(imageWidth = nw, imageHeight = nh)
+                                                        }
+                                                    },
+                                                    onRotate = {
+                                                        val idx = editItems.indexOfFirst { it.id == item.id }
+                                                        if (idx != -1) {
+                                                            val old = editItems[idx]
+                                                            editItems[idx] = old.copy(imageRotation = (old.imageRotation + 90f) % 360f)
+                                                        }
+                                                    },
+                                                    onDelete = {
+                                                        editItems.remove(item)
+                                                        if (selectedAnnotationId == item.id) selectedAnnotationId = null
+                                                        pushAction(EditHistoryAction.RemoveItem(item))
+                                                        Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
 
-                        // Floating Page Indicator Pill
+                        // ====================================================
+                        // RELOCATED "Zoom In" and "Fit Width" BUTTONS:
+                        // Positioned at the TOP AREA of the PDF preview container
+                        // ====================================================
                         Surface(
-                            color = Color(0xFF1E293B).copy(alpha = 0.88f),
-                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xFF1E293B).copy(alpha = 0.92f),
+                            shape = RoundedCornerShape(20.dp),
+                            shadowElevation = 6.dp,
                             modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .padding(bottom = 12.dp)
-                                .clickable { showThumbnailTray = !showThumbnailTray }
+                                .align(Alignment.TopCenter)
+                                .padding(top = 10.dp)
+                                .testTag("top_viewport_controls")
                         ) {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                             ) {
-                                Icon(Icons.Default.ViewCarousel, contentDescription = null, tint = Color(0xFF94A3B8), modifier = Modifier.size(14.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
+                                // Zoom In / Zoom Out button
+                                FilledTonalButton(
+                                    onClick = {
+                                        zoomScale = if (zoomScale > 1.2f) 1.0f else 2.0f
+                                        panOffset = Offset.Zero
+                                    },
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF334155),
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(30.dp)
+                                        .testTag("btn_zoom_in_top")
+                                ) {
+                                    Icon(
+                                        imageVector = if (zoomScale > 1.2f) Icons.Default.ZoomOut else Icons.Default.ZoomIn,
+                                        contentDescription = "Zoom In",
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (zoomScale > 1.2f) "Zoom Out" else "Zoom In",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                // Fit Width / Fit Page button
+                                FilledTonalButton(
+                                    onClick = { fitPageMode = !fitPageMode },
+                                    colors = ButtonDefaults.filledTonalButtonColors(
+                                        containerColor = Color(0xFF334155),
+                                        contentColor = Color.White
+                                    ),
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                    modifier = Modifier
+                                        .height(30.dp)
+                                        .testTag("btn_fit_width_top")
+                                ) {
+                                    Icon(
+                                        imageVector = if (fitPageMode) Icons.Default.AspectRatio else Icons.Default.FitScreen,
+                                        contentDescription = "Fit Width",
+                                        modifier = Modifier.size(15.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (fitPageMode) "Fit Width" else "Fit Page",
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+
+                                // Page navigation stepper in top pill
+                                IconButton(
+                                    onClick = { if (currentPageIndex > 0) currentPageIndex-- },
+                                    enabled = currentPageIndex > 0,
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.NavigateBefore,
+                                        contentDescription = "Previous Page",
+                                        tint = if (currentPageIndex > 0) Color.White else Color(0xFF64748B),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+
                                 Text(
-                                    text = "${currentPageIndex + 1} / $totalPages",
+                                    text = "${currentPageIndex + 1}/$totalPages",
                                     color = Color.White,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .clickable { showThumbnailTray = !showThumbnailTray }
+                                        .padding(horizontal = 2.dp)
+                                )
+
+                                IconButton(
+                                    onClick = { if (currentPageIndex < totalPages - 1) currentPageIndex++ },
+                                    enabled = currentPageIndex < totalPages - 1,
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.NavigateNext,
+                                        contentDescription = "Next Page",
+                                        tint = if (currentPageIndex < totalPages - 1) Color.White else Color(0xFF64748B),
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // ====================================================
+                        // HIGHLIGHTER TOUCH CUSTOMIZER WIDGET
+                        // Drag to enlarge/shrink highlighter width freely with touch
+                        // ====================================================
+                        if (currentTool == EditorTool.HIGHLIGHTER) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 12.dp)
+                            ) {
+                                HighlighterTouchCustomizer(
+                                    currentWidth = highlighterWidth,
+                                    currentColor = highlighterColor,
+                                    onWidthChange = { highlighterWidth = it },
+                                    onColorChange = { highlighterColor = it }
+                                )
+                            }
+                        }
+
+                        // ====================================================
+                        // PEN COLOR / STROKE CUSTOMIZER WIDGET
+                        // ====================================================
+                        if (currentTool == EditorTool.DRAW) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .padding(end = 12.dp)
+                            ) {
+                                PenTouchCustomizer(
+                                    currentThickness = strokeThickness,
+                                    currentColor = drawColor,
+                                    onThicknessChange = { strokeThickness = it },
+                                    onColorChange = { drawColor = it }
+                                )
+                            }
+                        }
+
+                        // ====================================================
+                        // ERASER MODE FEEDBACK BANNER
+                        // ====================================================
+                        if (currentTool == EditorTool.ERASER) {
+                            Surface(
+                                color = CrimsonPrimary.copy(alpha = 0.90f),
+                                shape = RoundedCornerShape(16.dp),
+                                shadowElevation = 4.dp,
+                                modifier = Modifier
+                                    .align(Alignment.TopCenter)
+                                    .padding(top = 52.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Icon(Icons.Default.AutoFixNormal, contentDescription = null, tint = Color.White, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Eraser Active: Drag or tap paths to delete", color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                }
+                        }
+
+                        // ====================================================
+                        // SIMPLIFIED FLOATING EDITING TOOLS (BOTTOM PALETTE)
+                        // Old bloated bottom toolbar with "Page, Edit, Text, Image, Draw, More" is REMOVED!
+                        // Direct tools: View, Text, Image, Draw, Highlight, Eraser
+                        // ====================================================
+                        Surface(
+                            color = Color(0xFF1E293B).copy(alpha = 0.95f),
+                            shape = RoundedCornerShape(24.dp),
+                            shadowElevation = 8.dp,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 12.dp)
+                                .testTag("floating_editor_tools")
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                EditorToolChip(
+                                    label = "View",
+                                    icon = Icons.Default.PanTool,
+                                    isSelected = currentTool == EditorTool.VIEW,
+                                    onClick = {
+                                        currentTool = EditorTool.VIEW
+                                        selectedAnnotationId = null
+                                    }
+                                )
+
+                                EditorToolChip(
+                                    label = "Text",
+                                    icon = Icons.Default.TextFields,
+                                    isSelected = currentTool == EditorTool.TEXT,
+                                    onClick = {
+                                        currentTool = EditorTool.TEXT
+                                        textInputContent = ""
+                                        showAddTextDialog = true
+                                    }
+                                )
+
+                                EditorToolChip(
+                                    label = "Image",
+                                    icon = Icons.Default.Image,
+                                    isSelected = currentTool == EditorTool.IMAGE,
+                                    onClick = {
+                                        currentTool = EditorTool.IMAGE
+                                        isReplacingImage = false
+                                        imagePickerLauncher.launch(
+                                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    }
+                                )
+
+                                EditorToolChip(
+                                    label = "Draw",
+                                    icon = Icons.Default.Draw,
+                                    isSelected = currentTool == EditorTool.DRAW,
+                                    onClick = {
+                                        currentTool = EditorTool.DRAW
+                                        selectedAnnotationId = null
+                                    }
+                                )
+
+                                EditorToolChip(
+                                    label = "Highlight",
+                                    icon = Icons.Default.Highlight,
+                                    isSelected = currentTool == EditorTool.HIGHLIGHTER,
+                                    onClick = {
+                                        currentTool = EditorTool.HIGHLIGHTER
+                                        selectedAnnotationId = null
+                                    }
+                                )
+
+                                EditorToolChip(
+                                    label = "Eraser",
+                                    icon = Icons.Default.AutoFixNormal,
+                                    isSelected = currentTool == EditorTool.ERASER,
+                                    onClick = {
+                                        currentTool = EditorTool.ERASER
+                                        selectedAnnotationId = null
+                                    }
                                 )
                             }
                         }
@@ -993,23 +1054,23 @@ fun PdfEditorMainView(
         }
 
         // ====================================================
-        // THUMBNAIL TRAY (Expandable at bottom)
+        // EXPANDABLE THUMBNAIL TRAY
         // ====================================================
-        AnimatedVisibility(visible = showThumbnailTray && pages.isNotEmpty()) {
+        if (showThumbnailTray && pages.isNotEmpty()) {
             Surface(
                 color = Color(0xFF1E293B),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(95.dp),
+                    .height(90.dp),
                 shadowElevation = 8.dp
             ) {
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     itemsIndexed(pages) { index, bmp ->
-                        val isSelected = index == currentPageIndex
+                        val isSelected = (index == currentPageIndex)
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
@@ -1026,8 +1087,8 @@ fun PdfEditorMainView(
                                 bitmap = bmp.asImageBitmap(),
                                 contentDescription = "Page ${index + 1}",
                                 modifier = Modifier
-                                    .height(55.dp)
-                                    .width(42.dp)
+                                    .height(52.dp)
+                                    .width(40.dp)
                             )
                             Text(
                                 text = "${index + 1}",
@@ -1040,568 +1101,196 @@ fun PdfEditorMainView(
                 }
             }
         }
+    }
 
-        // ====================================================
-        // 5. BOTTOM ACTION BAR: [Back] [ < ] [Page X/Y] [ > ] [Zoom] [Fit] [Share] [Save] [⋮]
-        // ====================================================
-        Surface(
-            color = Color(0xFF1E293B),
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding(),
-            shadowElevation = 8.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Back Button
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_bottom_back")
+    // ====================================================
+    // TEXT INSERTION DIALOG
+    // Supporting Bengali, English, and Handwriting styles + Color & Size
+    // ====================================================
+    if (showAddTextDialog) {
+        val fontChoices = listOf(
+            FontOption("BENGALI", "বাংলা (Bengali)", "বাংলা লিখুন"),
+            FontOption("DEFAULT", "English (Sans)", "Modern Sans"),
+            FontOption("SERIF", "English (Serif)", "Formal Serif", FontFamily.Serif),
+            FontOption("HANDWRITING", "Handwriting ✍", "Cursive Style", FontFamily.Cursive),
+            FontOption("MONOSPACE", "Monospace", "Clean Mono", FontFamily.Monospace)
+        )
+
+        val quickColors = listOf(
+            AndroidColor.BLACK to "Black",
+            AndroidColor.rgb(220, 38, 38) to "Red",
+            AndroidColor.rgb(37, 99, 235) to "Blue",
+            AndroidColor.rgb(22, 163, 74) to "Green",
+            AndroidColor.rgb(147, 51, 234) to "Purple",
+            AndroidColor.rgb(234, 88, 12) to "Orange"
+        )
+
+        AlertDialog(
+            onDismissRequest = { showAddTextDialog = false },
+            title = {
+                Text(
+                    text = "Add Text to Page",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp
+                )
+            },
+            text = {
+                Column(
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
+                    OutlinedTextField(
+                        value = textInputContent,
+                        onValueChange = { textInputContent = it },
+                        placeholder = { Text("এখানে লিখুন / Type text here...") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("input_add_text_field"),
+                        minLines = 2,
+                        maxLines = 4
                     )
-                }
 
-                // Page Navigation: Prev
-                IconButton(
-                    onClick = { if (currentPageIndex > 0) currentPageIndex-- },
-                    enabled = currentPageIndex > 0,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_prev_page")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.NavigateBefore,
-                        contentDescription = "Previous Page",
-                        tint = if (currentPageIndex > 0) Color.White else Color(0xFF64748B)
-                    )
-                }
-
-                // Page counter pill (tap to toggle thumbnails)
-                Surface(
-                    color = Color(0xFF0F172A),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier
-                        .clickable { showThumbnailTray = !showThumbnailTray }
-                        .testTag("bottom_page_counter")
-                ) {
+                    // FONT SELECTION (Bengali, English, Handwriting)
                     Text(
-                        text = "${currentPageIndex + 1} / $totalPages",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                        text = "Font Style / ফন্ট স্টাইল:",
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
                     )
-                }
-
-                // Page Navigation: Next
-                IconButton(
-                    onClick = { if (currentPageIndex < totalPages - 1) currentPageIndex++ },
-                    enabled = currentPageIndex < totalPages - 1,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_next_page")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.NavigateNext,
-                        contentDescription = "Next Page",
-                        tint = if (currentPageIndex < totalPages - 1) Color.White else Color(0xFF64748B)
-                    )
-                }
-
-                // Zoom Control
-                FilledTonalButton(
-                    onClick = {
-                        zoomScale = if (zoomScale > 1.2f) 1.0f else 2.0f
-                        panOffset = Offset.Zero
-                    },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF334155),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("btn_zoom")
-                ) {
-                    Icon(
-                        imageVector = if (zoomScale > 1.2f) Icons.Default.ZoomOut else Icons.Default.ZoomIn,
-                        contentDescription = "Zoom",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (zoomScale > 1.2f) "Zoom Out" else "Zoom In", fontSize = 11.sp)
-                }
-
-                // Fit to Screen Control
-                FilledTonalButton(
-                    onClick = { fitPageMode = !fitPageMode },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF334155),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("btn_fit_screen")
-                ) {
-                    Icon(
-                        imageVector = if (fitPageMode) Icons.Default.AspectRatio else Icons.Default.FitScreen,
-                        contentDescription = "Fit to Screen",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (fitPageMode) "Fit Width" else "Fit Page", fontSize = 11.sp)
-                }
-
-                // Share Button
-                IconButton(
-                    onClick = { viewModel.shareFile(context, currentFile) },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_bottom_share")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Share",
-                        tint = Color.White
-                    )
-                }
-
-                // Save Button
-                Button(
-                    onClick = {
-                        val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                        viewModel.saveEditedPdf(
-                            sourceRecord = currentFile,
-                            items = editItems.toList(),
-                            deletedPages = deletedPages.toSet(),
-                            pageRotations = pageRotations.toMap(),
-                            outputName = outputName
-                        ) { newRec ->
-                            currentFile = newRec
-                            Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("btn_bottom_save")
-                ) {
-                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-
-                // More Options
-                IconButton(
-                    onClick = { moreMenuExpanded = true },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_bottom_more_options")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More Options",
-                        tint = Color.White
-                    )
-                }
-            }
-        }
-    }
-
-    // ====================================================
-    // FULL DIALOGS: Pages Sheet, Crop, Watermark, Numbers, etc.
-    // ====================================================
-    if (showPagesSheet) {
-        WorkspacePagesSheet(
-            file = currentFile,
-            pages = pages,
-            onDismiss = { showPagesSheet = false },
-            onApply = { newOrder, rotations, blanks, imgs ->
-                showPagesSheet = false
-                val outputName = "${currentFile.nameWithoutExtension()}_organized.pdf"
-                viewModel.managePagesInFile(
-                    sourceRecord = currentFile,
-                    pageOrder = newOrder,
-                    rotations = rotations,
-                    blankPagesAfter = blanks,
-                    additionalImages = imgs,
-                    outputName = outputName
-                ) { newRec ->
-                    currentFile = newRec
-                    currentPageIndex = 0
-                    Toast.makeText(context, "Page organization applied!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
-    }
-
-    if (showCropDialog) {
-        WorkspaceCropDialog(
-            file = currentFile,
-            pages = pages,
-            currentPage = currentPageIndex,
-            onDismiss = { showCropDialog = false },
-            onApply = { l, t, r, b, targetPages ->
-                showCropDialog = false
-                val outputName = "${currentFile.nameWithoutExtension()}_cropped.pdf"
-                viewModel.cropPdf(
-                    sourceRecord = currentFile,
-                    leftPct = l,
-                    topPct = t,
-                    rightPct = r,
-                    bottomPct = b,
-                    targetPages = targetPages,
-                    outputName = outputName
-                ) { newRec ->
-                    currentFile = newRec
-                    Toast.makeText(context, "Pages cropped successfully!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
-    }
-
-    if (showWatermarkWorkspaceDialog) {
-        WorkspaceWatermarkDialog(
-            file = currentFile,
-            currentPage = currentPageIndex,
-            onDismiss = { showWatermarkWorkspaceDialog = false },
-            onApply = { text, rot, opacity, size, color, allPages, isTiled ->
-                showWatermarkWorkspaceDialog = false
-                val outName = "${currentFile.nameWithoutExtension()}_watermarked.pdf"
-                viewModel.applyWatermarkStandalone(
-                    sourceRecord = currentFile,
-                    text = text,
-                    rotationDeg = rot,
-                    outputName = outName,
-                    isTiled = isTiled,
-                    fontSize = size,
-                    opacity = opacity,
-                    colorHex = color
-                ) { newRec ->
-                    currentFile = newRec
-                    Toast.makeText(context, "Watermark applied!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
-    }
-
-    if (showPageNumbersWorkspaceDialog) {
-        WorkspacePageNumbersDialog(
-            file = currentFile,
-            onDismiss = { showPageNumbersWorkspaceDialog = false },
-            onApply = { format, pos, targetPages ->
-                showPageNumbersWorkspaceDialog = false
-                val outName = "${currentFile.nameWithoutExtension()}_numbered.pdf"
-                viewModel.addCustomPageNumbers(
-                    sourceRecord = currentFile,
-                    format = format,
-                    position = pos,
-                    targetPages = targetPages,
-                    outputName = outName
-                ) { newRec ->
-                    currentFile = newRec
-                    Toast.makeText(context, "Page numbers added!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        )
-    }
-
-    if (showChangePageSizeDialog) {
-        val pageSizes = listOf("A4 (210 × 297 mm)", "US Letter (8.5 × 11 in)", "US Legal (8.5 × 14 in)", "A3 (297 × 420 mm)", "Executive")
-        var selectedSize by remember { mutableStateOf(pageSizes.first()) }
-        AlertDialog(
-            onDismissRequest = { showChangePageSizeDialog = false },
-            title = { Text("Change Page Size") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select standard paper size to apply:", fontSize = 13.sp, color = Color.Gray)
-                    pageSizes.forEach { size ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedSize = size }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = selectedSize == size,
-                                onClick = { selectedSize = size }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(size, fontSize = 14.sp)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showChangePageSizeDialog = false
-                        Toast.makeText(context, "Page size set to $selectedSize", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
-                ) {
-                    Text("Apply Size")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showChangePageSizeDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    if (showResizePagesDialog) {
-        val scales = listOf(50, 75, 100, 125, 150)
-        var selectedScale by remember { mutableIntStateOf(100) }
-        AlertDialog(
-            onDismissRequest = { showResizePagesDialog = false },
-            title = { Text("Resize / Scale Pages") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select content scale percentage:", fontSize = 13.sp, color = Color.Gray)
-                    scales.forEach { s ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedScale = s }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = selectedScale == s,
-                                onClick = { selectedScale = s }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text("$s%", fontSize = 14.sp, fontWeight = if (s == 100) FontWeight.Bold else FontWeight.Normal)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showResizePagesDialog = false
-                        Toast.makeText(context, "Pages scaled to $selectedScale%", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
-                ) {
-                    Text("Apply Scale")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showResizePagesDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    if (showMarginsDialog) {
-        val margins = listOf("Normal (1 inch / 72 pt)", "Narrow (0.5 inch / 36 pt)", "Wide (1.5 inch / 108 pt)", "None (0 pt)")
-        var selectedMargin by remember { mutableStateOf(margins.first()) }
-        AlertDialog(
-            onDismissRequest = { showMarginsDialog = false },
-            title = { Text("Page Margins") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Select document margin width:", fontSize = 13.sp, color = Color.Gray)
-                    margins.forEach { m ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { selectedMargin = m }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = selectedMargin == m,
-                                onClick = { selectedMargin = m }
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(m, fontSize = 14.sp)
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showMarginsDialog = false
-                        Toast.makeText(context, "Margins updated to $selectedMargin", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
-                ) {
-                    Text("Apply Margins")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showMarginsDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    if (showBackgroundDialog) {
-        val bgOptions = listOf(
-            Pair("White", Color.White),
-            Pair("Warm Cream", Color(0xFFFDF6E2)),
-            Pair("Soft Mint", Color(0xFFE8F5E9)),
-            Pair("Light Sky", Color(0xFFE1F5FE)),
-            Pair("Dark Slate", Color(0xFF1E293B))
-        )
-        AlertDialog(
-            onDismissRequest = { showBackgroundDialog = false },
-            title = { Text("Page Background Color") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("Choose background color for viewing and printing:", fontSize = 13.sp, color = Color.Gray)
-                    bgOptions.forEach { (name, col) ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { pageBackgroundColor = col }
-                                .padding(vertical = 4.dp)
-                        ) {
-                            Box(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .background(col)
-                                    .border(1.dp, Color.Gray, CircleShape)
-                            )
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(name, fontSize = 14.sp, fontWeight = if (pageBackgroundColor == col) FontWeight.Bold else FontWeight.Normal)
-                            if (pageBackgroundColor == col) {
-                                Spacer(modifier = Modifier.weight(1f))
-                                Icon(Icons.Default.Check, contentDescription = null, tint = CrimsonPrimary)
-                            }
-                        }
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { showBackgroundDialog = false },
-                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
-                ) {
-                    Text("Apply")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showBackgroundDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
-
-    if (showMergePdfDialog) {
-        val otherFiles = allFiles.filter { it.id != currentFile.id }
-        AlertDialog(
-            onDismissRequest = { showMergePdfDialog = false },
-            title = { Text("Merge with Another PDF") },
-            text = {
-                Column(modifier = Modifier.fillMaxWidth().heightIn(max = 280.dp)) {
-                    if (otherFiles.isEmpty()) {
-                        Text("No other saved PDF files found to merge.", fontSize = 13.sp, color = Color.Gray)
-                    } else {
-                        Text("Select a file to append to this document:", fontSize = 13.sp, color = Color.Gray)
-                        Spacer(modifier = Modifier.height(8.dp))
-                        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(otherFiles) { file ->
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            showMergePdfDialog = false
-                                            val outName = "${currentFile.nameWithoutExtension()}_merged.pdf"
-                                            viewModel.mergePdfs(listOf(currentFile, file), outName) { newRec ->
-                                                currentFile = newRec
-                                                Toast.makeText(context, "Merged with ${file.name}", Toast.LENGTH_SHORT).show()
-                                            }
-                                        },
-                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        fontChoices.forEach { font ->
+                            val isChosen = (textFontFamily == font.id)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (isChosen) CrimsonPrimary else Color(0xFFF1F5F9),
+                                border = BorderStroke(1.dp, if (isChosen) CrimsonPrimary else Color(0xFFCBD5E1)),
+                                modifier = Modifier.clickable { textFontFamily = font.id }
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
-                                    Row(
-                                        modifier = Modifier.padding(10.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Icon(Icons.Default.PictureAsPdf, contentDescription = null, tint = CrimsonPrimary)
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Column {
-                                            Text(file.name, fontSize = 13.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-                                            Text("${file.pageCount} pages", fontSize = 11.sp, color = Color.Gray)
-                                        }
-                                    }
+                                    Text(
+                                        text = font.displayName,
+                                        fontSize = 12.sp,
+                                        fontWeight = if (isChosen) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isChosen) Color.White else Color(0xFF1E293B),
+                                        fontFamily = font.fontFamily
+                                    )
+                                    Text(
+                                        text = font.previewText,
+                                        fontSize = 10.sp,
+                                        color = if (isChosen) Color.White.copy(alpha = 0.85f) else Color(0xFF64748B),
+                                        fontFamily = font.fontFamily
+                                    )
                                 }
                             }
                         }
                     }
-                }
-            },
-            confirmButton = {
-                TextButton(onClick = { showMergePdfDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
-    }
 
-    if (showAddTextDialog) {
-        AlertDialog(
-            onDismissRequest = { showAddTextDialog = false },
-            title = { Text("Insert Text") },
-            text = {
-                OutlinedTextField(
-                    value = textInputContent,
-                    onValueChange = { textInputContent = it },
-                    placeholder = { Text("Type text to place on page...") },
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    // COLOR SELECTION
+                    Text(text = "Color / রং:", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        quickColors.forEach { (c, _) ->
+                            val isSelected = (textColor == c)
+                            Box(
+                                modifier = Modifier
+                                    .size(30.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(
+                                        width = if (isSelected) 3.dp else 1.dp,
+                                        color = if (isSelected) CrimsonPrimary else Color.Gray,
+                                        shape = CircleShape
+                                    )
+                                    .clickable { textColor = c }
+                            )
+                        }
+                    }
+
+                    // SIZE & STYLES (BOLD / ITALIC)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("Size: ${textFontSize.toInt()}sp", fontSize = 13.sp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            IconButton(
+                                onClick = { textFontSize = (textFontSize - 4f).coerceAtLeast(12f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.Remove, contentDescription = "Smaller", modifier = Modifier.size(16.dp))
+                            }
+                            IconButton(
+                                onClick = { textFontSize = (textFontSize + 4f).coerceAtMost(72f) },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Larger", modifier = Modifier.size(16.dp))
+                            }
+                        }
+
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FilledTonalIconToggleButton(
+                                checked = textIsBold,
+                                onCheckedChange = { textIsBold = it },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.FormatBold, contentDescription = "Bold", modifier = Modifier.size(16.dp))
+                            }
+                            FilledTonalIconToggleButton(
+                                checked = textIsItalic,
+                                onCheckedChange = { textIsItalic = it },
+                                modifier = Modifier.size(32.dp)
+                            ) {
+                                Icon(Icons.Default.FormatItalic, contentDescription = "Italic", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         if (textInputContent.isNotBlank()) {
-                            editItems.add(
-                                PdfEngine.EditItem(
-                                    pageIndex = currentPageIndex,
-                                    type = PdfEngine.AnnotationType.TEXT,
-                                    text = textInputContent,
-                                    colorHex = textColor,
-                                    fontSize = textFontSize,
-                                    isBold = textIsBold,
-                                    isItalic = textIsItalic,
-                                    alignment = textAlignment,
-                                    posX = 100f,
-                                    posY = 200f
-                                )
+                            // Place at center of page so it is IMMEDIATELY 100% VISIBLE!
+                            val targetX = ((pageContainerSize.width - 240f) / 2f).coerceAtLeast(40f)
+                            val targetY = ((pageContainerSize.height - 80f) / 2f).coerceAtLeast(60f)
+
+                            val newItem = PdfEngine.EditItem(
+                                pageIndex = currentPageIndex,
+                                type = PdfEngine.AnnotationType.TEXT,
+                                text = textInputContent.trim(),
+                                colorHex = textColor,
+                                fontSize = textFontSize,
+                                isBold = textIsBold,
+                                isItalic = textIsItalic,
+                                fontFamily = textFontFamily,
+                                posX = targetX,
+                                posY = targetY,
+                                baseWidth = pageContainerSize.width.toFloat(),
+                                baseHeight = pageContainerSize.height.toFloat()
                             )
-                            Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
+                            editItems.add(newItem)
+                            selectedAnnotationId = newItem.id
+                            pushAction(EditHistoryAction.AddItem(newItem))
+                            currentTool = EditorTool.VIEW
+                            Toast.makeText(context, "Text added! Drag & resize freely.", Toast.LENGTH_SHORT).show()
                         }
                         showAddTextDialog = false
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                    modifier = Modifier.testTag("btn_confirm_add_text")
                 ) {
-                    Text("Add Text")
+                    Text("Add to Page")
                 }
             },
             dismissButton = {
@@ -1611,530 +1300,456 @@ fun PdfEditorMainView(
             }
         )
     }
+}
+}
 
-    if (showSaveAsDialog) {
-        AlertDialog(
-            onDismissRequest = { showSaveAsDialog = false },
-            title = { Text("Save Document As") },
-            text = {
-                OutlinedTextField(
-                    value = saveAsNameInput,
-                    onValueChange = { saveAsNameInput = it },
-                    label = { Text("File Name") },
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showSaveAsDialog = false
-                        viewModel.saveEditedPdf(
-                            sourceRecord = currentFile,
-                            items = editItems.toList(),
-                            deletedPages = deletedPages.toSet(),
-                            pageRotations = pageRotations.toMap(),
-                            outputName = saveAsNameInput
-                        ) { newRec ->
-                            currentFile = newRec
-                            Toast.makeText(context, "Saved as $saveAsNameInput", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
-                ) {
-                    Text("Save")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showSaveAsDialog = false }) {
-                    Text("Cancel")
-                }
-            }
-        )
+/**
+ * Interactive Draggable & Resizable Text Overlay
+ * Fixes: Invisible text bug, free resizing with touch gestures, free dragging
+ */
+@Composable
+fun InteractiveTextOverlay(
+    item: PdfEngine.EditItem,
+    isSelected: Boolean,
+    pageBounds: IntSize,
+    onSelect: () -> Unit,
+    onPositionChange: (newX: Float, newY: Float) -> Unit,
+    onSizeScale: (scale: Float) -> Unit,
+    onDelete: () -> Unit
+) {
+    var posX by remember(item.posX) { mutableFloatStateOf(item.posX) }
+    var posY by remember(item.posY) { mutableFloatStateOf(item.posY) }
+
+    val fontChoice = when (item.fontFamily) {
+        "SERIF" -> FontFamily.Serif
+        "HANDWRITING", "CURSIVE" -> FontFamily.Cursive
+        "MONOSPACE" -> FontFamily.Monospace
+        else -> FontFamily.Default
     }
 
-    if (showPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = { showPasswordDialog = false },
-            title = { Text(if (isProtectAction) "Protect PDF with Password" else "Remove Password") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (isProtectAction) {
-                        Text("Set a password to encrypt this PDF document:", fontSize = 13.sp, color = Color.Gray)
-                        OutlinedTextField(
-                            value = passwordInput,
-                            onValueChange = { passwordInput = it },
-                            label = { Text("Password") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    } else {
-                        Text("Remove password protection from this document?", fontSize = 14.sp)
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(posX.roundToInt(), posY.roundToInt()) }
+            .pointerInput(item.id) {
+                // Free dragging across the canvas
+                detectDragGestures(
+                    onDragStart = { onSelect() },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        val maxW = (pageBounds.width - 40).coerceAtLeast(100).toFloat()
+                        val maxH = (pageBounds.height - 40).coerceAtLeast(100).toFloat()
+                        posX = (posX + dragAmount.x).coerceIn(0f, maxW)
+                        posY = (posY + dragAmount.y).coerceIn(0f, maxH)
+                        onPositionChange(posX, posY)
+                    }
+                )
+            }
+            .pointerInput(item.id) {
+                // Pinch to resize font size with touch gestures
+                detectTransformGestures { _, _, zoom, _ ->
+                    if (zoom != 1.0f) {
+                        onSizeScale(zoom)
                     }
                 }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showPasswordDialog = false
-                        if (isProtectAction) {
-                            viewModel.toggleProtectFile(currentFile, passwordInput)
-                            Toast.makeText(context, "Password protection applied!", Toast.LENGTH_SHORT).show()
-                        } else {
-                            viewModel.toggleProtectFile(currentFile, "")
-                            Toast.makeText(context, "Password protection removed", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
-                ) {
-                    Text(if (isProtectAction) "Protect" else "Remove")
+            }
+            .clickable { onSelect() }
+            .then(
+                if (isSelected) {
+                    Modifier
+                        .border(
+                            BorderStroke(1.5.dp, ToolBlue),
+                            RoundedCornerShape(6.dp)
+                        )
+                        .background(Color.White.copy(alpha = 0.90f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                } else {
+                    Modifier
+                        .background(Color.White.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
                 }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPasswordDialog = false }) {
-                    Text("Cancel")
+            )
+    ) {
+        Column {
+            // Selected toolbar with Resize stepper & Delete button
+            if (isSelected) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.padding(bottom = 4.dp)
+                ) {
+                    // Shrink
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF334155),
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable { onSizeScale(0.85f) }
+                    ) {
+                        Icon(Icons.Default.Remove, contentDescription = "Shrink", tint = Color.White, modifier = Modifier.padding(3.dp))
+                    }
+
+                    // Enlarge
+                    Surface(
+                        shape = CircleShape,
+                        color = Color(0xFF334155),
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable { onSizeScale(1.15f) }
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = "Enlarge", tint = Color.White, modifier = Modifier.padding(3.dp))
+                    }
+
+                    // Delete
+                    Surface(
+                        shape = CircleShape,
+                        color = CrimsonPrimary,
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clickable { onDelete() }
+                    ) {
+                        Icon(Icons.Default.Close, contentDescription = "Delete", tint = Color.White, modifier = Modifier.padding(3.dp))
+                    }
                 }
             }
-        )
+
+            // Visible Text Content
+            Text(
+                text = item.text,
+                color = Color(item.colorHex),
+                fontSize = item.fontSize.sp,
+                fontWeight = if (item.isBold) FontWeight.Bold else FontWeight.Normal,
+                fontStyle = if (item.isItalic) FontStyle.Italic else FontStyle.Normal,
+                fontFamily = fontChoice
+            )
+        }
     }
 }
 
+/**
+ * Interactive Draggable & Resizable Image Overlay
+ * Fixes: Fixed positioning of added images, allowing free dragging and resizing
+ */
 @Composable
-private fun EditorToolbarTabItem(
+fun InteractiveImageOverlay(
+    item: PdfEngine.EditItem,
+    isSelected: Boolean,
+    pageBounds: IntSize,
+    onSelect: () -> Unit,
+    onPositionChange: (newX: Float, newY: Float) -> Unit,
+    onDimensionScale: (scale: Float) -> Unit,
+    onRotate: () -> Unit,
+    onDelete: () -> Unit
+) {
+    var posX by remember(item.posX) { mutableFloatStateOf(item.posX) }
+    var posY by remember(item.posY) { mutableFloatStateOf(item.posY) }
+    val bmp = item.imageBitmap ?: return
+
+    Box(
+        modifier = Modifier
+            .offset { IntOffset(posX.roundToInt(), posY.roundToInt()) }
+            .size(item.imageWidth.dp, item.imageHeight.dp)
+            .pointerInput(item.id) {
+                // Free dragging
+                detectDragGestures(
+                    onDragStart = { onSelect() },
+                    onDrag = { change, dragAmount ->
+                        change.consume()
+                        val maxW = (pageBounds.width - 30).coerceAtLeast(60).toFloat()
+                        val maxH = (pageBounds.height - 30).coerceAtLeast(60).toFloat()
+                        posX = (posX + dragAmount.x).coerceIn(0f, maxW)
+                        posY = (posY + dragAmount.y).coerceIn(0f, maxH)
+                        onPositionChange(posX, posY)
+                    }
+                )
+            }
+            .pointerInput(item.id) {
+                // Free resizing with pinch touch gesture
+                detectTransformGestures { _, _, zoom, _ ->
+                    if (zoom != 1.0f) {
+                        onDimensionScale(zoom)
+                    }
+                }
+            }
+            .clickable { onSelect() }
+            .then(
+                if (isSelected) {
+                    Modifier
+                        .border(BorderStroke(2.dp, ToolBlue), RoundedCornerShape(4.dp))
+                        .padding(2.dp)
+                } else {
+                    Modifier
+                }
+            )
+    ) {
+        Image(
+            bitmap = bmp.asImageBitmap(),
+            contentDescription = "Added Image",
+            contentScale = ContentScale.FillBounds,
+            modifier = Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    rotationZ = item.imageRotation
+                }
+        )
+
+        // Action controls when selected (Rotate, Resize handles, Delete)
+        if (isSelected) {
+            // Delete button at top-left
+            Surface(
+                shape = CircleShape,
+                color = CrimsonPrimary,
+                modifier = Modifier
+                    .size(26.dp)
+                    .align(Alignment.TopStart)
+                    .clickable { onDelete() }
+            ) {
+                Icon(Icons.Default.Close, contentDescription = "Delete Image", tint = Color.White, modifier = Modifier.padding(4.dp))
+            }
+
+            // Rotate button at top-right
+            Surface(
+                shape = CircleShape,
+                color = Color(0xFF334155),
+                modifier = Modifier
+                    .size(26.dp)
+                    .align(Alignment.TopEnd)
+                    .clickable { onRotate() }
+            ) {
+                Icon(Icons.Default.RotateRight, contentDescription = "Rotate Image", tint = Color.White, modifier = Modifier.padding(4.dp))
+            }
+
+            // Drag-Resize handle at bottom-right
+            Surface(
+                shape = CircleShape,
+                color = ToolBlue,
+                modifier = Modifier
+                    .size(26.dp)
+                    .align(Alignment.BottomEnd)
+                    .pointerInput(item.id) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val delta = (dragAmount.x + dragAmount.y) / 100f
+                            val factor = (1f + delta).coerceIn(0.7f, 1.3f)
+                            onDimensionScale(factor)
+                        }
+                    }
+            ) {
+                Icon(Icons.Default.OpenInFull, contentDescription = "Resize Handle", tint = Color.White, modifier = Modifier.padding(4.dp))
+            }
+        }
+    }
+}
+
+/**
+ * Highlighter Touch Customizer Widget
+ * Allows users to freely customize highlighter size using touch gestures (drag to enlarge/shrink)
+ */
+@Composable
+fun HighlighterTouchCustomizer(
+    currentWidth: Float,
+    currentColor: Int,
+    onWidthChange: (Float) -> Unit,
+    onColorChange: (Int) -> Unit
+) {
+    val highlighterColors = listOf(
+        AndroidColor.rgb(250, 204, 21) to "Yellow",
+        AndroidColor.rgb(34, 197, 94) to "Green",
+        AndroidColor.rgb(56, 189, 248) to "Blue",
+        AndroidColor.rgb(244, 114, 182) to "Pink",
+        AndroidColor.rgb(251, 146, 60) to "Orange"
+    )
+
+    Surface(
+        color = Color(0xFF1E293B).copy(alpha = 0.94f),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp,
+        modifier = Modifier.width(54.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp)
+        ) {
+            Text(
+                text = "SIZE",
+                color = Color(0xFF94A3B8),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Live touch preview & drag vertical handle to enlarge/shrink
+            Box(
+                modifier = Modifier
+                    .size(44.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF334155))
+                    .pointerInput(Unit) {
+                        // Drag up = enlarge, Drag down = shrink
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val delta = -dragAmount.y * 0.4f
+                            val updated = (currentWidth + delta).coerceIn(10f, 65f)
+                            onWidthChange(updated)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(currentWidth.coerceIn(8f, 38f).dp)
+                        .clip(CircleShape)
+                        .background(Color(currentColor).copy(alpha = 0.55f))
+                )
+            }
+
+            Text(
+                text = "${currentWidth.toInt()}px",
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Divider(color = Color(0xFF475569), thickness = 1.dp)
+
+            // Color dots
+            highlighterColors.forEach { (colorInt, _) ->
+                val isSel = (currentColor == colorInt)
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(colorInt))
+                        .border(
+                            width = if (isSel) 2.dp else 0.dp,
+                            color = if (isSel) Color.White else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorChange(colorInt) }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Pen Touch Customizer Widget
+ */
+@Composable
+fun PenTouchCustomizer(
+    currentThickness: Float,
+    currentColor: Int,
+    onThicknessChange: (Float) -> Unit,
+    onColorChange: (Int) -> Unit
+) {
+    val penColors = listOf(
+        AndroidColor.rgb(220, 38, 38) to "Red",
+        AndroidColor.BLACK to "Black",
+        AndroidColor.rgb(37, 99, 235) to "Blue",
+        AndroidColor.rgb(22, 163, 74) to "Green"
+    )
+
+    Surface(
+        color = Color(0xFF1E293B).copy(alpha = 0.94f),
+        shape = RoundedCornerShape(16.dp),
+        shadowElevation = 8.dp,
+        modifier = Modifier.width(50.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(vertical = 12.dp, horizontal = 6.dp)
+        ) {
+            Text(
+                text = "PEN",
+                color = Color(0xFF94A3B8),
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            // Live touch preview & drag vertical handle to enlarge/shrink
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color(0xFF334155))
+                    .pointerInput(Unit) {
+                        detectDragGestures { change, dragAmount ->
+                            change.consume()
+                            val delta = -dragAmount.y * 0.15f
+                            val updated = (currentThickness + delta).coerceIn(2f, 24f)
+                            onThicknessChange(updated)
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(currentThickness.coerceIn(3f, 24f).dp)
+                        .clip(CircleShape)
+                        .background(Color(currentColor))
+                )
+            }
+
+            Text(
+                text = "${currentThickness.toInt()}px",
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Divider(color = Color(0xFF475569), thickness = 1.dp)
+
+            // Color dots
+            penColors.forEach { (colorInt, _) ->
+                val isSel = (currentColor == colorInt)
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(colorInt))
+                        .border(
+                            width = if (isSel) 2.dp else 0.dp,
+                            color = if (isSel) Color.White else Color.Transparent,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorChange(colorInt) }
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Tool chip button in bottom floating bar
+ */
+@Composable
+fun EditorToolChip(
     label: String,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
     Surface(
-        color = if (isSelected) ToolBlue else Color.Transparent,
-        shape = RoundedCornerShape(8.dp),
-        modifier = Modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .testTag("tab_$label")
+        color = if (isSelected) CrimsonPrimary else Color.Transparent,
+        shape = RoundedCornerShape(16.dp),
+        modifier = Modifier.clickable { onClick() }
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isSelected) Color.White else Color(0xFF94A3B8),
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(16.dp)
             )
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.width(4.dp))
             Text(
                 text = label,
+                color = if (isSelected) Color.White else Color(0xFFCBD5E1),
                 fontSize = 11.sp,
-                color = if (isSelected) Color.White else Color(0xFF94A3B8),
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-            )
-        }
-    }
-}
-
-@Composable
-private fun PageOptionsSection(
-    onReorderPages: () -> Unit,
-    onRotatePage: () -> Unit,
-    onDeletePage: () -> Unit,
-    onDuplicatePage: () -> Unit,
-    onInsertBlankPage: () -> Unit,
-    onExtractPage: () -> Unit,
-    onSplitPdf: () -> Unit,
-    onMergePdf: () -> Unit,
-    onSelectAll: () -> Unit,
-    onApplyChanges: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Page Management", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Reorder", Icons.Default.SwapVert, ToolBlue, onReorderPages)
-            ToolButtonCard(Modifier.weight(1f), "Rotate Page", Icons.Default.RotateRight, ToolBlue, onRotatePage)
-            ToolButtonCard(Modifier.weight(1f), "Delete Page", Icons.Default.Delete, CrimsonPrimary, onDeletePage)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Duplicate", Icons.Default.ContentCopy, ToolPurple, onDuplicatePage)
-            ToolButtonCard(Modifier.weight(1f), "Insert Blank", Icons.Default.AddBox, ToolGreen, onInsertBlankPage)
-            ToolButtonCard(Modifier.weight(1f), "Extract Page", Icons.Default.UploadFile, ToolOrange, onExtractPage)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Split PDF", Icons.Default.CallSplit, ToolBlue, onSplitPdf)
-            ToolButtonCard(Modifier.weight(1f), "Merge PDF", Icons.Default.MergeType, ToolGreen, onMergePdf)
-            ToolButtonCard(Modifier.weight(1f), "Select All", Icons.Default.SelectAll, ToolPurple, onSelectAll)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .testTag("btn_apply_page_changes")
-        ) {
-            Text("Apply Page Changes", fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun EditOptionsSection(
-    onCrop: () -> Unit,
-    onResize: () -> Unit,
-    onChangePageSize: () -> Unit,
-    onMargins: () -> Unit,
-    onWatermark: () -> Unit,
-    onBackground: () -> Unit,
-    onApplyChanges: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Document Layout & Edit", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Crop Pages", Icons.Default.Crop, ToolOrange, onCrop)
-            ToolButtonCard(Modifier.weight(1f), "Resize Pages", Icons.Default.ZoomOutMap, ToolBlue, onResize)
-            ToolButtonCard(Modifier.weight(1f), "Page Size", Icons.Default.FormatSize, ToolPurple, onChangePageSize)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Margins", Icons.Default.BorderOuter, ToolGreen, onMargins)
-            ToolButtonCard(Modifier.weight(1f), "Watermark", Icons.Default.Layers, ToolPurple, onWatermark)
-            ToolButtonCard(Modifier.weight(1f), "Background", Icons.Default.Palette, ToolOrange, onBackground)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .testTag("btn_apply_edit_changes")
-        ) {
-            Text("Apply Edits", fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun TextOptionsSection(
-    onAddText: () -> Unit,
-    textColor: Int,
-    onColorChange: (Int) -> Unit,
-    fontSize: Float,
-    onFontSizeChange: (Float) -> Unit,
-    isBold: Boolean,
-    onToggleBold: () -> Unit,
-    isItalic: Boolean,
-    onToggleItalic: () -> Unit,
-    alignment: String,
-    onAlignmentChange: (String) -> Unit,
-    onDeleteSelectedText: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Text Insertion & Editing", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            Button(
-                onClick = onAddText,
-                colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                modifier = Modifier
-                    .height(32.dp)
-                    .testTag("btn_insert_text_action")
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(14.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("Add Text", fontSize = 11.sp)
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(AndroidColor.BLACK, AndroidColor.RED, AndroidColor.BLUE, AndroidColor.GREEN, AndroidColor.WHITE).forEach { c ->
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(c))
-                        .border(
-                            width = if (textColor == c) 2.dp else 1.dp,
-                            color = if (textColor == c) CrimsonPrimary else Color.Gray,
-                            shape = CircleShape
-                        )
-                        .clickable { onColorChange(c) }
-                )
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-            FilterChip(
-                selected = isBold,
-                onClick = onToggleBold,
-                label = { Text("B", fontWeight = FontWeight.Bold) },
-                modifier = Modifier.height(30.dp)
-            )
-            FilterChip(
-                selected = isItalic,
-                onClick = onToggleItalic,
-                label = { Text("I", fontStyle = androidx.compose.ui.text.font.FontStyle.Italic) },
-                modifier = Modifier.height(30.dp)
-            )
-            Spacer(modifier = Modifier.width(6.dp))
-            IconButton(
-                onClick = onDeleteSelectedText,
-                modifier = Modifier.size(30.dp)
-            ) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete Selected Text", tint = CrimsonPrimary)
-            }
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
-        ) {
-            Text("Align:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-            FilterChip(
-                selected = alignment == "LEFT",
-                onClick = { onAlignmentChange("LEFT") },
-                label = { Text("Left", fontSize = 10.sp) },
-                modifier = Modifier.height(28.dp)
-            )
-            FilterChip(
-                selected = alignment == "CENTER",
-                onClick = { onAlignmentChange("CENTER") },
-                label = { Text("Center", fontSize = 10.sp) },
-                modifier = Modifier.height(28.dp)
-            )
-            FilterChip(
-                selected = alignment == "RIGHT",
-                onClick = { onAlignmentChange("RIGHT") },
-                label = { Text("Right", fontSize = 10.sp) },
-                modifier = Modifier.height(28.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun ImageOptionsSection(
-    onAddImage: () -> Unit,
-    onReplaceImage: () -> Unit,
-    onRotateSelectedImage: () -> Unit,
-    onResizeImage: (Float) -> Unit,
-    onDeleteSelectedImage: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Image Tools", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Add Image", Icons.Default.AddPhotoAlternate, ToolBlue, onAddImage)
-            ToolButtonCard(Modifier.weight(1f), "Replace", Icons.Default.Sync, ToolPurple, onReplaceImage)
-            ToolButtonCard(Modifier.weight(1f), "Rotate 90°", Icons.Default.RotateRight, ToolOrange, onRotateSelectedImage)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Enlarge (+)", Icons.Default.ZoomIn, ToolGreen) { onResizeImage(1.2f) }
-            ToolButtonCard(Modifier.weight(1f), "Shrink (-)", Icons.Default.ZoomOut, ToolGreen) { onResizeImage(0.8f) }
-            ToolButtonCard(Modifier.weight(1f), "Delete Image", Icons.Default.Delete, CrimsonPrimary, onDeleteSelectedImage)
-        }
-    }
-}
-
-@Composable
-private fun DrawOptionsSection(
-    drawMode: String,
-    onDrawModeChange: (String) -> Unit,
-    drawColor: Int,
-    onColorChange: (Int) -> Unit,
-    strokeThickness: Float,
-    onThicknessChange: (Float) -> Unit,
-    onClearAll: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("Draw & Annotate", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            TextButton(
-                onClick = onClearAll,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Text("Clear Page", color = CrimsonPrimary, fontSize = 11.sp)
-            }
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            FilterChip(
-                selected = drawMode == "PEN",
-                onClick = { onDrawModeChange("PEN") },
-                label = { Text("Pen") },
-                leadingIcon = { Icon(Icons.Default.Draw, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
-            )
-            FilterChip(
-                selected = drawMode == "HIGHLIGHTER",
-                onClick = { onDrawModeChange("HIGHLIGHTER") },
-                label = { Text("Highlighter") },
-                leadingIcon = { Icon(Icons.Default.Highlight, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
-            )
-            FilterChip(
-                selected = drawMode == "ERASER",
-                onClick = { onDrawModeChange("ERASER") },
-                label = { Text("Eraser") },
-                leadingIcon = { Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
-            )
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(
-                AndroidColor.rgb(37, 99, 235), // Blue
-                AndroidColor.rgb(220, 38, 38), // Red
-                AndroidColor.rgb(16, 185, 129), // Green
-                AndroidColor.rgb(245, 158, 11), // Orange
-                AndroidColor.BLACK
-            ).forEach { c ->
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(c))
-                        .border(
-                            width = if (drawColor == c) 2.dp else 1.dp,
-                            color = if (drawColor == c) Color.White else Color.Gray,
-                            shape = CircleShape
-                        )
-                        .clickable { onColorChange(c) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun MoreOptionsSection(
-    onCompress: () -> Unit,
-    onConvertToImages: () -> Unit,
-    onProtectPassword: () -> Unit,
-    onRemovePassword: () -> Unit,
-    onAddPageNumbers: () -> Unit,
-    onSaveExport: () -> Unit,
-    onExportSAF: () -> Unit,
-    onApplyChanges: () -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Text("More Document Actions", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Compress", Icons.Default.Compress, ToolGreen, onCompress)
-            ToolButtonCard(Modifier.weight(1f), "To Images", Icons.Default.Image, ToolOrange, onConvertToImages)
-            ToolButtonCard(Modifier.weight(1f), "Protect", Icons.Default.Lock, ToolPurple, onProtectPassword)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Remove Pass", Icons.Default.LockOpen, ToolPurple, onRemovePassword)
-            ToolButtonCard(Modifier.weight(1f), "Page Numbers", Icons.Default.FormatListNumbered, ToolBlue, onAddPageNumbers)
-            ToolButtonCard(Modifier.weight(1f), "Save As", Icons.Default.SaveAs, ToolBlue, onSaveExport)
-        }
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolButtonCard(Modifier.weight(1f), "Export to Device", Icons.Default.Download, ToolGreen, onExportSAF)
-            Spacer(modifier = Modifier.weight(2f))
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .testTag("btn_apply_more_changes")
-        ) {
-            Text("Apply Changes", fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@Composable
-private fun ToolButtonCard(
-    modifier: Modifier,
-    title: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    iconTint: Color,
-    onClick: () -> Unit
-) {
-    Surface(
-        color = Color(0xFF243046),
-        shape = RoundedCornerShape(8.dp),
-        modifier = modifier
-            .clip(RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = title,
-                color = Color.White,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                textAlign = TextAlign.Center
             )
         }
     }
