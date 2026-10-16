@@ -3,12 +3,16 @@ package com.example.pvccard.viewmodel
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.Matrix
 import android.graphics.Rect
+import android.media.ExifInterface
 import android.net.Uri
 import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.pvccard.engine.PvcCardRenderer
+import com.example.pvccard.model.PVC_CARD_HEIGHT_PX
+import com.example.pvccard.model.PVC_CARD_WIDTH_PX
 import com.example.pvccard.model.PvcCardItem
 import com.example.pvccard.model.PvcCardTemplate
 import com.example.pvccard.model.PvcCropPresetRepository
@@ -286,76 +290,206 @@ class PvcCardViewModel : ViewModel() {
     }
 
     /**
-     * Loads an image from URI (scanned photo / gallery).
+     * Decodes bitmap with correct EXIF orientation to preserve full aspect ratio and bounds.
      */
-    fun loadImage(context: Context, uri: Uri, isBackImage: Boolean = false) {
+    private fun decodeBitmapWithCorrectOrientation(context: Context, uri: Uri): Bitmap? {
+        return try {
+            val bmp = context.contentResolver.openInputStream(uri)?.use { stream ->
+                BitmapFactory.decodeStream(stream)
+            } ?: return null
+
+            val orientation = try {
+                context.contentResolver.openFileDescriptor(uri, "r")?.use { pfd ->
+                    val exif = ExifInterface(pfd.fileDescriptor)
+                    exif.getAttributeInt(
+                        ExifInterface.TAG_ORIENTATION,
+                        ExifInterface.ORIENTATION_NORMAL
+                    )
+                } ?: ExifInterface.ORIENTATION_NORMAL
+            } catch (e: Exception) {
+                ExifInterface.ORIENTATION_NORMAL
+            }
+
+            val degrees = when (orientation) {
+                ExifInterface.ORIENTATION_ROTATE_90 -> 90f
+                ExifInterface.ORIENTATION_ROTATE_180 -> 180f
+                ExifInterface.ORIENTATION_ROTATE_270 -> 270f
+                else -> 0f
+            }
+
+            if (degrees != 0f) {
+                val matrix = Matrix().apply { postRotate(degrees) }
+                val rotated = Bitmap.createBitmap(bmp, 0, 0, bmp.width, bmp.height, matrix, true)
+                if (rotated !== bmp) {
+                    bmp.recycle()
+                }
+                rotated
+            } else {
+                bmp
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error decoding image: ${e.message}", e)
+            null
+        }
+    }
+
+    /**
+     * Calculates crop coordinates matching standard CR80 aspect ratio (1012 × 638 px)
+     * while preserving the full aspect ratio and bounds of the source image without cutoff.
+     */
+    fun calculateCardFitCropNorm(width: Int, height: Int): RectFNorm {
+        if (width <= 0 || height <= 0) return RectFNorm(0f, 0f, 1f, 1f)
+        val targetAspect = PVC_CARD_WIDTH_PX.toFloat() / PVC_CARD_HEIGHT_PX.toFloat() // 1012 / 638 ≈ 1.586207f
+        val imgAspect = width.toFloat() / height.toFloat()
+
+        return if (imgAspect >= targetAspect) {
+            // Image is wider than or equal to CR80 aspect ratio.
+            // Fit full height (0% to 100% bounds without cutoff) and horizontally center the crop box.
+            val normWidth = (targetAspect / imgAspect).coerceIn(0.05f, 1.0f)
+            val normLeft = ((1.0f - normWidth) / 2f).coerceIn(0f, 1f - normWidth)
+            RectFNorm(
+                left = normLeft,
+                top = 0f,
+                width = normWidth,
+                height = 1f
+            )
+        } else {
+            // Image is taller than CR80 aspect ratio (e.g. 4:3, square, or vertical).
+            // Fit full width (0% to 100% bounds without cutoff) and vertically center the crop box.
+            val normHeight = (imgAspect / targetAspect).coerceIn(0.05f, 1.0f)
+            val normTop = ((1.0f - normHeight) / 2f).coerceIn(0f, 1f - normHeight)
+            RectFNorm(
+                left = 0f,
+                top = normTop,
+                width = 1f,
+                height = normHeight
+            )
+        }
+    }
+
+    /**
+     * Imports one or multiple images simultaneously (multi-image picker workflow).
+     * When 2 images are selected:
+     * - First selected image is automatically assigned to "Front Page" / "সামনে (Front)" side.
+     * - Second selected image is automatically assigned to "Back Page" / "পেছনে (Back)" side.
+     * Both preserve full aspect ratio and bounds before crop overlay is applied.
+     */
+    fun loadImages(context: Context, uris: List<Uri>) {
+        if (uris.isEmpty()) return
         viewModelScope.launch {
             _uiState.update {
                 it.copy(
                     isProcessing = true,
-                    processingMessage = "Loading card image...",
+                    processingMessage = if (uris.size >= 2) "Importing Front & Back card images..." else "Importing Front card image...",
+                    errorMessage = null
+                )
+            }
+
+            val bitmaps = withContext(Dispatchers.IO) {
+                uris.take(2).mapNotNull { uri ->
+                    decodeBitmapWithCorrectOrientation(context, uri)
+                }
+            }
+
+            if (bitmaps.isEmpty()) {
+                _uiState.update {
+                    it.copy(
+                        isProcessing = false,
+                        errorMessage = "Could not load selected image(s)."
+                    )
+                }
+                return@launch
+            }
+
+            val frontBmp = bitmaps[0]
+            val backBmp = if (bitmaps.size >= 2) bitmaps[1] else null
+
+            // Calculate crop boxes that preserve full aspect ratio and bounds
+            val fNorm = calculateCardFitCropNorm(frontBmp.width, frontBmp.height)
+            val fCard = PvcCardRenderer.cropToPvcSize(frontBmp, fNorm.toPixelRect(frontBmp.width, frontBmp.height))
+
+            val (bNorm, bCard) = if (backBmp != null) {
+                val norm = calculateCardFitCropNorm(backBmp.width, backBmp.height)
+                val card = PvcCardRenderer.cropToPvcSize(backBmp, norm.toPixelRect(backBmp.width, backBmp.height))
+                Pair(norm, card)
+            } else {
+                Pair(_uiState.value.backCropNorm, _uiState.value.backBitmap)
+            }
+
+            _uiState.update {
+                it.copy(
+                    baseDocumentBitmap = frontBmp,
+                    sourceDocumentBitmap = frontBmp,
+                    frontBaseBitmap = frontBmp,
+                    backBaseBitmap = backBmp ?: it.backBaseBitmap,
+                    frontSourceBitmap = frontBmp,
+                    backSourceBitmap = backBmp ?: it.backSourceBitmap,
+                    sourceDocumentUri = uris[0],
+                    sourceDocumentFileName = queryDisplayName(context, uris[0]),
+                    frontCropNorm = fNorm,
+                    backCropNorm = bNorm,
+                    frontBitmap = fCard,
+                    backBitmap = bCard,
+                    isProcessing = false,
+                    processingMessage = "",
+                    rotationDegrees = 0f,
+                    frontRotation = 0f,
+                    backRotation = 0f,
+                    activeCropSide = "FRONT",
+                    workflowStep = PvcWorkflowStep.ENHANCE_PREVIEW,
+                    statusNotification = if (backBmp != null) {
+                        "2 Images Imported: 1st assigned to সামনে (Front), 2nd to পেছনে (Back)"
+                    } else {
+                        "Front image loaded: সামনে (Front)"
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * Loads a single image from URI (scanned photo / gallery).
+     */
+    fun loadImage(context: Context, uri: Uri, isBackImage: Boolean = false) {
+        if (!isBackImage) {
+            loadImages(context, listOf(uri))
+            return
+        }
+
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isProcessing = true,
+                    processingMessage = "Loading back card image...",
                     errorMessage = null
                 )
             }
 
             val bmp = withContext(Dispatchers.IO) {
-                try {
-                    context.contentResolver.openInputStream(uri)?.use { stream ->
-                        BitmapFactory.decodeStream(stream)
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error loading image: ${e.message}", e)
-                    null
-                }
+                decodeBitmapWithCorrectOrientation(context, uri)
             }
 
             if (bmp != null) {
-                if (isBackImage) {
-                    // Directly crop and set as Back
-                    val pvcBack = PvcCardRenderer.cropToPvcSize(bmp, Rect(0, 0, bmp.width, bmp.height))
-                    _uiState.update {
-                        it.copy(
-                            backBitmap = pvcBack,
-                            isProcessing = false,
-                            processingMessage = "",
-                            statusNotification = "Back side image set"
-                        )
-                    }
-                } else {
-                    _uiState.update {
-                        it.copy(
-                            baseDocumentBitmap = bmp,
-                            sourceDocumentBitmap = bmp,
-                            frontBaseBitmap = bmp,
-                            backBaseBitmap = bmp,
-                            frontSourceBitmap = bmp,
-                            backSourceBitmap = bmp,
-                            sourceDocumentUri = uri,
-                            isProcessing = false,
-                            processingMessage = "",
-                            rotationDegrees = 0f,
-                            frontRotation = 0f,
-                            backRotation = 0f,
-                            workflowStep = PvcWorkflowStep.MANUAL_CROP,
-                            statusNotification = "Image loaded"
-                        )
-                    }
-                    val template = _uiState.value.selectedTemplate
-                    val saved = PvcCropPresetRepository.loadPreset(context, template.id, template.defaultFrontNorm, template.defaultBackNorm)
-                    if (saved != null) {
-                        _uiState.update { it.copy(frontCropNorm = saved.first, backCropNorm = saved.second) }
-                    } else {
-                        _uiState.update { it.copy(frontCropNorm = template.defaultFrontNorm, backCropNorm = template.defaultBackNorm) }
-                    }
-                    if (template != PvcCardTemplate.CUSTOM) {
-                        autoExtractFromDocument(template)
-                    }
+                val bNorm = calculateCardFitCropNorm(bmp.width, bmp.height)
+                val pvcBack = PvcCardRenderer.cropToPvcSize(bmp, bNorm.toPixelRect(bmp.width, bmp.height))
+                _uiState.update {
+                    val newActiveBmp = if (it.activeCropSide == "BACK") bmp else it.sourceDocumentBitmap
+                    it.copy(
+                        backBaseBitmap = bmp,
+                        backSourceBitmap = bmp,
+                        backCropNorm = bNorm,
+                        backBitmap = pvcBack,
+                        sourceDocumentBitmap = newActiveBmp,
+                        isProcessing = false,
+                        processingMessage = "",
+                        statusNotification = "Back side image set: পেছনে (Back)"
+                    )
                 }
             } else {
                 _uiState.update {
                     it.copy(
                         isProcessing = false,
-                        errorMessage = "Could not load selected image."
+                        errorMessage = "Could not load selected back image."
                     )
                 }
             }
@@ -629,9 +763,21 @@ class PvcCardViewModel : ViewModel() {
 
     fun swapFrontAndBack() {
         _uiState.update {
+            val swappedActiveBitmap = if (it.activeCropSide == "FRONT") {
+                it.backSourceBitmap ?: it.frontSourceBitmap
+            } else {
+                it.frontSourceBitmap ?: it.backSourceBitmap
+            }
             it.copy(
                 frontBitmap = it.backBitmap,
                 backBitmap = it.frontBitmap,
+                frontBaseBitmap = it.backBaseBitmap ?: it.frontBaseBitmap,
+                backBaseBitmap = it.frontBaseBitmap ?: it.backBaseBitmap,
+                frontSourceBitmap = it.backSourceBitmap ?: it.frontSourceBitmap,
+                backSourceBitmap = it.frontSourceBitmap ?: it.backSourceBitmap,
+                frontCropNorm = it.backCropNorm,
+                backCropNorm = it.frontCropNorm,
+                sourceDocumentBitmap = swappedActiveBitmap ?: it.sourceDocumentBitmap,
                 statusNotification = "Swapped Front and Back sides"
             )
         }

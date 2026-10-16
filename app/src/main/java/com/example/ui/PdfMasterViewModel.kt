@@ -94,7 +94,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
     private val repository: PdfRepository
     
     // Navigation
-    private val _currentTab = MutableStateFlow(NavigationTab.AMAR_DOKAN)
+    private val _currentTab = MutableStateFlow(NavigationTab.HOME)
     val currentTab: StateFlow<NavigationTab> = _currentTab.asStateFlow()
 
     // Modals & Active Tool

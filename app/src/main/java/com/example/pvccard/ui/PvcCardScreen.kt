@@ -169,12 +169,12 @@ fun PvcCardScreen(
         }
     }
 
-    // Scanned image picker (Front / Full sheet)
+    // Multi-image picker (Allows importing two images simultaneously for Front & Back)
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            viewModel.loadImage(context, uri, isBackImage = false)
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            viewModel.loadImages(context, uris)
         }
     }
 
@@ -556,7 +556,7 @@ private fun ImportAndAutoCropStep(
                         fontSize = 15.sp
                     )
                     Text(
-                        "Pick original PDF (e-Aadhaar, PAN, Voter) or high-res scanned image",
+                        "Pick original PDF (e-Aadhaar, PAN, Voter) or 1-2 images (Front & Back)",
                         fontSize = 12.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -584,9 +584,16 @@ private fun ImportAndAutoCropStep(
                         ) {
                             Icon(Icons.Default.Image, contentDescription = null, modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Pick Image", fontSize = 13.sp)
+                            Text("Pick Image(s)", fontSize = 13.sp)
                         }
                     }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        "Tip: Select two images in one pass — 1st assigned to সামনে (Front), 2nd to পেছনে (Back)",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
                     Spacer(modifier = Modifier.height(10.dp))
                     OutlinedButton(
