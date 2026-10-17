@@ -24,6 +24,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.horizontalScroll
@@ -56,12 +57,15 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import com.example.model.PdfFileRecord
 import com.example.pdf.PdfEngine
 import com.example.pdf.PdfToJpgConverter
@@ -221,19 +225,30 @@ fun PdfEditorMainView(
                                     isReplacingImage = false
                                 } else {
                                     pushHistory()
+                                    val pageBmp = pages.getOrNull(currentPageIndex)
+                                    val pageW = pageBmp?.width?.toFloat() ?: 600f
+                                    val pageH = pageBmp?.height?.toFloat() ?: 800f
+                                    val initW = (pageW * 0.45f).coerceIn(120f, 500f)
+                                    val initH = (initW * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
+                                    val initX = ((pageW - initW) / 2f).coerceAtLeast(0f)
+                                    val initY = ((pageH - initH) / 3f).coerceAtLeast(0f)
+
                                     val newItem = PdfEngine.EditItem(
                                         pageIndex = currentPageIndex,
                                         type = PdfEngine.AnnotationType.IMAGE,
                                         imageBitmap = bmp,
                                         originalImageBitmap = bmp,
-                                        posX = 80f,
-                                        posY = 120f,
-                                        imageWidth = 200f,
-                                        imageHeight = (200f * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
+                                        posX = initX,
+                                        posY = initY,
+                                        imageWidth = initW,
+                                        imageHeight = initH,
+                                        baseWidth = pageW,
+                                        baseHeight = pageH
                                     )
                                     editItems.add(newItem)
                                     selectedAnnotationId = newItem.id
-                                    Toast.makeText(context, "Image added to page ${currentPageIndex + 1}", Toast.LENGTH_SHORT).show()
+                                    activeTab = EditorTopTab.IMAGE
+                                    Toast.makeText(context, "Image added! Drag and pinch to reposition & resize", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -898,11 +913,15 @@ fun PdfEditorMainView(
                                         .aspectRatio(pageAspect)
                                 }
 
-                                Box(
+                                BoxWithConstraints(
                                     modifier = pageModifier
                                         .background(pageBackgroundColor)
                                         .shadow(8.dp)
                                 ) {
+                                    val density = LocalDensity.current
+                                    val pageWidthPx = constraints.maxWidth.toFloat()
+                                    val pageHeightPx = constraints.maxHeight.toFloat()
+
                                     // 1. Rendered PDF Page Image
                                     Image(
                                         bitmap = currentBmp.asImageBitmap(),
@@ -954,8 +973,8 @@ fun PdfEditorMainView(
                                                 }
                                             }
                                     ) {
-                                        // Draw existing edit items on this page
-                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex }
+                                        // Draw existing non-image edit items on this page (drawings, text)
+                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.IMAGE }
                                         for (item in pageItems) {
                                             when (item.type) {
                                                 PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
@@ -981,22 +1000,11 @@ fun PdfEditorMainView(
                                                     drawContext.canvas.nativeCanvas.apply {
                                                         val p = AndroidPaint().apply {
                                                             color = item.colorHex
-                                                            textSize = item.fontSize * density
+                                                            textSize = item.fontSize * density.density
                                                             isFakeBoldText = item.isBold
                                                             isAntiAlias = true
                                                         }
                                                         drawText(item.text, item.posX, item.posY, p)
-                                                    }
-                                                }
-                                                PdfEngine.AnnotationType.IMAGE -> {
-                                                    item.imageBitmap?.let { bmp ->
-                                                        val dst = AndroidRect(
-                                                            item.posX.toInt(),
-                                                            item.posY.toInt(),
-                                                            (item.posX + item.imageWidth).toInt(),
-                                                            (item.posY + item.imageHeight).toInt()
-                                                        )
-                                                        drawContext.canvas.nativeCanvas.drawBitmap(bmp, null, dst, null)
                                                     }
                                                 }
                                                 else -> {}
@@ -1019,6 +1027,176 @@ fun PdfEditorMainView(
                                                     join = androidx.compose.ui.graphics.StrokeJoin.Round
                                                 )
                                             )
+                                        }
+                                    }
+
+                                    // 3. Interactive Image Overlays: freely drag, reposition, and resize using touch gestures
+                                    val pageImageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.IMAGE }
+                                    for (imgItem in pageImageItems) {
+                                        val isSelected = selectedAnnotationId == imgItem.id
+                                        val imgBmp = imgItem.imageBitmap
+
+                                        if (imgBmp != null) {
+                                            val widthDp = with(density) { imgItem.imageWidth.toDp() }
+                                            val heightDp = with(density) { imgItem.imageHeight.toDp() }
+                                            val offsetX = imgItem.posX
+                                            val offsetY = imgItem.posY
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
+                                                    .size(widthDp, heightDp)
+                                                    .graphicsLayer {
+                                                        rotationZ = imgItem.imageRotation
+                                                    }
+                                                    .pointerInput(imgItem.id) {
+                                                        detectTapGestures(
+                                                            onTap = {
+                                                                selectedAnnotationId = imgItem.id
+                                                                activeTab = EditorTopTab.IMAGE
+                                                            }
+                                                        )
+                                                    }
+                                                    .pointerInput(imgItem.id) {
+                                                        detectTransformGestures { _, pan, zoom, rotation ->
+                                                            selectedAnnotationId = imgItem.id
+                                                            activeTab = EditorTopTab.IMAGE
+                                                            val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                            if (idx != -1) {
+                                                                val cur = editItems[idx]
+                                                                val aspect = if (cur.imageHeight > 0f) cur.imageWidth / cur.imageHeight else 1f
+
+                                                                var newW = cur.imageWidth * zoom
+                                                                newW = newW.coerceIn(50f, pageWidthPx)
+                                                                val newH = (newW / aspect).coerceIn(40f, pageHeightPx)
+
+                                                                var newX = cur.posX + pan.x
+                                                                var newY = cur.posY + pan.y
+                                                                newX = newX.coerceIn(-newW * 0.4f, pageWidthPx - newW * 0.6f)
+                                                                newY = newY.coerceIn(-newH * 0.4f, pageHeightPx - newH * 0.6f)
+
+                                                                editItems[idx] = cur.copy(
+                                                                    posX = newX,
+                                                                    posY = newY,
+                                                                    imageWidth = newW,
+                                                                    imageHeight = newH,
+                                                                    imageRotation = (cur.imageRotation + rotation) % 360f,
+                                                                    baseWidth = pageWidthPx,
+                                                                    baseHeight = pageHeightPx
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                            ) {
+                                                // Image bitmap
+                                                Image(
+                                                    bitmap = imgBmp.asImageBitmap(),
+                                                    contentDescription = "Added Image",
+                                                    contentScale = ContentScale.FillBounds,
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(RoundedCornerShape(2.dp))
+                                                )
+
+                                                // Selection outline & interactive handles
+                                                if (isSelected) {
+                                                    // Boundary border
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .border(2.dp, ToolBlue, RoundedCornerShape(2.dp))
+                                                    )
+
+                                                    // Corner Resize Handle at Bottom-Right
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.BottomEnd)
+                                                            .size(28.dp)
+                                                            .offset(x = 8.dp, y = 8.dp)
+                                                            .background(ToolBlue, CircleShape)
+                                                            .border(1.5.dp, Color.White, CircleShape)
+                                                            .pointerInput(imgItem.id) {
+                                                                detectDragGestures(
+                                                                    onDragStart = { pushHistory() },
+                                                                    onDrag = { change, dragAmount ->
+                                                                        change.consume()
+                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                        if (idx != -1) {
+                                                                            val cur = editItems[idx]
+                                                                            val aspect = if (imgBmp.height > 0) imgBmp.width.toFloat() / imgBmp.height.toFloat() else 1f
+                                                                            val newW = (cur.imageWidth + dragAmount.x).coerceIn(50f, pageWidthPx - cur.posX)
+                                                                            val newH = (newW / aspect).coerceIn(40f, pageHeightPx - cur.posY)
+                                                                            editItems[idx] = cur.copy(
+                                                                                imageWidth = newW,
+                                                                                imageHeight = newH,
+                                                                                baseWidth = pageWidthPx,
+                                                                                baseHeight = pageHeightPx
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                )
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.OpenInFull,
+                                                            contentDescription = "Resize Image",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(15.dp)
+                                                        )
+                                                    }
+
+                                                    // Quick Delete Button at Top-Right
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.TopEnd)
+                                                            .size(24.dp)
+                                                            .offset(x = 6.dp, y = (-6).dp)
+                                                            .background(CrimsonPrimary, CircleShape)
+                                                            .border(1.dp, Color.White, CircleShape)
+                                                            .clickable {
+                                                                pushHistory()
+                                                                editItems.removeAll { it.id == imgItem.id }
+                                                                selectedAnnotationId = null
+                                                                Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Close,
+                                                            contentDescription = "Delete Image",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+
+                                                    // Quick Rotate Handle at Top-Left
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .align(Alignment.TopStart)
+                                                            .size(24.dp)
+                                                            .offset(x = (-6).dp, y = (-6).dp)
+                                                            .background(ToolOrange, CircleShape)
+                                                            .border(1.dp, Color.White, CircleShape)
+                                                            .clickable {
+                                                                pushHistory()
+                                                                val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                if (idx != -1) {
+                                                                    val cur = editItems[idx]
+                                                                    editItems[idx] = cur.copy(imageRotation = (cur.imageRotation + 90f) % 360f)
+                                                                }
+                                                            },
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.RotateRight,
+                                                            contentDescription = "Rotate Image",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(14.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
