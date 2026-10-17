@@ -85,6 +85,15 @@ import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
 
+private fun distanceToSegment(px: Float, py: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
+    val l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)
+    if (l2 == 0f) return kotlin.math.hypot((px - x1).toDouble(), (py - y1).toDouble()).toFloat()
+    val t = (((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2).coerceIn(0f, 1f)
+    val projX = x1 + t * (x2 - x1)
+    val projY = y1 + t * (y2 - y1)
+    return kotlin.math.hypot((px - projX).toDouble(), (py - projY).toDouble()).toFloat()
+}
+
 enum class EditorTopTab {
     NONE, PAGE, EDIT, TEXT, IMAGE, DRAW, MORE
 }
@@ -159,6 +168,8 @@ fun PdfEditorMainView(
     var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
     var drawColor by remember { mutableIntStateOf(AndroidColor.rgb(37, 99, 235)) }
     var strokeThickness by remember { mutableFloatStateOf(4f) }
+    var highlighterThickness by remember { mutableFloatStateOf(24f) }
+    var eraserPosition by remember { mutableStateOf<Offset?>(null) }
     val activeStroke = remember { mutableStateListOf<Pair<Float, Float>>() }
 
     // Sub-dialogs state
@@ -707,6 +718,8 @@ fun PdfEditorMainView(
                                 onColorChange = { drawColor = it },
                                 strokeThickness = strokeThickness,
                                 onThicknessChange = { strokeThickness = it },
+                                highlighterThickness = highlighterThickness,
+                                onHighlighterThicknessChange = { highlighterThickness = it },
                                 onClearAll = {
                                     pushHistory()
                                     editItems.removeAll { it.pageIndex == currentPageIndex && (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER) }
@@ -844,7 +857,11 @@ fun PdfEditorMainView(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(Unit) {
+                            .pointerInput(activeTab) {
+                                if (activeTab == EditorTopTab.DRAW) {
+                                    // In DRAW mode, do NOT run detectTransformGestures so 1-finger drawing never shifts, scrolls, or zooms the canvas
+                                    return@pointerInput
+                                }
                                 detectTransformGestures { centroid, pan, zoom, _ ->
                                     val oldScale = zoomScale
                                     val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
@@ -856,7 +873,8 @@ fun PdfEditorMainView(
                                     }
                                 }
                             }
-                            .pointerInput(Unit) {
+                            .pointerInput(activeTab) {
+                                if (activeTab == EditorTopTab.DRAW) return@pointerInput
                                 detectTapGestures(
                                     onDoubleTap = { tapOffset ->
                                         if (zoomScale > 1.2f) {
@@ -934,41 +952,89 @@ fun PdfEditorMainView(
                                     Canvas(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .pointerInput(activeTab, drawMode, drawColor, strokeThickness) {
+                                            .pointerInput(activeTab, drawMode, drawColor, strokeThickness, highlighterThickness) {
                                                 if (activeTab != EditorTopTab.DRAW) return@pointerInput
                                                 awaitEachGesture {
-                                                    val down = awaitFirstDown()
-                                                    val points = mutableListOf(Pair(down.position.x, down.position.y))
-                                                    activeStroke.clear()
-                                                    activeStroke.add(Pair(down.position.x, down.position.y))
-                                                    do {
-                                                        val event = awaitPointerEvent()
-                                                        val change = event.changes.firstOrNull() ?: break
-                                                        if (change.pressed) {
-                                                            change.consume()
-                                                            points.add(Pair(change.position.x, change.position.y))
-                                                            activeStroke.add(Pair(change.position.x, change.position.y))
-                                                        }
-                                                    } while (event.changes.any { it.pressed })
+                                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                                    down.consume()
 
-                                                    if (points.size > 1) {
-                                                        val annotType = if (drawMode == "HIGHLIGHTER") {
-                                                            PdfEngine.AnnotationType.HIGHLIGHTER
-                                                        } else {
-                                                            PdfEngine.AnnotationType.PEN
+                                                    if (drawMode == "ERASER") {
+                                                        eraserPosition = down.position
+                                                        var historyPushedForErase = false
+                                                        fun eraseAt(x: Float, y: Float) {
+                                                            val toRemove = mutableListOf<String>()
+                                                            val pageDrawings = editItems.filter {
+                                                                it.pageIndex == currentPageIndex &&
+                                                                (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER)
+                                                            }
+                                                            for (item in pageDrawings) {
+                                                                val pts = item.points
+                                                                val radius = (item.strokeWidth / 2f + 20f).coerceAtLeast(24f)
+                                                                for (i in 0 until pts.size - 1) {
+                                                                    val d = distanceToSegment(x, y, pts[i].first, pts[i].second, pts[i + 1].first, pts[i + 1].second)
+                                                                    if (d <= radius) {
+                                                                        toRemove.add(item.id)
+                                                                        break
+                                                                    }
+                                                                }
+                                                            }
+                                                            if (toRemove.isNotEmpty()) {
+                                                                if (!historyPushedForErase) {
+                                                                    pushHistory()
+                                                                    historyPushedForErase = true
+                                                                }
+                                                                editItems.removeAll { toRemove.contains(it.id) }
+                                                            }
                                                         }
-                                                        pushHistory()
-                                                        editItems.add(
-                                                            PdfEngine.EditItem(
-                                                                pageIndex = currentPageIndex,
-                                                                type = annotType,
-                                                                colorHex = drawColor,
-                                                                strokeWidth = strokeThickness,
-                                                                opacity = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f,
-                                                                points = points.toList()
-                                                            )
-                                                        )
+
+                                                        eraseAt(down.position.x, down.position.y)
+                                                        do {
+                                                            val event = awaitPointerEvent()
+                                                            val change = event.changes.firstOrNull() ?: break
+                                                            if (change.pressed) {
+                                                                change.consume()
+                                                                eraserPosition = change.position
+                                                                eraseAt(change.position.x, change.position.y)
+                                                            }
+                                                        } while (event.changes.any { it.pressed })
+                                                        eraserPosition = null
+                                                    } else {
+                                                        val points = mutableListOf(Pair(down.position.x, down.position.y))
                                                         activeStroke.clear()
+                                                        activeStroke.add(Pair(down.position.x, down.position.y))
+                                                        do {
+                                                            val event = awaitPointerEvent()
+                                                            val change = event.changes.firstOrNull() ?: break
+                                                            if (change.pressed) {
+                                                                change.consume()
+                                                                points.add(Pair(change.position.x, change.position.y))
+                                                                activeStroke.add(Pair(change.position.x, change.position.y))
+                                                            }
+                                                        } while (event.changes.any { it.pressed })
+
+                                                        if (points.size > 1) {
+                                                            val isHighlight = drawMode == "HIGHLIGHTER"
+                                                            val annotType = if (isHighlight) {
+                                                                PdfEngine.AnnotationType.HIGHLIGHTER
+                                                            } else {
+                                                                PdfEngine.AnnotationType.PEN
+                                                            }
+                                                            val finalWidth = if (isHighlight) highlighterThickness else strokeThickness
+                                                            pushHistory()
+                                                            editItems.add(
+                                                                PdfEngine.EditItem(
+                                                                    pageIndex = currentPageIndex,
+                                                                    type = annotType,
+                                                                    colorHex = drawColor,
+                                                                    strokeWidth = finalWidth,
+                                                                    opacity = if (isHighlight) 0.45f else 1.0f,
+                                                                    points = points.toList(),
+                                                                    baseWidth = pageWidthPx,
+                                                                    baseHeight = pageHeightPx
+                                                                )
+                                                            )
+                                                            activeStroke.clear()
+                                                        }
                                                     }
                                                 }
                                             }
@@ -985,12 +1051,13 @@ fun PdfEditorMainView(
                                                         for (i in 1 until pts.size) {
                                                             path.lineTo(pts[i].first, pts[i].second)
                                                         }
+                                                        val isHighlight = item.type == PdfEngine.AnnotationType.HIGHLIGHTER
                                                         drawPath(
                                                             path = path,
                                                             color = Color(item.colorHex).copy(alpha = item.opacity),
                                                             style = androidx.compose.ui.graphics.drawscope.Stroke(
                                                                 width = item.strokeWidth.dp.toPx(),
-                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                                                cap = if (isHighlight) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
                                                                 join = androidx.compose.ui.graphics.StrokeJoin.Round
                                                             )
                                                         )
@@ -1018,14 +1085,31 @@ fun PdfEditorMainView(
                                             for (i in 1 until activeStroke.size) {
                                                 path.lineTo(activeStroke[i].first, activeStroke[i].second)
                                             }
+                                            val isHighlight = drawMode == "HIGHLIGHTER"
+                                            val finalWidth = if (isHighlight) highlighterThickness else strokeThickness
                                             drawPath(
                                                 path = path,
-                                                color = Color(drawColor).copy(alpha = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f),
+                                                color = Color(drawColor).copy(alpha = if (isHighlight) 0.45f else 1.0f),
                                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                    width = strokeThickness.dp.toPx(),
-                                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                                    width = finalWidth.dp.toPx(),
+                                                    cap = if (isHighlight) androidx.compose.ui.graphics.StrokeCap.Square else androidx.compose.ui.graphics.StrokeCap.Round,
                                                     join = androidx.compose.ui.graphics.StrokeJoin.Round
                                                 )
+                                            )
+                                        }
+
+                                        // Real-time Eraser cursor indicator
+                                        eraserPosition?.let { pos ->
+                                            drawCircle(
+                                                color = CrimsonPrimary.copy(alpha = 0.35f),
+                                                radius = 24.dp.toPx(),
+                                                center = pos
+                                            )
+                                            drawCircle(
+                                                color = Color.White,
+                                                radius = 24.dp.toPx(),
+                                                center = pos,
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
                                             )
                                         }
                                     }
@@ -1196,6 +1280,51 @@ fun PdfEditorMainView(
                                                         )
                                                     }
                                                 }
+                                            }
+                                        }
+                                    }
+
+                                    // 4. Floating Highlighter Size Drag Control (directly on canvas)
+                                    if (activeTab == EditorTopTab.DRAW && drawMode == "HIGHLIGHTER") {
+                                        Surface(
+                                            color = Color(0xFF1E293B).copy(alpha = 0.92f),
+                                            shape = RoundedCornerShape(20.dp),
+                                            border = BorderStroke(1.dp, Color(0xFF475569)),
+                                            shadowElevation = 6.dp,
+                                            modifier = Modifier
+                                                .align(Alignment.TopEnd)
+                                                .padding(14.dp)
+                                                .pointerInput(highlighterThickness) {
+                                                    detectDragGestures { change, dragAmount ->
+                                                        change.consume()
+                                                        highlighterThickness = (highlighterThickness + dragAmount.x * 0.35f).coerceIn(8f, 64f)
+                                                    }
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Highlight,
+                                                    contentDescription = null,
+                                                    tint = Color(drawColor),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text(
+                                                    text = "${highlighterThickness.roundToInt()} px",
+                                                    color = Color.White,
+                                                    fontSize = 12.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.SwapHoriz,
+                                                    contentDescription = "Drag to resize",
+                                                    tint = Color(0xFF94A3B8),
+                                                    modifier = Modifier.size(16.dp)
+                                                )
                                             }
                                         }
                                     }
@@ -2216,6 +2345,8 @@ private fun DrawOptionsSection(
     onColorChange: (Int) -> Unit,
     strokeThickness: Float,
     onThicknessChange: (Float) -> Unit,
+    highlighterThickness: Float,
+    onHighlighterThicknessChange: (Float) -> Unit,
     onClearAll: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -2260,28 +2391,149 @@ private fun DrawOptionsSection(
             )
         }
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(
-                AndroidColor.rgb(37, 99, 235), // Blue
-                AndroidColor.rgb(220, 38, 38), // Red
-                AndroidColor.rgb(16, 185, 129), // Green
-                AndroidColor.rgb(245, 158, 11), // Orange
-                AndroidColor.BLACK
-            ).forEach { c ->
+
+        if (drawMode == "HIGHLIGHTER") {
+            // Touch gesture size adjustment for highlighter
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Highlighter Size: ${highlighterThickness.roundToInt()} px",
+                        fontSize = 12.sp,
+                        color = Color(0xFFE2E8F0),
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = "Drag bar to resize",
+                        fontSize = 11.sp,
+                        color = Color(0xFF94A3B8)
+                    )
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                // Interactive Touch Drag Sizing Bar
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(c))
-                        .border(
-                            width = if (drawColor == c) 2.dp else 1.dp,
-                            color = if (drawColor == c) Color.White else Color.Gray,
-                            shape = CircleShape
+                        .fillMaxWidth()
+                        .height(38.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(Color(0xFF0F172A))
+                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(8.dp))
+                        .pointerInput(highlighterThickness) {
+                            detectDragGestures { change, dragAmount ->
+                                change.consume()
+                                val newThick = (highlighterThickness + dragAmount.x * 0.3f).coerceIn(8f, 64f)
+                                onHighlighterThicknessChange(newThick)
+                            }
+                        }
+                        .padding(horizontal = 12.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(highlighterThickness.dp.coerceAtMost(24.dp))
+                                .clip(RoundedCornerShape(2.dp))
+                                .background(Color(drawColor).copy(alpha = 0.5f))
                         )
-                        .clickable { onColorChange(c) }
+                        Spacer(modifier = Modifier.width(14.dp))
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Drag to resize",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(
+                        AndroidColor.rgb(250, 204, 21), // Fluorescent Yellow
+                        AndroidColor.rgb(74, 222, 128), // Pastel Green
+                        AndroidColor.rgb(96, 165, 250), // Sky Blue
+                        AndroidColor.rgb(244, 114, 182), // Soft Pink
+                        AndroidColor.rgb(251, 146, 60)   // Bright Orange
+                    ).forEach { c ->
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(c))
+                                .border(
+                                    width = if (drawColor == c) 2.dp else 1.dp,
+                                    color = if (drawColor == c) Color.White else Color.Gray,
+                                    shape = CircleShape
+                                )
+                                .clickable { onColorChange(c) }
+                        )
+                    }
+                }
+            }
+        } else if (drawMode == "PEN") {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                listOf(
+                    AndroidColor.rgb(37, 99, 235), // Blue
+                    AndroidColor.rgb(220, 38, 38), // Red
+                    AndroidColor.rgb(16, 185, 129), // Green
+                    AndroidColor.rgb(245, 158, 11), // Orange
+                    AndroidColor.BLACK
+                ).forEach { c ->
+                    Box(
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clip(CircleShape)
+                            .background(Color(c))
+                            .border(
+                                width = if (drawColor == c) 2.dp else 1.dp,
+                                color = if (drawColor == c) Color.White else Color.Gray,
+                                shape = CircleShape
+                            )
+                            .clickable { onColorChange(c) }
+                    )
+                }
+                Spacer(modifier = Modifier.width(10.dp))
+                listOf(2f, 4f, 8f).forEach { th ->
+                    FilterChip(
+                        selected = strokeThickness == th,
+                        onClick = { onThicknessChange(th) },
+                        label = { Text("${th.toInt()}px") },
+                        modifier = Modifier.height(26.dp)
+                    )
+                }
+            }
+        } else {
+            // ERASER Mode Info
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AutoFixHigh,
+                    contentDescription = null,
+                    tint = CrimsonPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = "Tap or drag across any drawn line or highlighted section to erase it",
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 12.sp
                 )
             }
         }
