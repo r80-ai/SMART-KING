@@ -115,6 +115,33 @@ fun PdfEditorMainView(
     var selectedAnnotationId by remember { mutableStateOf<String?>(null) }
     var pageBackgroundColor by remember { mutableStateOf(Color.White) }
 
+    // Undo / Redo history
+    val undoStack = remember { mutableStateListOf<List<PdfEngine.EditItem>>() }
+    val redoStack = remember { mutableStateListOf<List<PdfEngine.EditItem>>() }
+
+    fun pushHistory() {
+        undoStack.add(editItems.toList())
+        redoStack.clear()
+    }
+
+    fun handleUndo() {
+        if (undoStack.isNotEmpty()) {
+            redoStack.add(editItems.toList())
+            val previous = undoStack.removeAt(undoStack.size - 1)
+            editItems.clear()
+            editItems.addAll(previous)
+        }
+    }
+
+    fun handleRedo() {
+        if (redoStack.isNotEmpty()) {
+            undoStack.add(editItems.toList())
+            val next = redoStack.removeAt(redoStack.size - 1)
+            editItems.clear()
+            editItems.addAll(next)
+        }
+    }
+
     // Text tool state
     var showAddTextDialog by remember { mutableStateOf(false) }
     var textInputContent by remember { mutableStateOf("") }
@@ -183,6 +210,7 @@ fun PdfEditorMainView(
                                 if (isReplacingImage && selectedAnnotationId != null) {
                                     val idx = editItems.indexOfFirst { it.id == selectedAnnotationId }
                                     if (idx != -1) {
+                                        pushHistory()
                                         val old = editItems[idx]
                                         editItems[idx] = old.copy(
                                             imageBitmap = bmp,
@@ -192,6 +220,7 @@ fun PdfEditorMainView(
                                     }
                                     isReplacingImage = false
                                 } else {
+                                    pushHistory()
                                     val newItem = PdfEngine.EditItem(
                                         pageIndex = currentPageIndex,
                                         type = PdfEngine.AnnotationType.IMAGE,
@@ -292,6 +321,32 @@ fun PdfEditorMainView(
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Undo Button
+                    IconButton(
+                        onClick = { handleUndo() },
+                        enabled = undoStack.isNotEmpty(),
+                        modifier = Modifier.testTag("editor_undo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Undo",
+                            tint = if (undoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                        )
+                    }
+
+                    // Redo Button
+                    IconButton(
+                        onClick = { handleRedo() },
+                        enabled = redoStack.isNotEmpty(),
+                        modifier = Modifier.testTag("editor_redo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "Redo",
+                            tint = if (redoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                        )
+                    }
+
                     IconButton(
                         onClick = { viewModel.shareFile(context, currentFile) },
                         modifier = Modifier.testTag("editor_share_button")
@@ -568,6 +623,7 @@ fun PdfEditorMainView(
                                 onAlignmentChange = { textAlignment = it },
                                 onDeleteSelectedText = {
                                     selectedAnnotationId?.let { id ->
+                                        pushHistory()
                                         editItems.removeAll { it.id == id }
                                         selectedAnnotationId = null
                                         Toast.makeText(context, "Text deleted", Toast.LENGTH_SHORT).show()
@@ -598,6 +654,7 @@ fun PdfEditorMainView(
                                     selectedAnnotationId?.let { id ->
                                         val idx = editItems.indexOfFirst { it.id == id }
                                         if (idx != -1) {
+                                            pushHistory()
                                             val old = editItems[idx]
                                             editItems[idx] = old.copy(imageRotation = (old.imageRotation + 90f) % 360f)
                                             Toast.makeText(context, "Image rotated +90°", Toast.LENGTH_SHORT).show()
@@ -608,6 +665,7 @@ fun PdfEditorMainView(
                                     selectedAnnotationId?.let { id ->
                                         val idx = editItems.indexOfFirst { it.id == id }
                                         if (idx != -1) {
+                                            pushHistory()
                                             val old = editItems[idx]
                                             val newW = (old.imageWidth * factor).coerceIn(40f, 800f)
                                             val newH = (old.imageHeight * factor).coerceIn(40f, 800f)
@@ -617,6 +675,7 @@ fun PdfEditorMainView(
                                 },
                                 onDeleteSelectedImage = {
                                     selectedAnnotationId?.let { id ->
+                                        pushHistory()
                                         editItems.removeAll { it.id == id }
                                         selectedAnnotationId = null
                                         Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
@@ -634,6 +693,7 @@ fun PdfEditorMainView(
                                 strokeThickness = strokeThickness,
                                 onThicknessChange = { strokeThickness = it },
                                 onClearAll = {
+                                    pushHistory()
                                     editItems.removeAll { it.pageIndex == currentPageIndex && (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER) }
                                     Toast.makeText(context, "Page drawings cleared", Toast.LENGTH_SHORT).show()
                                 }
@@ -878,6 +938,7 @@ fun PdfEditorMainView(
                                                         } else {
                                                             PdfEngine.AnnotationType.PEN
                                                         }
+                                                        pushHistory()
                                                         editItems.add(
                                                             PdfEngine.EditItem(
                                                                 pageIndex = currentPageIndex,
@@ -1581,6 +1642,7 @@ fun PdfEditorMainView(
                 Button(
                     onClick = {
                         if (textInputContent.isNotBlank()) {
+                            pushHistory()
                             editItems.add(
                                 PdfEngine.EditItem(
                                     pageIndex = currentPageIndex,

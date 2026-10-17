@@ -606,6 +606,32 @@ fun PdfWorkspaceDialog(
                             )
                         }
 
+                        // Undo
+                        IconButton(
+                            onClick = { handleUndo() },
+                            enabled = undoStack.isNotEmpty(),
+                            modifier = Modifier.testTag("workspace_undo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Undo",
+                                tint = if (undoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                            )
+                        }
+
+                        // Redo
+                        IconButton(
+                            onClick = { handleRedo() },
+                            enabled = redoStack.isNotEmpty(),
+                            modifier = Modifier.testTag("workspace_redo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Redo,
+                                contentDescription = "Redo",
+                                tint = if (redoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                            )
+                        }
+
                         // Share
                         IconButton(
                             onClick = { viewModel.shareFile(context, currentRecord) },
