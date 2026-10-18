@@ -151,7 +151,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
     private val _saveFolderType = MutableStateFlow("DOCUMENTS") // "DOCUMENTS", "DOWNLOADS", "INTERNAL", "CUSTOM"
     val saveFolderType: StateFlow<String> = _saveFolderType.asStateFlow()
 
-    private val _customFolderName = MutableStateFlow("PDF_Master")
+    private val _customFolderName = MutableStateFlow("Smart King")
     val customFolderName: StateFlow<String> = _customFolderName.asStateFlow()
 
     val storageMode: StateFlow<String> = com.example.storage.GlobalSaveManager.storageMode

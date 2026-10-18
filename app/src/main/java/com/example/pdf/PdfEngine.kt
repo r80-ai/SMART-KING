@@ -37,11 +37,11 @@ import java.util.Locale
 object PdfEngine {
 
     var customSaveFolderType: String = "DOCUMENTS" // "DOCUMENTS", "DOWNLOADS", "INTERNAL", "CUSTOM"
-    var customFolderName: String = "PDF_Master"
+    var customFolderName: String = "Smart King"
 
     fun setFolderConfig(type: String, folderName: String) {
         customSaveFolderType = type
-        customFolderName = if (folderName.isBlank()) "PDF_Master" else folderName.trim()
+        customFolderName = if (folderName.isBlank()) "Smart King" else folderName.trim()
     }
 
     fun getPdfsDirectory(context: Context): File {

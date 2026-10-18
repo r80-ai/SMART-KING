@@ -166,7 +166,7 @@ object GlobalSaveManager {
             }
             MODE_DOWNLOADS -> "Downloads / $folderName"
             MODE_INTERNAL -> "App Private Storage / $folderName"
-            else -> "Documents / $folderName"
+            else -> folderName
         }
     }
 
