@@ -505,80 +505,19 @@ fun PdfWorkspaceDialog(
                         .fillMaxWidth()
                         .background(Color(0xFF1E293B))
                         .statusBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("workspace_back_button")
                     ) {
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.testTag("workspace_back_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = currentRecord.name,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = if (pages.isNotEmpty()) "Page ${currentPageIndex + 1} of ${pages.size}" else "${currentRecord.pageCount} pages",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (signatureResult?.overallValidity == SignatureValidity.VALID) {
-                                    val sigColor = Color(0xFF34D399)
-                                    val sigBg = Color(0xFF065F46)
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = sigBg,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .clickable { showSigDetailsDialog = true }
-                                            .testTag("badge_viewer_signature_header")
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = null,
-                                                tint = sigColor,
-                                                modifier = Modifier.size(11.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text(
-                                                text = "Signature Valid • Verified",
-                                                color = sigColor,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -606,68 +545,30 @@ fun PdfWorkspaceDialog(
                             )
                         }
 
-                        // Share
+                        // Undo
                         IconButton(
-                            onClick = { viewModel.shareFile(context, currentRecord) },
-                            modifier = Modifier.testTag("workspace_share_button")
+                            onClick = { handleUndo() },
+                            enabled = undoStack.isNotEmpty(),
+                            modifier = Modifier.testTag("workspace_undo_button")
                         ) {
-                            Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Undo,
+                                contentDescription = "Undo",
+                                tint = if (undoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                            )
                         }
 
-                        // Save Dropdown
-                        Box {
-                            Button(
-                                onClick = { saveMenuExpanded = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier
-                                    .height(36.dp)
-                                    .testTag("workspace_save_button")
-                            ) {
-                                Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
-
-                            DropdownMenu(
-                                expanded = saveMenuExpanded,
-                                onDismissRequest = { saveMenuExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { 
-                                        Column {
-                                            Text("Save Copy")
-                                            Text("Keeps original safe (${currentRecord.nameWithoutExtension()}_edited.pdf)", fontSize = 11.sp, color = Color.Gray)
-                                        }
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.SaveAs, contentDescription = null, tint = CrimsonPrimary) },
-                                    onClick = {
-                                        saveMenuExpanded = false
-                                        val targetName = "${currentRecord.nameWithoutExtension()}_edited.pdf"
-                                        viewModel.saveEditedPdf(
-                                            sourceRecord = currentRecord,
-                                            items = editItems.toList(),
-                                            deletedPages = emptySet(),
-                                            pageRotations = pageRotations.toMap(),
-                                            outputName = targetName
-                                        )
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text("Save As...")
-                                            Text("Choose a custom file name", fontSize = 11.sp, color = Color.Gray)
-                                        }
-                                    },
-                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null) },
-                                    onClick = {
-                                        saveMenuExpanded = false
-                                        customSaveAsName = "${currentRecord.nameWithoutExtension()}_edited.pdf"
-                                        activeSubTool = WorkspaceSubTool.SAVE_AS
-                                    }
-                                )
-                            }
+                        // Redo
+                        IconButton(
+                            onClick = { handleRedo() },
+                            enabled = redoStack.isNotEmpty(),
+                            modifier = Modifier.testTag("workspace_redo_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.Redo,
+                                contentDescription = "Redo",
+                                tint = if (redoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                            )
                         }
 
                         // More Menu (⋮)
@@ -683,6 +584,42 @@ fun PdfWorkspaceDialog(
                                 expanded = moreMenuExpanded,
                                 onDismissRequest = { moreMenuExpanded = false }
                             ) {
+                                DropdownMenuItem(
+                                    text = { Text("Save") },
+                                    leadingIcon = { Icon(Icons.Default.Save, contentDescription = null, tint = CrimsonPrimary) },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        val targetName = "${currentRecord.nameWithoutExtension()}_edited.pdf"
+                                        viewModel.saveEditedPdf(
+                                            sourceRecord = currentRecord,
+                                            items = editItems.toList(),
+                                            deletedPages = emptySet(),
+                                            pageRotations = pageRotations.toMap(),
+                                            outputName = targetName
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("menu_item_save")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Save As...") },
+                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null) },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        customSaveAsName = "${currentRecord.nameWithoutExtension()}_edited.pdf"
+                                        activeSubTool = WorkspaceSubTool.SAVE_AS
+                                    },
+                                    modifier = Modifier.testTag("menu_item_save_as")
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Share") },
+                                    leadingIcon = { Icon(Icons.Default.Share, contentDescription = null) },
+                                    onClick = {
+                                        moreMenuExpanded = false
+                                        viewModel.shareFile(context, currentRecord)
+                                    },
+                                    modifier = Modifier.testTag("menu_item_share")
+                                )
+                                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
                                 DropdownMenuItem(
                                     text = { Text("Document Information") },
                                     leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
