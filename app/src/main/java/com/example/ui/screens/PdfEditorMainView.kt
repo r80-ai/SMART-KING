@@ -377,125 +377,172 @@ fun PdfEditorMainView(
                     }
                 }
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    // Undo Button
+                // Right side: Only 3-dots overflow menu button visible
+                Box {
                     IconButton(
-                        onClick = { handleUndo() },
-                        enabled = undoStack.isNotEmpty(),
-                        modifier = Modifier.testTag("editor_undo_button")
+                        onClick = { moreMenuExpanded = true },
+                        modifier = Modifier.testTag("editor_top_more_menu")
                     ) {
                         Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Undo,
-                            contentDescription = "Undo",
-                            tint = if (undoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                            imageVector = Icons.Default.MoreVert,
+                            contentDescription = "More options",
+                            tint = Color.White
                         )
                     }
 
-                    // Redo Button
-                    IconButton(
-                        onClick = { handleRedo() },
-                        enabled = redoStack.isNotEmpty(),
-                        modifier = Modifier.testTag("editor_redo_button")
+                    DropdownMenu(
+                        expanded = moreMenuExpanded,
+                        onDismissRequest = { moreMenuExpanded = false }
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Redo,
-                            contentDescription = "Redo",
-                            tint = if (redoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                        // Save Option
+                        DropdownMenuItem(
+                            text = { Text("Save") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Save,
+                                    contentDescription = null,
+                                    tint = CrimsonPrimary
+                                )
+                            },
+                            onClick = {
+                                moreMenuExpanded = false
+                                val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                                viewModel.saveEditedPdf(
+                                    sourceRecord = currentFile,
+                                    items = editItems.toList(),
+                                    deletedPages = deletedPages.toSet(),
+                                    pageRotations = pageRotations.toMap(),
+                                    outputName = outputName
+                                ) { newRec ->
+                                    currentFile = newRec
+                                    Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.testTag("menu_item_save")
                         )
-                    }
 
-                    IconButton(
-                        onClick = { viewModel.shareFile(context, currentFile) },
-                        modifier = Modifier.testTag("editor_share_button")
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
-                    }
+                        // Save As Option
+                        DropdownMenuItem(
+                            text = { Text("Save As...") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.SaveAs,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                moreMenuExpanded = false
+                                saveAsNameInput = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                                showSaveAsDialog = true
+                            },
+                            modifier = Modifier.testTag("menu_item_save_as")
+                        )
 
-                    Button(
-                        onClick = {
-                            val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                            viewModel.saveEditedPdf(
-                                sourceRecord = currentFile,
-                                items = editItems.toList(),
-                                deletedPages = deletedPages.toSet(),
-                                pageRotations = pageRotations.toMap(),
-                                outputName = outputName
-                            ) { newRec ->
-                                currentFile = newRec
-                                Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
-                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                        modifier = Modifier
-                            .height(34.dp)
-                            .testTag("editor_top_save_button")
-                    ) {
-                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    }
+                        // Share Option
+                        DropdownMenuItem(
+                            text = { Text("Share") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = null
+                                )
+                            },
+                            onClick = {
+                                moreMenuExpanded = false
+                                viewModel.shareFile(context, currentFile)
+                            },
+                            modifier = Modifier.testTag("menu_item_share")
+                        )
 
-                    Box {
-                        IconButton(
-                            onClick = { moreMenuExpanded = true },
-                            modifier = Modifier.testTag("editor_top_more_menu")
-                        ) {
-                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
-                        }
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
 
-                        DropdownMenu(
-                            expanded = moreMenuExpanded,
-                            onDismissRequest = { moreMenuExpanded = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Save As...") },
-                                leadingIcon = { Icon(Icons.Default.SaveAs, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    saveAsNameInput = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    showSaveAsDialog = true
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Export to Device") },
-                                leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    exportDocumentLauncher.launch(currentFile.name)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Export to JPG Images") },
-                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    handleConvertToImages()
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Compress PDF") },
-                                leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
-                                }
-                            )
-                            DropdownMenuItem(
-                                text = { Text("Document Info") },
-                                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
-                                onClick = {
-                                    moreMenuExpanded = false
-                                    Toast.makeText(
-                                        context,
-                                        "${currentFile.name}\nPages: $totalPages\nSize: ${(currentFile.fileSize / 1024).coerceAtLeast(1)} KB",
-                                        Toast.LENGTH_LONG
-                                    ).show()
-                                }
-                            )
-                        }
+                        // Undo Option
+                        DropdownMenuItem(
+                            text = { Text("Undo") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Undo,
+                                    contentDescription = null,
+                                    tint = if (undoStack.isNotEmpty()) MaterialTheme.colorScheme.onSurface else Color(0xFF94A3B8)
+                                )
+                            },
+                            enabled = undoStack.isNotEmpty(),
+                            onClick = {
+                                moreMenuExpanded = false
+                                handleUndo()
+                            },
+                            modifier = Modifier.testTag("menu_item_undo")
+                        )
+
+                        // Redo Option
+                        DropdownMenuItem(
+                            text = { Text("Redo") },
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Redo,
+                                    contentDescription = null,
+                                    tint = if (redoStack.isNotEmpty()) MaterialTheme.colorScheme.onSurface else Color(0xFF94A3B8)
+                                )
+                            },
+                            enabled = redoStack.isNotEmpty(),
+                            onClick = {
+                                moreMenuExpanded = false
+                                handleRedo()
+                            },
+                            modifier = Modifier.testTag("menu_item_redo")
+                        )
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+
+                        // Export to Device
+                        DropdownMenuItem(
+                            text = { Text("Export to Device") },
+                            leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                            onClick = {
+                                moreMenuExpanded = false
+                                exportDocumentLauncher.launch(currentFile.name)
+                            },
+                            modifier = Modifier.testTag("menu_item_export_device")
+                        )
+
+                        // Export to JPG Images
+                        DropdownMenuItem(
+                            text = { Text("Export to JPG Images") },
+                            leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+                            onClick = {
+                                moreMenuExpanded = false
+                                handleConvertToImages()
+                            },
+                            modifier = Modifier.testTag("menu_item_export_jpg")
+                        )
+
+                        // Compress PDF
+                        DropdownMenuItem(
+                            text = { Text("Compress PDF") },
+                            leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
+                            onClick = {
+                                moreMenuExpanded = false
+                                val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
+                                val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
+                                viewModel.compressPdfCustom(currentFile, targetKB, outName)
+                            },
+                            modifier = Modifier.testTag("menu_item_compress")
+                        )
+
+                        // Document Info
+                        DropdownMenuItem(
+                            text = { Text("Document Info") },
+                            leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                            onClick = {
+                                moreMenuExpanded = false
+                                Toast.makeText(
+                                    context,
+                                    "${currentFile.name}\nPages: $totalPages\nSize: ${(currentFile.fileSize / 1024).coerceAtLeast(1)} KB",
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            },
+                            modifier = Modifier.testTag("menu_item_doc_info")
+                        )
                     }
                 }
             }
