@@ -2143,13 +2143,75 @@ fun PdfEditorMainView(
     if (showViewerPasswordDialog) {
         AlertDialog(
             onDismissRequest = { viewModel.dismissViewerPasswordDialog() },
-            title = { Text("Encrypted PDF - Password Required") },
+            title = {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = CrimsonPrimary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text("Encrypted PDF - Password Required")
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("This PDF file is password-protected. Please enter the password to decrypt and view the document.", fontSize = 13.sp, color = Color.Gray)
-                    if (!viewerPasswordError.isNullOrBlank()) {
-                        Text(viewerPasswordError ?: "", fontSize = 12.sp, color = Color.Red, fontWeight = FontWeight.Bold)
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    // Highlighted badge/container displaying the PDF file name
+                    Surface(
+                        color = Color(0xFFF1F5F9),
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp))
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Description,
+                                contentDescription = null,
+                                tint = ToolBlue,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "File Name",
+                                    fontSize = 11.sp,
+                                    color = Color(0xFF64748B),
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = currentFile.name,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1E293B),
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
                     }
+
+                    Text(
+                        "This PDF file is password-protected. Please enter the password to decrypt and view the document.",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+
+                    if (!viewerPasswordError.isNullOrBlank()) {
+                        Text(
+                            viewerPasswordError ?: "",
+                            fontSize = 12.sp,
+                            color = Color.Red,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
                     OutlinedTextField(
                         value = viewerPasswordInput,
                         onValueChange = { viewerPasswordInput = it },
