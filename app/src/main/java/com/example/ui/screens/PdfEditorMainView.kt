@@ -339,42 +339,19 @@ fun PdfEditorMainView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.testTag("editor_back_button")
                 ) {
-                    IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.testTag("editor_back_button")
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.width(6.dp))
-
-                    Column {
-                        Text(
-                            text = currentFile.name,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 15.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        Text(
-                            text = if (pages.isNotEmpty()) "Page ${currentPageIndex + 1} of ${pages.size}" else "${currentFile.pageCount} pages",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color.White
+                    )
                 }
 
                 // Right side: Only 3-dots overflow menu button visible

@@ -505,80 +505,19 @@ fun PdfWorkspaceDialog(
                         .fillMaxWidth()
                         .background(Color(0xFF1E293B))
                         .statusBarsPadding()
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 2.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.weight(1f)
+                    IconButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.testTag("workspace_back_button")
                     ) {
-                        IconButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.testTag("workspace_back_button")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = "Back",
-                                tint = Color.White
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(4.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = currentRecord.name,
-                                color = Color.White,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 14.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                Text(
-                                    text = if (pages.isNotEmpty()) "Page ${currentPageIndex + 1} of ${pages.size}" else "${currentRecord.pageCount} pages",
-                                    color = Color(0xFF94A3B8),
-                                    fontSize = 11.sp,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                if (signatureResult?.overallValidity == SignatureValidity.VALID) {
-                                    val sigColor = Color(0xFF34D399)
-                                    val sigBg = Color(0xFF065F46)
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = sigBg,
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(4.dp))
-                                            .clickable { showSigDetailsDialog = true }
-                                            .testTag("badge_viewer_signature_header")
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Default.CheckCircle,
-                                                contentDescription = null,
-                                                tint = sigColor,
-                                                modifier = Modifier.size(11.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(3.dp))
-                                            Text(
-                                                text = "Signature Valid • Verified",
-                                                color = sigColor,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
                     }
 
                     Row(verticalAlignment = Alignment.CenterVertically) {
