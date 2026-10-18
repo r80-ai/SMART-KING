@@ -68,7 +68,9 @@ import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import com.example.model.PdfFileRecord
 import com.example.pdf.PdfEngine
+import com.example.pdf.PdfToJpgConversionResult
 import com.example.pdf.PdfToJpgConverter
+import com.example.storage.GlobalSaveManager
 import com.example.ui.PdfMasterViewModel
 import com.example.ui.dialogs.WorkspaceCropDialog
 import com.example.ui.dialogs.WorkspacePageNumbersDialog
@@ -177,6 +179,38 @@ fun PdfEditorMainView(
     var passwordInput by remember { mutableStateOf("") }
     var isProtectAction by remember { mutableStateOf(true) }
     var moreMenuExpanded by remember { mutableStateOf(false) }
+
+    var showJpgExportDialog by remember { mutableStateOf(false) }
+    var exportedJpgResult by remember { mutableStateOf<PdfToJpgConversionResult?>(null) }
+    var exportedJpgLocation by remember { mutableStateOf("") }
+
+    val handleConvertToImages: () -> Unit = {
+        coroutineScope.launch {
+            try {
+                val res = PdfToJpgConverter.convertPdfToJpg(context, File(currentFile.filePath))
+                var lastLoc = "Documents / PDF_Master"
+                for (page in res.pages) {
+                    val saveRes = GlobalSaveManager.saveProcessedFile(
+                        context = context,
+                        tempSourceFile = page.file,
+                        desiredFileName = page.fileName,
+                        mimeType = "image/jpeg",
+                        category = "created",
+                        tag = "PDF to JPG"
+                    )
+                    page.savedUri = saveRes.savedUri
+                    page.isSaved = true
+                    lastLoc = saveRes.displayLocation
+                    viewModel.addRecentFile(saveRes.fileRecord)
+                }
+                exportedJpgResult = res
+                exportedJpgLocation = lastLoc
+                showJpgExportDialog = true
+            } catch (e: Exception) {
+                Toast.makeText(context, "Conversion failed: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     // SAF Document Export Launcher
     val exportDocumentLauncher = rememberLauncherForActivityResult(
@@ -428,14 +462,7 @@ fun PdfEditorMainView(
                                 leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
                                 onClick = {
                                     moreMenuExpanded = false
-                                    coroutineScope.launch {
-                                        try {
-                                            val res = PdfToJpgConverter.convertPdfToJpg(context, File(currentFile.filePath))
-                                            Toast.makeText(context, "Exported ${res.pages.size} pages to JPG", Toast.LENGTH_SHORT).show()
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Conversion failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
+                                    handleConvertToImages()
                                 }
                             )
                             DropdownMenuItem(
@@ -724,14 +751,7 @@ fun PdfEditorMainView(
                                     Toast.makeText(context, "Compressing PDF...", Toast.LENGTH_SHORT).show()
                                 },
                                 onConvertToImages = {
-                                    coroutineScope.launch {
-                                        try {
-                                            val res = PdfToJpgConverter.convertPdfToJpg(context, File(currentFile.filePath))
-                                            Toast.makeText(context, "Exported ${res.pages.size} pages to JPG", Toast.LENGTH_SHORT).show()
-                                        } catch (e: Exception) {
-                                            Toast.makeText(context, "Conversion failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                                        }
-                                    }
+                                    handleConvertToImages()
                                 },
                                 onProtectPassword = {
                                     isProtectAction = true
@@ -1852,6 +1872,14 @@ fun PdfEditorMainView(
         )
     }
 
+    JpgExportSuccessDialog(
+        show = showJpgExportDialog,
+        result = exportedJpgResult,
+        location = exportedJpgLocation,
+        context = context,
+        onDismiss = { showJpgExportDialog = false }
+    )
+
     if (showSaveAsDialog) {
         AlertDialog(
             onDismissRequest = { showSaveAsDialog = false },
@@ -2377,5 +2405,76 @@ private fun ToolButtonCard(
                 textAlign = TextAlign.Center
             )
         }
+    }
+}
+
+// =========================================================================
+// EXPORT NOTIFICATION & CONFIRMATION DIALOG WITH "FILE SHOW" ACTION
+// =========================================================================
+@Composable
+private fun JpgExportSuccessDialog(
+    show: Boolean,
+    result: PdfToJpgConversionResult?,
+    location: String,
+    context: Context,
+    onDismiss: () -> Unit
+) {
+    if (show && result != null) {
+        val firstPage = result.pages.firstOrNull()
+        AlertDialog(
+            onDismissRequest = onDismiss,
+            title = { Text("Export to JPG Successful") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Successfully converted ${result.pages.size} page(s) to high-quality JPG.")
+                    Text("Saved location: $location", fontSize = 12.sp, color = Color.Gray)
+                }
+            },
+            confirmButton = {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            if (firstPage != null) {
+                                GlobalSaveManager.openFile(
+                                    context = context,
+                                    uri = firstPage.savedUri,
+                                    file = firstPage.file,
+                                    mimeType = "image/jpeg"
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
+                    ) {
+                        Icon(Icons.Default.OpenInNew, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Open File")
+                    }
+
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            GlobalSaveManager.openFolder(
+                                context = context,
+                                treeUriStr = firstPage?.savedUri?.toString(),
+                                targetFile = firstPage?.file
+                            )
+                        },
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_file_show"),
+                        colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                    ) {
+                        Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("File Show")
+                    }
+                }
+            }
+        )
     }
 }
