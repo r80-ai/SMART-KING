@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import android.app.Activity
 import android.app.Application
 import android.content.Context
 import android.content.Intent
+import com.example.storage.StoragePermissionHelper
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color as AndroidColor
@@ -180,6 +182,30 @@ fun PdfEditorMainView(
     var showMergePdfDialog by remember { mutableStateOf(false) }
     var showSaveAsDialog by remember { mutableStateOf(false) }
     var saveAsNameInput by remember { mutableStateOf("${currentFile.nameWithoutExtension()}_edited.pdf") }
+    var showStoragePermissionRationaleDialog by remember { mutableStateOf(false) }
+    var pendingSaveFileName by remember { mutableStateOf<String?>(null) }
+    var pendingSaveSuccessCallback by remember { mutableStateOf<((PdfFileRecord) -> Unit)?>(null) }
+
+    val requestSavePdf: (String, ((PdfFileRecord) -> Unit)?) -> Unit = { outputName, onComplete ->
+        val hasFullPerm = StoragePermissionHelper.hasFullStoragePermission(context)
+        val isRootWritable = StoragePermissionHelper.isRootExternalFolderWritable(context)
+        if (!hasFullPerm && !isRootWritable) {
+            pendingSaveFileName = outputName
+            pendingSaveSuccessCallback = onComplete
+            showStoragePermissionRationaleDialog = true
+        } else {
+            viewModel.saveEditedPdf(
+                sourceRecord = currentFile,
+                items = editItems.toList(),
+                deletedPages = deletedPages.toSet(),
+                pageRotations = pageRotations.toMap(),
+                outputName = outputName
+            ) { newRec ->
+                currentFile = newRec
+                onComplete?.invoke(newRec)
+            }
+        }
+    }
     var showPasswordDialog by remember { mutableStateOf(false) }
     var passwordInput by remember { mutableStateOf("") }
     var isProtectAction by remember { mutableStateOf(true) }
@@ -429,14 +455,7 @@ fun PdfEditorMainView(
                             onClick = {
                                 moreMenuExpanded = false
                                 val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                viewModel.saveEditedPdf(
-                                    sourceRecord = currentFile,
-                                    items = editItems.toList(),
-                                    deletedPages = deletedPages.toSet(),
-                                    pageRotations = pageRotations.toMap(),
-                                    outputName = outputName
-                                ) { newRec ->
-                                    currentFile = newRec
+                                requestSavePdf(outputName) { newRec ->
                                     Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
                                 }
                             },
@@ -629,14 +648,7 @@ fun PdfEditorMainView(
                                 },
                                 onApplyChanges = {
                                     val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    viewModel.saveEditedPdf(
-                                        sourceRecord = currentFile,
-                                        items = editItems.toList(),
-                                        deletedPages = deletedPages.toSet(),
-                                        pageRotations = pageRotations.toMap(),
-                                        outputName = outputName
-                                    ) { newRec ->
-                                        currentFile = newRec
+                                    requestSavePdf(outputName) { newRec ->
                                         deletedPages.clear()
                                         Toast.makeText(context, "Page changes applied!", Toast.LENGTH_SHORT).show()
                                     }
@@ -655,14 +667,7 @@ fun PdfEditorMainView(
                                 onBackground = { showBackgroundDialog = true },
                                 onApplyChanges = {
                                     val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    viewModel.saveEditedPdf(
-                                        sourceRecord = currentFile,
-                                        items = editItems.toList(),
-                                        deletedPages = deletedPages.toSet(),
-                                        pageRotations = pageRotations.toMap(),
-                                        outputName = outputName
-                                    ) { newRec ->
-                                        currentFile = newRec
+                                    requestSavePdf(outputName) { newRec ->
                                         Toast.makeText(context, "Edits applied!", Toast.LENGTH_SHORT).show()
                                     }
                                     activeTab = EditorTopTab.NONE
@@ -796,14 +801,7 @@ fun PdfEditorMainView(
                                 },
                                 onApplyChanges = {
                                     val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                                    viewModel.saveEditedPdf(
-                                        sourceRecord = currentFile,
-                                        items = editItems.toList(),
-                                        deletedPages = deletedPages.toSet(),
-                                        pageRotations = pageRotations.toMap(),
-                                        outputName = outputName
-                                    ) { newRec ->
-                                        currentFile = newRec
+                                    requestSavePdf(outputName) { newRec ->
                                         Toast.makeText(context, "Document updated!", Toast.LENGTH_SHORT).show()
                                     }
                                     activeTab = EditorTopTab.NONE
@@ -2071,14 +2069,7 @@ fun PdfEditorMainView(
                 Button(
                     onClick = {
                         showSaveAsDialog = false
-                        viewModel.saveEditedPdf(
-                            sourceRecord = currentFile,
-                            items = editItems.toList(),
-                            deletedPages = deletedPages.toSet(),
-                            pageRotations = pageRotations.toMap(),
-                            outputName = saveAsNameInput
-                        ) { newRec ->
-                            currentFile = newRec
+                        requestSavePdf(saveAsNameInput) { newRec ->
                             Toast.makeText(context, "Saved as $saveAsNameInput", Toast.LENGTH_SHORT).show()
                         }
                     },
@@ -2090,6 +2081,85 @@ fun PdfEditorMainView(
             dismissButton = {
                 TextButton(onClick = { showSaveAsDialog = false }) {
                     Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showStoragePermissionRationaleDialog) {
+        val activity = context as? Activity
+        AlertDialog(
+            onDismissRequest = { showStoragePermissionRationaleDialog = false },
+            icon = {
+                Icon(
+                    Icons.Default.FolderSpecial,
+                    contentDescription = null,
+                    tint = CrimsonPrimary,
+                    modifier = Modifier.size(28.dp)
+                )
+            },
+            title = {
+                Text("Storage Access & Save Location", fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "On Android 11+, saving directly into device root folders (\"Smart King\") requires All Files Access permission.",
+                        fontSize = 13.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        "You can grant permission in Settings, or save safely into App Documents storage without permissions.",
+                        fontSize = 12.sp,
+                        color = Color.Gray
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showStoragePermissionRationaleDialog = false
+                        // Proceed to save directly to app storage / Documents
+                        pendingSaveFileName?.let { name ->
+                            viewModel.saveEditedPdf(
+                                sourceRecord = currentFile,
+                                items = editItems.toList(),
+                                deletedPages = deletedPages.toSet(),
+                                pageRotations = pageRotations.toMap(),
+                                outputName = name
+                            ) { newRec ->
+                                currentFile = newRec
+                                pendingSaveSuccessCallback?.invoke(newRec)
+                                Toast.makeText(context, "Saved as $name", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                    modifier = Modifier.testTag("btn_save_app_storage")
+                ) {
+                    Text("Save to App Storage")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    TextButton(
+                        onClick = { showStoragePermissionRationaleDialog = false }
+                    ) {
+                        Text("Cancel")
+                    }
+                    TextButton(
+                        onClick = {
+                            showStoragePermissionRationaleDialog = false
+                            if (activity != null) {
+                                StoragePermissionHelper.requestStoragePermission(activity)
+                            } else {
+                                StoragePermissionHelper.openAppSettings(context)
+                            }
+                        },
+                        modifier = Modifier.testTag("btn_grant_storage_settings")
+                    ) {
+                        Text("Settings")
+                    }
                 }
             }
         )

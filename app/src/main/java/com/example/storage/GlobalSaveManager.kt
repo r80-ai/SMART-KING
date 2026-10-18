@@ -172,29 +172,97 @@ object GlobalSaveManager {
 
     /**
      * Resolves the primary output directory for file-based operations.
+     * Uses Scoped-Storage-safe fallbacks (App-Specific External / Documents)
+     * to prevent EPERM (Operation not permitted) on Android 10/11+.
      */
     fun getLocalActiveDirectory(context: Context): File {
         initialize(context)
         val folder = _customFolderName.value.ifBlank { "Smart King" }
-        val rootPub = File(Environment.getExternalStorageDirectory(), folder)
-        if (!rootPub.exists()) {
-            try {
-                rootPub.mkdirs()
-            } catch (_: Exception) {}
+
+        // 1. If broad external storage access is permitted, use root external folder
+        if (StoragePermissionHelper.isRootExternalFolderWritable(context, folder)) {
+            val rootPub = File(Environment.getExternalStorageDirectory(), folder)
+            return rootPub
         }
-        val dir = if (rootPub.exists() && rootPub.canWrite()) {
-            rootPub
-        } else {
-            val altRoot = File(Environment.getExternalStorageDirectory(), "Smart King")
-            if (!altRoot.exists()) {
-                try { altRoot.mkdirs() } catch (_: Exception) {}
+
+        // 2. App-specific external files directory (No permission required on Android 10, 11, 12, 13, 14, 15+)
+        // Path: /storage/emulated/0/Android/data/<package>/files/Smart King/
+        try {
+            val appExt = context.getExternalFilesDir(null)
+            if (appExt != null) {
+                val folderDir = File(appExt, folder)
+                if (ensureDirectoryWritable(folderDir)) {
+                    return folderDir
+                }
+                if (ensureDirectoryWritable(appExt)) {
+                    return appExt
+                }
             }
-            if (altRoot.exists()) altRoot else rootPub
+        } catch (e: Exception) {
+            Log.w(TAG, "App-specific external dir not available: ${e.message}")
         }
-        if (!dir.exists()) {
-            try { dir.mkdirs() } catch (_: Exception) {}
+
+        // 3. Fallback to app-internal documents directory (Always guaranteed writable)
+        val internalFolder = File(context.filesDir, folder)
+        if (ensureDirectoryWritable(internalFolder)) {
+            return internalFolder
         }
-        return if (dir.exists() && dir.canWrite()) dir else File(Environment.getExternalStorageDirectory(), "Smart King").apply { if (!exists()) mkdirs() }
+
+        val fallback = File(context.filesDir, "saved_pdfs")
+        fallback.mkdirs()
+        return fallback
+    }
+
+    /**
+     * Checks if directory can be created and written to by writing and deleting a test byte.
+     */
+    fun ensureDirectoryWritable(dir: File): Boolean {
+        return try {
+            if (!dir.exists()) {
+                val created = dir.mkdirs()
+                if (!created && !dir.exists()) return false
+            }
+            if (!dir.canWrite()) return false
+            val testFile = File(dir, ".perm_test_${System.currentTimeMillis()}")
+            testFile.outputStream().use { it.write(1) }
+            testFile.delete()
+            true
+        } catch (_: Throwable) {
+            false
+        }
+    }
+
+    /**
+     * Exports a copy to public MediaStore Documents/Downloads on Android 10+ (API 29+)
+     * without requiring broad storage permissions.
+     */
+    fun tryExportToMediaStore(
+        context: Context,
+        file: File,
+        displayName: String,
+        mimeType: String
+    ): Uri? {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return null
+        return try {
+            val values = android.content.ContentValues().apply {
+                put(android.provider.MediaStore.MediaColumns.DISPLAY_NAME, displayName)
+                put(android.provider.MediaStore.MediaColumns.MIME_TYPE, mimeType)
+                put(android.provider.MediaStore.MediaColumns.RELATIVE_PATH, android.os.Environment.DIRECTORY_DOCUMENTS + "/Smart King")
+                put(android.provider.MediaStore.MediaColumns.IS_PENDING, 1)
+            }
+            val collection = android.provider.MediaStore.Files.getContentUri(android.provider.MediaStore.VOLUME_EXTERNAL_PRIMARY)
+            val uri = context.contentResolver.insert(collection, values) ?: return null
+            context.contentResolver.openOutputStream(uri)?.use { out ->
+                file.inputStream().use { input -> input.copyTo(out) }
+            }
+            values.clear()
+            values.put(android.provider.MediaStore.MediaColumns.IS_PENDING, 0)
+            context.contentResolver.update(uri, values, null, null)
+            uri
+        } catch (e: Exception) {
+            Log.w(TAG, "MediaStore export skipped: ${e.message}")
+            null
+        }
     }
 
     /**
@@ -317,13 +385,16 @@ object GlobalSaveManager {
                     tempSourceFile.copyTo(dest, overwrite = false)
                     dest
                 } catch (e: Exception) {
-                    val rootDir = File(Environment.getExternalStorageDirectory(), "Smart King").apply { if (!exists()) mkdirs() }
-                    val fallbackDest = File(rootDir, finalFileName)
-                    tempSourceFile.copyTo(fallbackDest, overwrite = false)
+                    val safeDir = File(context.filesDir, "saved_pdfs").apply { if (!exists()) mkdirs() }
+                    val fallbackDest = File(safeDir, finalFileName)
+                    tempSourceFile.copyTo(fallbackDest, overwrite = true)
                     fallbackDest
                 }
             }
             val finalFileName = destFile.name
+
+            // Attempt to export to MediaStore Documents on Android 10+ so it appears in file managers
+            tryExportToMediaStore(context, destFile, finalFileName, mimeType)
 
             // Scan with media scanner so it's indexed in Android files app
             try {

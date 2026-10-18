@@ -794,8 +794,16 @@ object PdfEngine {
         
         // If NO modifications, just copy original file to preserve everything!
         if (items.isEmpty() && deletedPages.isEmpty() && pageRotations.isEmpty()) {
-            sourceFile.copyTo(outFile, overwrite = true)
-            return@withContext outFile
+            val safeOutFile = try {
+                sourceFile.copyTo(outFile, overwrite = true)
+                outFile
+            } catch (e: Exception) {
+                val safeDir = context.getExternalFilesDir(null) ?: context.filesDir
+                val safeFile = generateUniquePdfFile(safeDir, outputFileName)
+                sourceFile.copyTo(safeFile, overwrite = true)
+                safeFile
+            }
+            return@withContext safeOutFile
         }
         val doc = PdfDocument()
 
@@ -1384,9 +1392,17 @@ object PdfEngine {
         renderer.close()
         pfd.close()
 
-        FileOutputStream(outFile).use { doc.writeTo(it) }
+        val finalOutFile = try {
+            FileOutputStream(outFile).use { doc.writeTo(it) }
+            outFile
+        } catch (e: Exception) {
+            val safeDir = context.getExternalFilesDir(null) ?: context.filesDir
+            val safeFile = generateUniquePdfFile(safeDir, outputFileName)
+            FileOutputStream(safeFile).use { doc.writeTo(it) }
+            safeFile
+        }
         doc.close()
-        outFile
+        finalOutFile
     }
 
     /**
