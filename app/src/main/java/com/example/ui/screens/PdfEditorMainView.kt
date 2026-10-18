@@ -46,6 +46,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.shadow
@@ -899,6 +900,73 @@ fun PdfEditorMainView(
                             },
                         contentAlignment = Alignment.Center
                     ) {
+                        // Floating Zoom & Fit Controls Overlay on top of preview container
+                        Row(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(12.dp)
+                                .zIndex(10f),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                color = Color(0xFF1E293B).copy(alpha = 0.88f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
+                                modifier = Modifier
+                                    .clickable {
+                                        zoomScale = if (zoomScale > 1.2f) 1.0f else 2.0f
+                                        panOffset = Offset.Zero
+                                    }
+                                    .testTag("btn_overlay_zoom")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (zoomScale > 1.2f) Icons.Default.ZoomOut else Icons.Default.ZoomIn,
+                                        contentDescription = "Zoom",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (zoomScale > 1.2f) "Zoom Out" else "Zoom In",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                color = Color(0xFF1E293B).copy(alpha = 0.88f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
+                                modifier = Modifier
+                                    .clickable { fitPageMode = !fitPageMode }
+                                    .testTag("btn_overlay_fit_screen")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = if (fitPageMode) Icons.Default.AspectRatio else Icons.Default.FitScreen,
+                                        contentDescription = "Fit to Screen",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(16.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = if (fitPageMode) "Fit Width" else "Fit Page",
+                                        color = Color.White,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
+                        }
                         BoxWithConstraints(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -1086,11 +1154,14 @@ fun PdfEditorMainView(
                                                             },
                                                             onDrag = { change, dragAmount ->
                                                                 change.consume()
+                                                                val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                val dX = dragAmount.x / scale
+                                                                val dY = dragAmount.y / scale
                                                                 val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                 if (idx != -1) {
                                                                     val cur = editItems[idx]
-                                                                    val newX = (cur.posX + dragAmount.x).coerceIn(-cur.imageWidth * 0.4f, pageWidthPx - cur.imageWidth * 0.6f)
-                                                                    val newY = (cur.posY + dragAmount.y).coerceIn(-cur.imageHeight * 0.4f, pageHeightPx - cur.imageHeight * 0.6f)
+                                                                    val newX = (cur.posX + dX).coerceIn(-cur.imageWidth * 0.4f, pageWidthPx - cur.imageWidth * 0.6f)
+                                                                    val newY = (cur.posY + dY).coerceIn(-cur.imageHeight * 0.4f, pageHeightPx - cur.imageHeight * 0.6f)
                                                                     editItems[idx] = cur.copy(posX = newX, posY = newY)
                                                                 }
                                                             }
@@ -1163,13 +1234,16 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth - dragAmount.x).coerceIn(40f, cur.posX + cur.imageWidth)
+                                                                            val newW = (cur.imageWidth - dX).coerceIn(40f, cur.posX + cur.imageWidth)
                                                                             val deltaW = cur.imageWidth - newW
                                                                             val newX = cur.posX + deltaW
-                                                                            val newH = (cur.imageHeight - dragAmount.y).coerceIn(40f, cur.posY + cur.imageHeight)
+                                                                            val newH = (cur.imageHeight - dY).coerceIn(40f, cur.posY + cur.imageHeight)
                                                                             val deltaH = cur.imageHeight - newH
                                                                             val newY = cur.posY + deltaH
                                                                             editItems[idx] = cur.copy(posX = newX, posY = newY, imageWidth = newW, imageHeight = newH)
@@ -1198,11 +1272,14 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth + dragAmount.x).coerceIn(40f, pageWidthPx - cur.posX)
-                                                                            val newH = (cur.imageHeight - dragAmount.y).coerceIn(40f, cur.posY + cur.imageHeight)
+                                                                            val newW = (cur.imageWidth + dX).coerceIn(40f, pageWidthPx - cur.posX)
+                                                                            val newH = (cur.imageHeight - dY).coerceIn(40f, cur.posY + cur.imageHeight)
                                                                             val deltaH = cur.imageHeight - newH
                                                                             val newY = cur.posY + deltaH
                                                                             editItems[idx] = cur.copy(posY = newY, imageWidth = newW, imageHeight = newH)
@@ -1231,13 +1308,16 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth - dragAmount.x).coerceIn(40f, cur.posX + cur.imageWidth)
+                                                                            val newW = (cur.imageWidth - dX).coerceIn(40f, cur.posX + cur.imageWidth)
                                                                             val deltaW = cur.imageWidth - newW
                                                                             val newX = cur.posX + deltaW
-                                                                            val newH = (cur.imageHeight + dragAmount.y).coerceIn(40f, pageHeightPx - cur.posY)
+                                                                            val newH = (cur.imageHeight + dY).coerceIn(40f, pageHeightPx - cur.posY)
                                                                             editItems[idx] = cur.copy(posX = newX, imageWidth = newW, imageHeight = newH)
                                                                         }
                                                                     }
@@ -1264,11 +1344,14 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth + dragAmount.x).coerceIn(40f, pageWidthPx - cur.posX)
-                                                                            val newH = (cur.imageHeight + dragAmount.y).coerceIn(40f, pageHeightPx - cur.posY)
+                                                                            val newW = (cur.imageWidth + dX).coerceIn(40f, pageWidthPx - cur.posX)
+                                                                            val newH = (cur.imageHeight + dY).coerceIn(40f, pageHeightPx - cur.posY)
                                                                             editItems[idx] = cur.copy(imageWidth = newW, imageHeight = newH)
                                                                         }
                                                                     }
@@ -1297,10 +1380,12 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dY = dragAmount.y / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newH = (cur.imageHeight - dragAmount.y).coerceIn(40f, cur.posY + cur.imageHeight)
+                                                                            val newH = (cur.imageHeight - dY).coerceIn(40f, cur.posY + cur.imageHeight)
                                                                             val deltaH = cur.imageHeight - newH
                                                                             val newY = cur.posY + deltaH
                                                                             editItems[idx] = cur.copy(posY = newY, imageHeight = newH)
@@ -1329,10 +1414,12 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dY = dragAmount.y / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newH = (cur.imageHeight + dragAmount.y).coerceIn(40f, pageHeightPx - cur.posY)
+                                                                            val newH = (cur.imageHeight + dY).coerceIn(40f, pageHeightPx - cur.posY)
                                                                             editItems[idx] = cur.copy(imageHeight = newH)
                                                                         }
                                                                     }
@@ -1359,10 +1446,12 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth - dragAmount.x).coerceIn(40f, cur.posX + cur.imageWidth)
+                                                                            val newW = (cur.imageWidth - dX).coerceIn(40f, cur.posX + cur.imageWidth)
                                                                             val deltaW = cur.imageWidth - newW
                                                                             val newX = cur.posX + deltaW
                                                                             editItems[idx] = cur.copy(posX = newX, imageWidth = newW)
@@ -1391,10 +1480,12 @@ fun PdfEditorMainView(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth + dragAmount.x).coerceIn(40f, pageWidthPx - cur.posX)
+                                                                            val newW = (cur.imageWidth + dX).coerceIn(40f, pageWidthPx - cur.posX)
                                                                             editItems[idx] = cur.copy(imageWidth = newW)
                                                                         }
                                                                     }
@@ -1626,50 +1717,7 @@ fun PdfEditorMainView(
                     )
                 }
 
-                // Zoom Control
-                FilledTonalButton(
-                    onClick = {
-                        zoomScale = if (zoomScale > 1.2f) 1.0f else 2.0f
-                        panOffset = Offset.Zero
-                    },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF334155),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("btn_zoom")
-                ) {
-                    Icon(
-                        imageVector = if (zoomScale > 1.2f) Icons.Default.ZoomOut else Icons.Default.ZoomIn,
-                        contentDescription = "Zoom",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (zoomScale > 1.2f) "Zoom Out" else "Zoom In", fontSize = 11.sp)
-                }
 
-                // Fit to Screen Control
-                FilledTonalButton(
-                    onClick = { fitPageMode = !fitPageMode },
-                    colors = ButtonDefaults.filledTonalButtonColors(
-                        containerColor = Color(0xFF334155),
-                        contentColor = Color.White
-                    ),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("btn_fit_screen")
-                ) {
-                    Icon(
-                        imageVector = if (fitPageMode) Icons.Default.AspectRatio else Icons.Default.FitScreen,
-                        contentDescription = "Fit to Screen",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(if (fitPageMode) "Fit Width" else "Fit Page", fontSize = 11.sp)
-                }
 
                 // Share Button
                 IconButton(
