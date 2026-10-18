@@ -313,12 +313,15 @@ fun PdfEditorMainView(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0F172A))
             .testTag("pdf_editor_main_view")
     ) {
+        Column(
+            modifier = Modifier.fillMaxSize()
+        ) {
         // ====================================================
         // 1. TOP APP BAR: [←] Document.pdf [Share] [Save] [⋮]
         // ====================================================
@@ -892,9 +895,7 @@ fun PdfEditorMainView(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        Card(
-                            shape = RoundedCornerShape(2.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+                        BoxWithConstraints(
                             modifier = Modifier
                                 .fillMaxSize()
                                 .graphicsLayer {
@@ -904,43 +905,38 @@ fun PdfEditorMainView(
                                     translationY = panOffset.y
                                     rotationZ = animatedRotation
                                 },
-                            colors = CardDefaults.cardColors(containerColor = Color.Transparent)
+                            contentAlignment = Alignment.Center
                         ) {
-                            BoxWithConstraints(
-                                modifier = Modifier.fillMaxSize(),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                val containerW = maxWidth
-                                val containerH = maxHeight
-                                val bmpW = currentBmp.width.toFloat()
-                                val bmpH = currentBmp.height.toFloat()
-                                val pageAspect = if (bmpH > 0f) bmpW / bmpH else 1f
-                                val containerAspect = if (containerH.value > 0f) containerW.value / containerH.value else 1f
+                            val containerW = maxWidth
+                            val containerH = maxHeight
+                            val bmpW = currentBmp.width.toFloat()
+                            val bmpH = currentBmp.height.toFloat()
+                            val pageAspect = if (bmpH > 0f) bmpW / bmpH else 1f
+                            val containerAspect = if (containerH.value > 0f) containerW.value / containerH.value else 1f
 
-                                val pageModifier = if (fitPageMode) {
-                                    if (pageAspect > containerAspect) {
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .aspectRatio(pageAspect)
-                                    } else {
-                                        Modifier
-                                            .fillMaxHeight()
-                                            .aspectRatio(pageAspect)
-                                    }
-                                } else {
+                            val pageModifier = if (fitPageMode) {
+                                if (pageAspect > containerAspect) {
                                     Modifier
                                         .fillMaxWidth()
                                         .aspectRatio(pageAspect)
+                                } else {
+                                    Modifier
+                                        .fillMaxHeight()
+                                        .aspectRatio(pageAspect)
                                 }
+                            } else {
+                                Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(pageAspect)
+                            }
 
-                                BoxWithConstraints(
-                                    modifier = pageModifier
-                                        .background(pageBackgroundColor)
-                                        .shadow(8.dp)
-                                ) {
-                                    val density = LocalDensity.current
-                                    val pageWidthPx = constraints.maxWidth.toFloat()
-                                    val pageHeightPx = constraints.maxHeight.toFloat()
+                            BoxWithConstraints(
+                                modifier = pageModifier
+                                    .background(pageBackgroundColor)
+                            ) {
+                                val density = LocalDensity.current
+                                val pageWidthPx = constraints.maxWidth.toFloat()
+                                val pageHeightPx = constraints.maxHeight.toFloat()
 
                                     // 1. Rendered PDF Page Image
                                     Image(
