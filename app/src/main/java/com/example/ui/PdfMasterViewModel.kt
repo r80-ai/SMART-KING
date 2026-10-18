@@ -181,6 +181,17 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
     
     private val _viewerPageCount = MutableStateFlow(0)
     val viewerPageCount: StateFlow<Int> = _viewerPageCount.asStateFlow()
+
+    private val _showViewerPasswordDialog = MutableStateFlow(false)
+    val showViewerPasswordDialog: StateFlow<Boolean> = _showViewerPasswordDialog.asStateFlow()
+
+    private val _viewerPasswordError = MutableStateFlow<String?>(null)
+    val viewerPasswordError: StateFlow<String?> = _viewerPasswordError.asStateFlow()
+
+    fun dismissViewerPasswordDialog() {
+        _showViewerPasswordDialog.value = false
+        _viewerPasswordError.value = null
+    }
     
     private var activePdfRenderer: PdfRenderer? = null
     private var activePdfFd: ParcelFileDescriptor? = null
@@ -421,8 +432,8 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun loadPagesForViewer(fileRecord: PdfFileRecord, forceReload: Boolean = false) {
-        val currentIdentifier = "${fileRecord.filePath}_${fileRecord.uriString}"
+    fun loadPagesForViewer(fileRecord: PdfFileRecord, forceReload: Boolean = false, password: String? = null) {
+        val currentIdentifier = "${fileRecord.filePath}_${fileRecord.uriString}_pwd_$password"
         if (!forceReload && lastLoadedPathOrUri == currentIdentifier && _renderedPages.value.isNotEmpty()) {
             return
         }
@@ -430,8 +441,9 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
         loadPagesJob?.cancel()
         loadPagesJob = viewModelScope.launch {
             _isProcessing.value = true
-            _processingMessage.value = "Opening document..."
-            
+            _processingMessage.value = if (!password.isNullOrBlank()) "Decrypting PDF..." else "Opening document..."
+            _viewerPasswordError.value = null
+
             try {
                 withContext(Dispatchers.IO) {
                     var file = File(fileRecord.filePath)
@@ -488,77 +500,143 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
                         activePdfFd = null
                         pageCache.evictAll()
 
-                        val pfd = try {
-                            if (file.exists() && file.canRead() && file.length() > 0L) {
-                                ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
-                            } else null
-                        } catch (e: Exception) {
-                            null
-                        } ?: run {
-                            if (!fileRecord.uriString.isNullOrBlank()) {
+                        var unlockedTempFile: File? = null
+                        var pfd: ParcelFileDescriptor? = null
+
+                        try {
+                            val cleanPassword = password?.trim()
+                            if (!cleanPassword.isNullOrEmpty()) {
                                 try {
-                                    getApplication<Application>().contentResolver.openFileDescriptor(Uri.parse(fileRecord.uriString), "r")
-                                } catch (_: Exception) { null }
-                            } else null
-                        }
-
-                        if (pfd != null) {
-                            try {
-                                val renderer = PdfRenderer(pfd)
-                                activePdfFd = pfd
-                                activePdfRenderer = renderer
-                                val totalPages = renderer.pageCount
-                                _viewerPageCount.value = totalPages
-
-                                if (totalPages > 0) {
-                                    val scale = 1.5f
-                                    // 1. Immediately render Page 0 to display instantly to the user
-                                    val firstPage = renderer.openPage(0)
-                                    val w0 = (firstPage.width * scale).toInt().coerceAtLeast(1)
-                                    val h0 = (firstPage.height * scale).toInt().coerceAtLeast(1)
-                                    val firstBmp = Bitmap.createBitmap(w0, h0, Bitmap.Config.ARGB_8888)
-                                    firstBmp.eraseColor(android.graphics.Color.WHITE)
-                                    val m0 = android.graphics.Matrix().apply { postScale(scale, scale) }
-                                    firstPage.render(firstBmp, null, m0, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                    firstPage.close()
-                                    pageCache.put(0, firstBmp)
-
-                                    val pagesList = mutableListOf(firstBmp)
-                                    _renderedPages.value = pagesList.toList()
-                                    lastLoadedPathOrUri = currentIdentifier
-
-                                    // Instantly dismiss loading spinner so user immediately interacts with the PDF
-                                    _isProcessing.value = false
-
-                                    // 2. Render remaining pages progressively
-                                    val maxPages = totalPages.coerceAtMost(30)
-                                    for (i in 1 until maxPages) {
-                                        try {
-                                            val page = renderer.openPage(i)
-                                            val pw = (page.width * scale).toInt().coerceAtLeast(1)
-                                            val ph = (page.height * scale).toInt().coerceAtLeast(1)
-                                            val bmp = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
-                                            bmp.eraseColor(android.graphics.Color.WHITE)
-                                            val pm = android.graphics.Matrix().apply { postScale(scale, scale) }
-                                            page.render(bmp, null, pm, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                                            page.close()
-                                            pageCache.put(i, bmp)
-                                            pagesList.add(bmp)
-                                            _renderedPages.value = pagesList.toList()
-                                        } catch (ePage: Exception) {
-                                            ePage.printStackTrace()
-                                            break
-                                        }
+                                    com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(getApplication())
+                                    val doc = try {
+                                        val stream = if (file.exists() && file.canRead()) file.inputStream() else getApplication<Application>().contentResolver.openInputStream(Uri.parse(fileRecord.uriString))
+                                        stream?.use { com.tom_roush.pdfbox.pdmodel.PDDocument.load(it, cleanPassword) }
+                                    } catch (_: Exception) {
+                                        val stream = if (file.exists() && file.canRead()) file.inputStream() else getApplication<Application>().contentResolver.openInputStream(Uri.parse(fileRecord.uriString))
+                                        stream?.use { com.tom_roush.pdfbox.pdmodel.PDDocument.load(it, cleanPassword.uppercase()) }
                                     }
-                                } else {
+
+                                    if (doc != null) {
+                                        if (doc.isEncrypted) {
+                                            doc.setAllSecurityToBeRemoved(true)
+                                        }
+                                        unlockedTempFile = File(getApplication<Application>().cacheDir, "unlocked_viewer_${System.currentTimeMillis()}.pdf")
+                                        doc.save(unlockedTempFile)
+                                        doc.close()
+
+                                        pfd = ParcelFileDescriptor.open(unlockedTempFile, ParcelFileDescriptor.MODE_READ_ONLY)
+                                    } else {
+                                        _viewerPasswordError.value = "Incorrect password. Please verify and try again."
+                                        _showViewerPasswordDialog.value = true
+                                        _renderedPages.value = emptyList()
+                                        return@withContext
+                                    }
+                                } catch (inv: com.tom_roush.pdfbox.pdmodel.encryption.InvalidPasswordException) {
+                                    _viewerPasswordError.value = "Incorrect password. Please verify and try again."
+                                    _showViewerPasswordDialog.value = true
+                                    _renderedPages.value = emptyList()
+                                    return@withContext
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    _viewerPasswordError.value = "Incorrect password or decryption failed."
+                                    _showViewerPasswordDialog.value = true
+                                    _renderedPages.value = emptyList()
+                                    return@withContext
+                                }
+                            } else {
+                                pfd = try {
+                                    if (file.exists() && file.canRead() && file.length() > 0L) {
+                                        ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)
+                                    } else null
+                                } catch (e: Exception) {
+                                    null
+                                } ?: run {
+                                    if (!fileRecord.uriString.isNullOrBlank()) {
+                                        try {
+                                            getApplication<Application>().contentResolver.openFileDescriptor(Uri.parse(fileRecord.uriString), "r")
+                                        } catch (_: Exception) { null }
+                                    } else null
+                                }
+                            }
+
+                            if (pfd != null) {
+                                try {
+                                    val renderer = PdfRenderer(pfd)
+                                    activePdfFd = pfd
+                                    activePdfRenderer = renderer
+                                    val totalPages = renderer.pageCount
+                                    _viewerPageCount.value = totalPages
+
+                                    if (totalPages > 0) {
+                                        _showViewerPasswordDialog.value = false
+                                        _viewerPasswordError.value = null
+
+                                        val scale = 1.5f
+                                        // 1. Immediately render Page 0 to display instantly to the user
+                                        val firstPage = renderer.openPage(0)
+                                        val w0 = (firstPage.width * scale).toInt().coerceAtLeast(1)
+                                        val h0 = (firstPage.height * scale).toInt().coerceAtLeast(1)
+                                        val firstBmp = Bitmap.createBitmap(w0, h0, Bitmap.Config.ARGB_8888)
+                                        firstBmp.eraseColor(android.graphics.Color.WHITE)
+                                        val m0 = android.graphics.Matrix().apply { postScale(scale, scale) }
+                                        firstPage.render(firstBmp, null, m0, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                        firstPage.close()
+                                        pageCache.put(0, firstBmp)
+
+                                        val pagesList = mutableListOf(firstBmp)
+                                        _renderedPages.value = pagesList.toList()
+                                        lastLoadedPathOrUri = currentIdentifier
+
+                                        // Instantly dismiss loading spinner so user immediately interacts with the PDF
+                                        _isProcessing.value = false
+
+                                        // 2. Render remaining pages progressively
+                                        val maxPages = totalPages.coerceAtMost(30)
+                                        for (i in 1 until maxPages) {
+                                            try {
+                                                val page = renderer.openPage(i)
+                                                val pw = (page.width * scale).toInt().coerceAtLeast(1)
+                                                val ph = (page.height * scale).toInt().coerceAtLeast(1)
+                                                val bmp = Bitmap.createBitmap(pw, ph, Bitmap.Config.ARGB_8888)
+                                                bmp.eraseColor(android.graphics.Color.WHITE)
+                                                val pm = android.graphics.Matrix().apply { postScale(scale, scale) }
+                                                page.render(bmp, null, pm, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                                page.close()
+                                                pageCache.put(i, bmp)
+                                                pagesList.add(bmp)
+                                                _renderedPages.value = pagesList.toList()
+                                            } catch (ePage: Exception) {
+                                                ePage.printStackTrace()
+                                                break
+                                            }
+                                        }
+                                    } else {
+                                        _renderedPages.value = emptyList()
+                                    }
+                                } catch (sec: SecurityException) {
+                                    _showViewerPasswordDialog.value = true
+                                    _renderedPages.value = emptyList()
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                    try {
+                                        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(getApplication())
+                                        val stream = if (file.exists() && file.canRead()) file.inputStream() else getApplication<Application>().contentResolver.openInputStream(Uri.parse(fileRecord.uriString))
+                                        val doc = stream?.use { com.tom_roush.pdfbox.pdmodel.PDDocument.load(it) }
+                                        if (doc != null && doc.isEncrypted) {
+                                            doc.close()
+                                            _showViewerPasswordDialog.value = true
+                                        } else {
+                                            doc?.close()
+                                        }
+                                    } catch (_: Exception) {
+                                        _showViewerPasswordDialog.value = true
+                                    }
                                     _renderedPages.value = emptyList()
                                 }
-                            } catch (e: Exception) {
-                                e.printStackTrace()
+                            } else {
                                 _renderedPages.value = emptyList()
                             }
-                        } else {
-                            _renderedPages.value = emptyList()
+                        } finally {
                         }
                     }
 

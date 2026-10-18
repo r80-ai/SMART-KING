@@ -107,6 +107,10 @@ fun PdfEditorMainView(
     val isProcessing by viewModel.isProcessing.collectAsState()
     val processingMessage by viewModel.processingMessage.collectAsState()
 
+    val showViewerPasswordDialog by viewModel.showViewerPasswordDialog.collectAsState()
+    val viewerPasswordError by viewModel.viewerPasswordError.collectAsState()
+    var viewerPasswordInput by remember { mutableStateOf("") }
+
     var currentPageIndex by remember { mutableIntStateOf(0) }
     var activeTab by remember { mutableStateOf(EditorTopTab.NONE) }
     var zoomScale by remember { mutableFloatStateOf(1.0f) }
@@ -1955,6 +1959,52 @@ fun PdfEditorMainView(
             },
             dismissButton = {
                 TextButton(onClick = { showPasswordDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showViewerPasswordDialog) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissViewerPasswordDialog() },
+            title = { Text("Encrypted PDF - Password Required") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("This PDF file is password-protected. Please enter the password to decrypt and view the document.", fontSize = 13.sp, color = Color.Gray)
+                    if (!viewerPasswordError.isNullOrBlank()) {
+                        Text(viewerPasswordError ?: "", fontSize = 12.sp, color = Color.Red, fontWeight = FontWeight.Bold)
+                    }
+                    OutlinedTextField(
+                        value = viewerPasswordInput,
+                        onValueChange = { viewerPasswordInput = it },
+                        label = { Text("Password") },
+                        singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("viewer_password_input")
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.loadPagesForViewer(currentFile, forceReload = true, password = viewerPasswordInput)
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                    modifier = Modifier.testTag("btn_unlock_pdf")
+                ) {
+                    Text("Unlock & Open")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        viewModel.dismissViewerPasswordDialog()
+                        onBack()
+                    },
+                    modifier = Modifier.testTag("btn_cancel_unlock")
+                ) {
                     Text("Cancel")
                 }
             }
