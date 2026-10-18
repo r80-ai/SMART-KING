@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.LruCache
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -187,6 +188,9 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
 
     private val _viewerPasswordError = MutableStateFlow<String?>(null)
     val viewerPasswordError: StateFlow<String?> = _viewerPasswordError.asStateFlow()
+
+    private val _currentViewerFile = MutableStateFlow<PdfFileRecord?>(null)
+    val currentViewerFile: StateFlow<PdfFileRecord?> = _currentViewerFile.asStateFlow()
 
     fun dismissViewerPasswordDialog() {
         _showViewerPasswordDialog.value = false
@@ -433,6 +437,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     fun loadPagesForViewer(fileRecord: PdfFileRecord, forceReload: Boolean = false, password: String? = null) {
+        _currentViewerFile.value = fileRecord
         val currentIdentifier = "${fileRecord.filePath}_${fileRecord.uriString}_pwd_$password"
         if (!forceReload && lastLoadedPathOrUri == currentIdentifier && _renderedPages.value.isNotEmpty()) {
             return
@@ -1449,8 +1454,23 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
                 } catch (_: Exception) {
                     PdfEngine.getPageCount(getApplication(), uri)
                 }
+                val actualDisplayName = try {
+                    var queriedName: String? = null
+                    getApplication<Application>().contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (nameIdx != -1) {
+                                queriedName = cursor.getString(nameIdx)
+                            }
+                        }
+                    }
+                    queriedName
+                } catch (_: Exception) { null }
+                    ?: importedFile.name.replace(Regex("^\\d{10,15}_"), "")
+                val cleanName = if (!actualDisplayName.endsWith(".pdf", ignoreCase = true)) "$actualDisplayName.pdf" else actualDisplayName
+
                 val record = PdfFileRecord(
-                    name = importedFile.name,
+                    name = cleanName,
                     filePath = importedFile.absolutePath,
                     fileSize = importedFile.length(),
                     pageCount = pageCount,
@@ -1460,7 +1480,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
                 )
                 repository.insertFile(record)
                 _selectedFile.value = record
-                _notification.value = UiNotification("Uploaded \"${importedFile.name}\" successfully!")
+                _notification.value = UiNotification("Uploaded \"$cleanName\" successfully!")
                 onImported?.invoke(record)
             } catch (e: Exception) {
                 _notification.value = UiNotification("Upload failed: ${e.message}", false)
