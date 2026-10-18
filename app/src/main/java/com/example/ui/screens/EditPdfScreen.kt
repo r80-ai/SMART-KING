@@ -62,13 +62,17 @@ fun EditPdfScreen(
     }
 
     if (activeFile != null) {
-        PdfEditorMainView(
-            fileRecord = activeFile!!,
+        viewModel.setWorkspaceEditMode(true)
+        PdfWorkspaceDialog(
+            initialFile = activeFile!!,
             viewModel = viewModel,
-            onBack = {
-                activeFile = null
+            startInEditMode = true,
+            onDismiss = {
                 if (initialFile != null) {
+                    activeFile = null
                     onBack()
+                } else {
+                    activeFile = null
                 }
             }
         )
@@ -81,7 +85,7 @@ fun EditPdfScreen(
                         Text("PDF Edit", fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
+                        IconButton(onClick = onBack, modifier = Modifier.testTag("edit_pdf_back_button")) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                         }
                     },
@@ -127,7 +131,7 @@ fun EditPdfScreen(
                                 .height(44.dp)
                                 .testTag("btn_select_pdf_to_edit")
                         ) {
-                            Icon(Icons.Default.UploadFile, contentDescription = null)
+                            Icon(Icons.Default.FolderOpen, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Select PDF File", fontWeight = FontWeight.Bold)
                         }

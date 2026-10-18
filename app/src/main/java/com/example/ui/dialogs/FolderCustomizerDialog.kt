@@ -76,7 +76,7 @@ fun FolderCustomizerDialog(
             confirmButton = {
                 Button(
                     onClick = {
-                        val name = folderNameInput.trim().ifEmpty { "Smart King" }
+                        val name = folderNameInput.trim().ifEmpty { "PDF_Master" }
                         viewModel.updateSaveLocation(GlobalSaveManager.MODE_DOCUMENTS, name, null)
                         showCreateDialog = false
                     }
@@ -177,7 +177,7 @@ fun FolderCustomizerDialog(
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 4.dp)) {
                     Icon(Icons.Default.History, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("Smart King", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
+                    Text("Documents / PDF_Master", fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
                 }
                 
                 Spacer(modifier = Modifier.height(16.dp))
@@ -214,7 +214,7 @@ fun FolderCustomizerDialog(
                 
                 TextButton(
                     onClick = { 
-                        viewModel.updateSaveLocation(GlobalSaveManager.MODE_DOCUMENTS, "Smart King", null)
+                        viewModel.updateSaveLocation(GlobalSaveManager.MODE_DOCUMENTS, "PDF_Master", null)
                     },
                     modifier = Modifier.fillMaxWidth()
                 ) {

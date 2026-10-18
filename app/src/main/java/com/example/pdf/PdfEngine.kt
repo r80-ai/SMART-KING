@@ -37,11 +37,11 @@ import java.util.Locale
 object PdfEngine {
 
     var customSaveFolderType: String = "DOCUMENTS" // "DOCUMENTS", "DOWNLOADS", "INTERNAL", "CUSTOM"
-    var customFolderName: String = "Smart King"
+    var customFolderName: String = "PDF_Master"
 
     fun setFolderConfig(type: String, folderName: String) {
         customSaveFolderType = type
-        customFolderName = if (folderName.isBlank()) "Smart King" else folderName.trim()
+        customFolderName = if (folderName.isBlank()) "PDF_Master" else folderName.trim()
     }
 
     fun getPdfsDirectory(context: Context): File {
@@ -1265,10 +1265,8 @@ object PdfEngine {
                         color = item.colorHex
                         textSize = item.fontSize
                         val baseTypeface = when (item.fontFamily) {
-                            "HANDWRITING", "Handwriting", "CURSIVE", "Cursive" -> try { Typeface.create("casual", Typeface.NORMAL) } catch (_: Exception) { Typeface.create("cursive", Typeface.NORMAL) }
-                            "SERIF", "Serif" -> Typeface.SERIF
-                            "MONOSPACE", "Monospace" -> Typeface.MONOSPACE
-                            "BENGALI", "Bengali" -> Typeface.SANS_SERIF
+                            "SERIF" -> Typeface.SERIF
+                            "MONOSPACE" -> Typeface.MONOSPACE
                             else -> Typeface.DEFAULT
                         }
                         val style = when {
@@ -1323,10 +1321,8 @@ object PdfEngine {
                         textSize = fontSz
                         isUnderlineText = item.isUnderline
                         val baseTypeface = when (item.fontFamily) {
-                            "HANDWRITING", "Handwriting", "CURSIVE", "Cursive" -> try { Typeface.create("casual", Typeface.NORMAL) } catch (_: Exception) { Typeface.create("cursive", Typeface.NORMAL) }
                             "SERIF", "Serif" -> Typeface.SERIF
                             "MONOSPACE", "Monospace" -> Typeface.MONOSPACE
-                            "BENGALI", "Bengali" -> Typeface.SANS_SERIF
                             else -> Typeface.DEFAULT
                         }
                         val style = when {
