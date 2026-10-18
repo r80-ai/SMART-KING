@@ -50,13 +50,13 @@ object GlobalSaveManager {
     private val _storageMode = MutableStateFlow(MODE_DOCUMENTS)
     val storageMode: StateFlow<String> = _storageMode.asStateFlow()
 
-    private val _customFolderName = MutableStateFlow("PDF_Master")
+    private val _customFolderName = MutableStateFlow("Smart King")
     val customFolderName: StateFlow<String> = _customFolderName.asStateFlow()
 
     private val _customTreeUri = MutableStateFlow<String?>(null)
     val customTreeUri: StateFlow<String?> = _customTreeUri.asStateFlow()
 
-    private val _displayPath = MutableStateFlow("Storage / PDF_Master")
+    private val _displayPath = MutableStateFlow("/storage/emulated/0/Smart King")
     val displayPath: StateFlow<String> = _displayPath.asStateFlow()
 
     private var isInitialized = false
@@ -65,7 +65,7 @@ object GlobalSaveManager {
         if (isInitialized) return
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val mode = prefs.getString(KEY_MODE, MODE_DOCUMENTS) ?: MODE_DOCUMENTS
-        val folder = prefs.getString(KEY_CUSTOM_NAME, "PDF_Master") ?: "PDF_Master"
+        val folder = prefs.getString(KEY_CUSTOM_NAME, "Smart King") ?: "Smart King"
         val treeUriStr = prefs.getString(KEY_TREE_URI, null)
 
         _storageMode.value = mode
@@ -81,7 +81,7 @@ object GlobalSaveManager {
         folderName: String,
         treeUri: Uri? = null
     ) {
-        val cleanFolder = if (folderName.isBlank()) "PDF_Master" else folderName.trim()
+        val cleanFolder = if (folderName.isBlank()) "Smart King" else folderName.trim()
         val treeUriStr = treeUri?.toString() ?: if (mode == MODE_CUSTOM) _customTreeUri.value else null
 
         // If a new treeUri is provided, ensure persistable permission
@@ -175,42 +175,26 @@ object GlobalSaveManager {
      */
     fun getLocalActiveDirectory(context: Context): File {
         initialize(context)
-        val folder = _customFolderName.value.ifBlank { "PDF_Master" }
-        val dir = when (_storageMode.value) {
-            MODE_INTERNAL -> File(context.filesDir, folder)
-            MODE_DOWNLOADS, MODE_DOCUMENTS -> {
-                val pub = Environment.getExternalStorageDirectory()
-                val target = File(pub, folder)
-                val isWritable = try {
-                    if (!target.exists()) target.mkdirs()
-                    val test = File(target, ".test_write_${System.currentTimeMillis()}")
-                    if (test.createNewFile()) {
-                        test.delete()
-                        true
-                    } else false
-                } catch (_: Exception) {
-                    false
-                }
-                if (isWritable) target else {
-                    val fallback = context.getExternalFilesDir(null) ?: context.filesDir
-                    File(fallback, folder).apply { if (!exists()) mkdirs() }
-                }
+        val folder = _customFolderName.value.ifBlank { "Smart King" }
+        val rootPub = File(Environment.getExternalStorageDirectory(), folder)
+        if (!rootPub.exists()) {
+            try {
+                rootPub.mkdirs()
+            } catch (_: Exception) {}
+        }
+        val dir = if (rootPub.exists() && rootPub.canWrite()) {
+            rootPub
+        } else {
+            val altRoot = File(Environment.getExternalStorageDirectory(), "Smart King")
+            if (!altRoot.exists()) {
+                try { altRoot.mkdirs() } catch (_: Exception) {}
             }
-            MODE_CUSTOM -> {
-                // For custom SAF, we also maintain a local mirror/cache directory for fast local rendering
-                val cache = context.getExternalFilesDir("custom_folder_mirror") ?: context.filesDir
-                File(cache, folder).apply { if (!exists()) mkdirs() }
-            }
-            else -> {
-                val pub = Environment.getExternalStorageDirectory()
-                val target = File(pub, folder)
-                if (target.exists() || target.mkdirs()) target else File(context.filesDir, folder).apply { if (!exists()) mkdirs() }
-            }
+            if (altRoot.exists()) altRoot else rootPub
         }
         if (!dir.exists()) {
             try { dir.mkdirs() } catch (_: Exception) {}
         }
-        return if (dir.exists() && dir.canWrite()) dir else File(context.filesDir, folder).apply { if (!exists()) mkdirs() }
+        return if (dir.exists() && dir.canWrite()) dir else File(Environment.getExternalStorageDirectory(), "Smart King").apply { if (!exists()) mkdirs() }
     }
 
     /**
@@ -333,8 +317,8 @@ object GlobalSaveManager {
                     tempSourceFile.copyTo(dest, overwrite = false)
                     dest
                 } catch (e: Exception) {
-                    val internalDir = File(context.filesDir, "PDF_Master").apply { if (!exists()) mkdirs() }
-                    val fallbackDest = File(internalDir, finalFileName)
+                    val rootDir = File(Environment.getExternalStorageDirectory(), "Smart King").apply { if (!exists()) mkdirs() }
+                    val fallbackDest = File(rootDir, finalFileName)
                     tempSourceFile.copyTo(fallbackDest, overwrite = false)
                     fallbackDest
                 }
