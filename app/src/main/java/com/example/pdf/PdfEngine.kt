@@ -779,6 +779,18 @@ object PdfEngine {
     }
 
     /**
+     * Alias for saveEditedPdf to support writeEditedPdf references
+     */
+    suspend fun writeEditedPdf(
+        context: Context,
+        sourceFile: File,
+        items: List<EditItem> = emptyList(),
+        deletedPages: Set<Int> = emptySet(),
+        pageRotations: Map<Int, Int> = emptyMap(),
+        outputFileName: String
+    ): File = saveEditedPdf(context, sourceFile, items, deletedPages, pageRotations, outputFileName)
+
+    /**
      * Save edited PDF with custom text, stamps, drawings, shapes, images, and rotated/deleted pages
      */
     suspend fun saveEditedPdf(
