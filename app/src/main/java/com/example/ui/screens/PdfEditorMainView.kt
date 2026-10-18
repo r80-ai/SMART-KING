@@ -322,12 +322,184 @@ fun PdfEditorMainView(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0xFF0F172A))
-            .statusBarsPadding()
             .testTag("pdf_editor_main_view")
     ) {
         Column(
             modifier = Modifier.fillMaxSize()
         ) {
+        // ====================================================
+        // 1. TOP APP BAR: [←] Document.pdf [Share] [Save] [⋮]
+        // ====================================================
+        Surface(
+            color = Color(0xFF1E293B),
+            modifier = Modifier.fillMaxWidth(),
+            shadowElevation = 4.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    IconButton(
+                        onClick = onBack,
+                        modifier = Modifier.testTag("editor_back_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color.White
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    Column {
+                        Text(
+                            text = currentFile.name,
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = if (pages.isNotEmpty()) "Page ${currentPageIndex + 1} of ${pages.size}" else "${currentFile.pageCount} pages",
+                            color = Color(0xFF94A3B8),
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    // Undo Button
+                    IconButton(
+                        onClick = { handleUndo() },
+                        enabled = undoStack.isNotEmpty(),
+                        modifier = Modifier.testTag("editor_undo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Undo",
+                            tint = if (undoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                        )
+                    }
+
+                    // Redo Button
+                    IconButton(
+                        onClick = { handleRedo() },
+                        enabled = redoStack.isNotEmpty(),
+                        modifier = Modifier.testTag("editor_redo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "Redo",
+                            tint = if (redoStack.isNotEmpty()) Color.White else Color(0xFF64748B)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { viewModel.shareFile(context, currentFile) },
+                        modifier = Modifier.testTag("editor_share_button")
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = "Share", tint = Color.White)
+                    }
+
+                    Button(
+                        onClick = {
+                            val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                            viewModel.saveEditedPdf(
+                                sourceRecord = currentFile,
+                                items = editItems.toList(),
+                                deletedPages = deletedPages.toSet(),
+                                pageRotations = pageRotations.toMap(),
+                                outputName = outputName
+                            ) { newRec ->
+                                currentFile = newRec
+                                Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("editor_top_save_button")
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(15.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("Save", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Box {
+                        IconButton(
+                            onClick = { moreMenuExpanded = true },
+                            modifier = Modifier.testTag("editor_top_more_menu")
+                        ) {
+                            Icon(Icons.Default.MoreVert, contentDescription = "More", tint = Color.White)
+                        }
+
+                        DropdownMenu(
+                            expanded = moreMenuExpanded,
+                            onDismissRequest = { moreMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Save As...") },
+                                leadingIcon = { Icon(Icons.Default.SaveAs, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    saveAsNameInput = "${currentFile.nameWithoutExtension()}_edited.pdf"
+                                    showSaveAsDialog = true
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export to Device") },
+                                leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    exportDocumentLauncher.launch(currentFile.name)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Export to JPG Images") },
+                                leadingIcon = { Icon(Icons.Default.Image, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    handleConvertToImages()
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Compress PDF") },
+                                leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
+                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
+                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Document Info") },
+                                leadingIcon = { Icon(Icons.Default.Info, contentDescription = null) },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    Toast.makeText(
+                                        context,
+                                        "${currentFile.name}\nPages: $totalPages\nSize: ${(currentFile.fileSize / 1024).coerceAtLeast(1)} KB",
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         // ====================================================
         // 2. TOP TOOLBAR: [Page] [Edit] [Text] [Image] [Draw] [More]
@@ -1395,6 +1567,7 @@ fun PdfEditorMainView(
                             shape = RoundedCornerShape(16.dp),
                             modifier = Modifier
                                 .align(Alignment.BottomCenter)
+                                .navigationBarsPadding()
                                 .padding(bottom = 12.dp)
                                 .clickable { showThumbnailTray = !showThumbnailTray }
                         ) {
@@ -1425,6 +1598,7 @@ fun PdfEditorMainView(
                 color = Color(0xFF1E293B),
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .height(95.dp),
                 shadowElevation = 8.dp
             ) {
@@ -1462,143 +1636,6 @@ fun PdfEditorMainView(
                             )
                         }
                     }
-                }
-            }
-        }
-
-        // ====================================================
-        // 5. BOTTOM ACTION BAR: [Back] [ < ] [Page X/Y] [ > ] [Zoom] [Fit] [Share] [Save] [⋮]
-        // ====================================================
-        Surface(
-            color = Color(0xFF1E293B),
-            modifier = Modifier
-                .fillMaxWidth()
-                .navigationBarsPadding(),
-            shadowElevation = 8.dp
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Back Button
-                IconButton(
-                    onClick = onBack,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_bottom_back")
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = Color.White
-                    )
-                }
-
-                // Page Navigation: Prev
-                IconButton(
-                    onClick = { if (currentPageIndex > 0) currentPageIndex-- },
-                    enabled = currentPageIndex > 0,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_prev_page")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.NavigateBefore,
-                        contentDescription = "Previous Page",
-                        tint = if (currentPageIndex > 0) Color.White else Color(0xFF64748B)
-                    )
-                }
-
-                // Page counter pill (tap to toggle thumbnails)
-                Surface(
-                    color = Color(0xFF0F172A),
-                    shape = RoundedCornerShape(6.dp),
-                    modifier = Modifier
-                        .clickable { showThumbnailTray = !showThumbnailTray }
-                        .testTag("bottom_page_counter")
-                ) {
-                    Text(
-                        text = "${currentPageIndex + 1} / $totalPages",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
-                    )
-                }
-
-                // Page Navigation: Next
-                IconButton(
-                    onClick = { if (currentPageIndex < totalPages - 1) currentPageIndex++ },
-                    enabled = currentPageIndex < totalPages - 1,
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_next_page")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.NavigateNext,
-                        contentDescription = "Next Page",
-                        tint = if (currentPageIndex < totalPages - 1) Color.White else Color(0xFF64748B)
-                    )
-                }
-
-
-
-                // Share Button
-                IconButton(
-                    onClick = { viewModel.shareFile(context, currentFile) },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_bottom_share")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Share,
-                        contentDescription = "Share",
-                        tint = Color.White
-                    )
-                }
-
-                // Save Button
-                Button(
-                    onClick = {
-                        val outputName = "${currentFile.nameWithoutExtension()}_edited.pdf"
-                        viewModel.saveEditedPdf(
-                            sourceRecord = currentFile,
-                            items = editItems.toList(),
-                            deletedPages = deletedPages.toSet(),
-                            pageRotations = pageRotations.toMap(),
-                            outputName = outputName
-                        ) { newRec ->
-                            currentFile = newRec
-                            Toast.makeText(context, "Saved as $outputName", Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                    modifier = Modifier
-                        .height(34.dp)
-                        .testTag("btn_bottom_save")
-                ) {
-                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text("Save", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                }
-
-                // More Options
-                IconButton(
-                    onClick = { moreMenuExpanded = true },
-                    modifier = Modifier
-                        .size(36.dp)
-                        .testTag("btn_bottom_more_options")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.MoreVert,
-                        contentDescription = "More Options",
-                        tint = Color.White
-                    )
                 }
             }
         }
