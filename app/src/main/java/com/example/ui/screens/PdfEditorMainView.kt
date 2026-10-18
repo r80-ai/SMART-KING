@@ -339,8 +339,7 @@ fun PdfEditorMainView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .statusBarsPadding()
-                    .padding(horizontal = 8.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                    .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(
@@ -351,6 +350,52 @@ fun PdfEditorMainView(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         tint = Color.White
+                    )
+                }
+
+                // Center: Toolbar tools (Page, Edit, Text, Image, Draw, More)
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    EditorToolbarTabItem(
+                        label = "Page",
+                        icon = Icons.Default.Description,
+                        isSelected = activeTab == EditorTopTab.PAGE,
+                        onClick = { activeTab = if (activeTab == EditorTopTab.PAGE) EditorTopTab.NONE else EditorTopTab.PAGE }
+                    )
+                    EditorToolbarTabItem(
+                        label = "Edit",
+                        icon = Icons.Default.Tune,
+                        isSelected = activeTab == EditorTopTab.EDIT,
+                        onClick = { activeTab = if (activeTab == EditorTopTab.EDIT) EditorTopTab.NONE else EditorTopTab.EDIT }
+                    )
+                    EditorToolbarTabItem(
+                        label = "Text",
+                        icon = Icons.Default.TextFields,
+                        isSelected = activeTab == EditorTopTab.TEXT,
+                        onClick = { activeTab = if (activeTab == EditorTopTab.TEXT) EditorTopTab.NONE else EditorTopTab.TEXT }
+                    )
+                    EditorToolbarTabItem(
+                        label = "Image",
+                        icon = Icons.Default.Image,
+                        isSelected = activeTab == EditorTopTab.IMAGE,
+                        onClick = { activeTab = if (activeTab == EditorTopTab.IMAGE) EditorTopTab.NONE else EditorTopTab.IMAGE }
+                    )
+                    EditorToolbarTabItem(
+                        label = "Draw",
+                        icon = Icons.Default.Draw,
+                        isSelected = activeTab == EditorTopTab.DRAW,
+                        onClick = { activeTab = if (activeTab == EditorTopTab.DRAW) EditorTopTab.NONE else EditorTopTab.DRAW }
+                    )
+                    EditorToolbarTabItem(
+                        label = "More",
+                        icon = Icons.Default.MoreHoriz,
+                        isSelected = activeTab == EditorTopTab.MORE,
+                        onClick = { activeTab = if (activeTab == EditorTopTab.MORE) EditorTopTab.NONE else EditorTopTab.MORE }
                     )
                 }
 
@@ -522,60 +567,6 @@ fun PdfEditorMainView(
                         )
                     }
                 }
-            }
-        }
-
-        // ====================================================
-        // 2. TOP TOOLBAR: [Page] [Edit] [Text] [Image] [Draw] [More]
-        // ====================================================
-        Surface(
-            color = Color(0xFF1E293B),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 6.dp, vertical = 6.dp)
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.SpaceAround,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                EditorToolbarTabItem(
-                    label = "Page",
-                    icon = Icons.Default.Description,
-                    isSelected = activeTab == EditorTopTab.PAGE,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.PAGE) EditorTopTab.NONE else EditorTopTab.PAGE }
-                )
-                EditorToolbarTabItem(
-                    label = "Edit",
-                    icon = Icons.Default.Tune,
-                    isSelected = activeTab == EditorTopTab.EDIT,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.EDIT) EditorTopTab.NONE else EditorTopTab.EDIT }
-                )
-                EditorToolbarTabItem(
-                    label = "Text",
-                    icon = Icons.Default.TextFields,
-                    isSelected = activeTab == EditorTopTab.TEXT,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.TEXT) EditorTopTab.NONE else EditorTopTab.TEXT }
-                )
-                EditorToolbarTabItem(
-                    label = "Image",
-                    icon = Icons.Default.Image,
-                    isSelected = activeTab == EditorTopTab.IMAGE,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.IMAGE) EditorTopTab.NONE else EditorTopTab.IMAGE }
-                )
-                EditorToolbarTabItem(
-                    label = "Draw",
-                    icon = Icons.Default.Draw,
-                    isSelected = activeTab == EditorTopTab.DRAW,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.DRAW) EditorTopTab.NONE else EditorTopTab.DRAW }
-                )
-                EditorToolbarTabItem(
-                    label = "More",
-                    icon = Icons.Default.MoreHoriz,
-                    isSelected = activeTab == EditorTopTab.MORE,
-                    onClick = { activeTab = if (activeTab == EditorTopTab.MORE) EditorTopTab.NONE else EditorTopTab.MORE }
-                )
             }
         }
 
@@ -2213,18 +2204,18 @@ private fun EditorToolbarTabItem(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (isSelected) Color.White else Color(0xFF94A3B8),
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(18.dp)
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = label,
-                fontSize = 11.sp,
+                fontSize = 10.sp,
                 color = if (isSelected) Color.White else Color(0xFF94A3B8),
                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
             )
