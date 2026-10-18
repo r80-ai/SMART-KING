@@ -794,8 +794,15 @@ object PdfEngine {
         
         // If NO modifications, just copy original file to preserve everything!
         if (items.isEmpty() && deletedPages.isEmpty() && pageRotations.isEmpty()) {
-            sourceFile.copyTo(outFile, overwrite = true)
-            return@withContext outFile
+            try {
+                sourceFile.copyTo(outFile, overwrite = true)
+                return@withContext outFile
+            } catch (e: Exception) {
+                val fallbackDir = File(context.filesDir, "Smart_King").apply { if (!exists()) mkdirs() }
+                val fallbackFile = generateUniquePdfFile(fallbackDir, outputFileName)
+                sourceFile.copyTo(fallbackFile, overwrite = true)
+                return@withContext fallbackFile
+            }
         }
         val doc = PdfDocument()
 
@@ -1380,9 +1387,21 @@ object PdfEngine {
         renderer.close()
         pfd.close()
 
-        FileOutputStream(outFile).use { doc.writeTo(it) }
+        val tempWorkingFile = File(context.cacheDir, "temp_edit_${System.currentTimeMillis()}_${sanitizeFileName(outputFileName)}")
+        FileOutputStream(tempWorkingFile).use { doc.writeTo(it) }
         doc.close()
-        outFile
+
+        try {
+            tempWorkingFile.copyTo(outFile, overwrite = true)
+            tempWorkingFile.delete()
+            outFile
+        } catch (e: Exception) {
+            val fallbackDir = File(context.filesDir, "Smart_King").apply { if (!exists()) mkdirs() }
+            val fallbackFile = generateUniquePdfFile(fallbackDir, outputFileName)
+            tempWorkingFile.copyTo(fallbackFile, overwrite = true)
+            tempWorkingFile.delete()
+            fallbackFile
+        }
     }
 
     /**
@@ -2428,20 +2447,32 @@ object PdfEngine {
      * Keeps existing/original files untouched.
      */
     fun generateUniquePdfFile(targetDir: File, desiredName: String): File {
-        if (!targetDir.exists()) targetDir.mkdirs()
+        val safeDir = if (targetDir.exists() && targetDir.canWrite()) {
+            targetDir
+        } else {
+            try {
+                if (targetDir.mkdirs() && targetDir.canWrite()) targetDir else null
+            } catch (_: Exception) {
+                null
+            }
+        } ?: targetDir
+
         var clean = sanitizeFileName(desiredName)
-        val baseName = clean.substring(0, clean.length - 4)
-        var file = File(targetDir, clean)
+        val baseName = clean.removeSuffix(".pdf")
+        var file = File(safeDir, clean)
         var counter = 1
         while (file.exists()) {
-            file = File(targetDir, "${baseName}_($counter).pdf")
+            file = File(safeDir, "${baseName}_($counter).pdf")
             counter++
         }
         return file
     }
 
     fun sanitizeFileName(name: String): String {
-        var clean = name.replace("[^a-zA-Z0-9_.-]".toRegex(), "_")
+        var clean = name.trim().replace("[\\\\/:*?\"<>|\\r\\n\\t]".toRegex(), "_")
+        if (clean.isBlank()) {
+            clean = "Document"
+        }
         if (!clean.endsWith(".pdf", ignoreCase = true)) {
             clean += ".pdf"
         }

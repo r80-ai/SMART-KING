@@ -175,36 +175,31 @@ object GlobalSaveManager {
      */
     fun getLocalActiveDirectory(context: Context): File {
         initialize(context)
-        val folder = _customFolderName.value.ifBlank { "PDF_Master" }
+        val folder = _customFolderName.value.ifBlank { "Smart_King" }
         val dir = when (_storageMode.value) {
             MODE_INTERNAL -> File(context.filesDir, folder)
-            MODE_DOWNLOADS, MODE_DOCUMENTS -> {
-                val pub = Environment.getExternalStorageDirectory()
-                val target = File(pub, folder)
-                val isWritable = try {
-                    if (!target.exists()) target.mkdirs()
-                    val test = File(target, ".test_write_${System.currentTimeMillis()}")
-                    if (test.createNewFile()) {
-                        test.delete()
-                        true
-                    } else false
-                } catch (_: Exception) {
-                    false
-                }
-                if (isWritable) target else {
-                    val fallback = context.getExternalFilesDir(null) ?: context.filesDir
-                    File(fallback, folder).apply { if (!exists()) mkdirs() }
-                }
-            }
             MODE_CUSTOM -> {
                 // For custom SAF, we also maintain a local mirror/cache directory for fast local rendering
                 val cache = context.getExternalFilesDir("custom_folder_mirror") ?: context.filesDir
-                File(cache, folder).apply { if (!exists()) mkdirs() }
+                File(cache, folder)
+            }
+            MODE_DOWNLOADS -> {
+                val appExtDir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                    ?: context.getExternalFilesDir(null)
+                    ?: context.filesDir
+                File(appExtDir, folder)
+            }
+            MODE_DOCUMENTS -> {
+                val appExtDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+                    ?: context.getExternalFilesDir(null)
+                    ?: context.filesDir
+                File(appExtDir, folder)
             }
             else -> {
-                val pub = Environment.getExternalStorageDirectory()
-                val target = File(pub, folder)
-                if (target.exists() || target.mkdirs()) target else File(context.filesDir, folder).apply { if (!exists()) mkdirs() }
+                val appExtDir = context.getExternalFilesDir(Environment.DIRECTORY_DOCUMENTS)
+                    ?: context.getExternalFilesDir(null)
+                    ?: context.filesDir
+                File(appExtDir, folder)
             }
         }
         if (!dir.exists()) {

@@ -447,6 +447,22 @@ fun PdfWorkspaceDialog(
     // Save As dialog filename state
     var customSaveAsName by remember { mutableStateOf("${currentRecord.nameWithoutExtension()}_edited.pdf") }
 
+    // SAF Save As launcher (writes complete edited PDF to user-chosen destination)
+    val saveAsDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            viewModel.saveEditedPdfToUri(
+                sourceRecord = currentRecord,
+                items = editItems.toList(),
+                deletedPages = emptySet(),
+                pageRotations = pageRotations.toMap(),
+                destinationUri = uri,
+                suggestedName = customSaveAsName
+            )
+        }
+    }
+
     // Color palettes
     val paletteColors = listOf(
         Pair("Black", AndroidColor.BLACK),
@@ -636,7 +652,7 @@ fun PdfWorkspaceDialog(
                                 DropdownMenuItem(
                                     text = { 
                                         Column {
-                                            Text("Save Copy")
+                                            Text("Save Copy", fontWeight = FontWeight.SemiBold)
                                             Text("Keeps original safe (${currentRecord.nameWithoutExtension()}_edited.pdf)", fontSize = 11.sp, color = Color.Gray)
                                         }
                                     },
@@ -651,21 +667,24 @@ fun PdfWorkspaceDialog(
                                             pageRotations = pageRotations.toMap(),
                                             outputName = targetName
                                         )
-                                    }
+                                    },
+                                    modifier = Modifier.testTag("menu_item_save_copy")
                                 )
                                 DropdownMenuItem(
                                     text = {
                                         Column {
-                                            Text("Save As...")
-                                            Text("Choose a custom file name", fontSize = 11.sp, color = Color.Gray)
+                                            Text("Save As (Choose Location)...", fontWeight = FontWeight.SemiBold)
+                                            Text("Select folder on device (Downloads, Documents, etc.)", fontSize = 11.sp, color = Color.Gray)
                                         }
                                     },
-                                    leadingIcon = { Icon(Icons.Default.DriveFileRenameOutline, contentDescription = null) },
+                                    leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null, tint = CrimsonPrimary) },
                                     onClick = {
                                         saveMenuExpanded = false
-                                        customSaveAsName = "${currentRecord.nameWithoutExtension()}_edited.pdf"
-                                        activeSubTool = WorkspaceSubTool.SAVE_AS
-                                    }
+                                        val defaultName = "${currentRecord.nameWithoutExtension()}_edited.pdf"
+                                        customSaveAsName = defaultName
+                                        saveAsDocumentLauncher.launch(defaultName)
+                                    },
+                                    modifier = Modifier.testTag("menu_item_save_as")
                                 )
                             }
                         }
@@ -697,7 +716,9 @@ fun PdfWorkspaceDialog(
                                     leadingIcon = { Icon(Icons.Default.Download, contentDescription = null) },
                                     onClick = {
                                         moreMenuExpanded = false
-                                        exportDocumentLauncher.launch(currentRecord.name)
+                                        val defaultName = "${currentRecord.nameWithoutExtension()}_edited.pdf"
+                                        customSaveAsName = defaultName
+                                        saveAsDocumentLauncher.launch(defaultName)
                                     },
                                     modifier = Modifier.testTag("menu_item_export_device")
                                 )
@@ -4648,31 +4669,51 @@ fun PdfWorkspaceDialog(
                         title = { Text("Save As...", fontWeight = FontWeight.Bold) },
                         text = {
                             Column {
-                                Text("Enter a new file name:")
+                                Text("Enter a file name:")
                                 Spacer(modifier = Modifier.height(8.dp))
                                 OutlinedTextField(
                                     value = customSaveAsName,
                                     onValueChange = { customSaveAsName = it },
                                     singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
+                                    modifier = Modifier.fillMaxWidth().testTag("input_save_as_name")
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    "Save to App Library or Choose a folder on your device via Storage Access Framework.",
+                                    fontSize = 12.sp,
+                                    color = Color.Gray
                                 )
                             }
                         },
                         confirmButton = {
-                            Button(
-                                onClick = {
-                                    activeSubTool = WorkspaceSubTool.NONE
-                                    viewModel.saveEditedPdf(
-                                        sourceRecord = currentRecord,
-                                        items = editItems.toList(),
-                                        deletedPages = emptySet(),
-                                        pageRotations = emptyMap(),
-                                        outputName = customSaveAsName
-                                    )
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
-                            ) {
-                                Text("Save Copy")
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = {
+                                        activeSubTool = WorkspaceSubTool.NONE
+                                        val finalName = if (customSaveAsName.endsWith(".pdf", ignoreCase = true)) customSaveAsName else "$customSaveAsName.pdf"
+                                        saveAsDocumentLauncher.launch(finalName)
+                                    },
+                                    modifier = Modifier.testTag("btn_save_as_choose_folder")
+                                ) {
+                                    Text("Choose Folder")
+                                }
+                                Button(
+                                    onClick = {
+                                        activeSubTool = WorkspaceSubTool.NONE
+                                        val finalName = if (customSaveAsName.endsWith(".pdf", ignoreCase = true)) customSaveAsName else "$customSaveAsName.pdf"
+                                        viewModel.saveEditedPdf(
+                                            sourceRecord = currentRecord,
+                                            items = editItems.toList(),
+                                            deletedPages = emptySet(),
+                                            pageRotations = pageRotations.toMap(),
+                                            outputName = finalName
+                                        )
+                                    },
+                                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                                    modifier = Modifier.testTag("btn_save_as_library")
+                                ) {
+                                    Text("Save Copy")
+                                }
                             }
                         },
                         dismissButton = {

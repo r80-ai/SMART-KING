@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
+import android.provider.OpenableColumns
 import android.util.LruCache
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -691,6 +692,98 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
                 _notification.value = UiNotification("Saved edited PDF successfully!")
             } catch (e: Exception) {
                 _notification.value = UiNotification("Edit failed: ${e.message}", false)
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
+
+    fun saveEditedPdfToUri(
+        sourceRecord: PdfFileRecord,
+        items: List<PdfEngine.EditItem>,
+        deletedPages: Set<Int>,
+        pageRotations: Map<Int, Int>,
+        destinationUri: Uri,
+        suggestedName: String,
+        onSuccess: ((PdfFileRecord) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            _processingMessage.value = "Saving edited PDF to destination..."
+            try {
+                var srcFile = File(sourceRecord.filePath)
+                if (!srcFile.exists() || !srcFile.canRead()) {
+                    if (!sourceRecord.uriString.isNullOrBlank()) {
+                        try {
+                            val uri = Uri.parse(sourceRecord.uriString)
+                            val safeDir = File(getApplication<Application>().filesDir, "imported_pdfs").apply { if (!exists()) mkdirs() }
+                            val safeFile = File(safeDir, sourceRecord.name)
+                            getApplication<Application>().contentResolver.openInputStream(uri)?.use { inStream ->
+                                FileOutputStream(safeFile).use { outStream -> inStream.copyTo(outStream) }
+                            }
+                            if (safeFile.exists() && safeFile.length() > 0) {
+                                srcFile = safeFile
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+
+                // 1. Generate the modified PDF into safe local storage
+                val generatedFile = PdfEngine.saveEditedPdf(
+                    getApplication(),
+                    srcFile,
+                    items,
+                    deletedPages,
+                    pageRotations,
+                    suggestedName
+                )
+
+                if (!generatedFile.exists() || generatedFile.length() == 0L) {
+                    throw IllegalStateException("Generated edited PDF is empty or missing")
+                }
+
+                // 2. Stream into destination URI using ContentResolver
+                val contentResolver = getApplication<Application>().contentResolver
+                contentResolver.openOutputStream(destinationUri, "wt")?.use { outStream ->
+                    generatedFile.inputStream().use { inStream ->
+                        inStream.copyTo(outStream)
+                    }
+                    outStream.flush()
+                } ?: throw IllegalStateException("Cannot open destination output stream")
+
+                // Extract final display name from SAF URI
+                var finalDisplayName = suggestedName
+                try {
+                    contentResolver.query(destinationUri, null, null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val nameIdx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                            if (nameIdx != -1) {
+                                val queried = cursor.getString(nameIdx)
+                                if (!queried.isNullOrBlank()) finalDisplayName = queried
+                            }
+                        }
+                    }
+                } catch (_: Exception) {}
+
+                // Register in repository so it appears in recent files
+                val pageCount = PdfEngine.getPageCount(generatedFile)
+                val newRecord = PdfFileRecord(
+                    name = finalDisplayName,
+                    filePath = generatedFile.absolutePath,
+                    fileSize = generatedFile.length(),
+                    pageCount = pageCount,
+                    category = "edited",
+                    tag = "Edited",
+                    uriString = destinationUri.toString()
+                )
+                repository.insertFile(newRecord)
+                _selectedFile.value = newRecord
+                onSuccess?.invoke(newRecord)
+                _notification.value = UiNotification("Saved \"$finalDisplayName\" successfully!")
+            } catch (e: Exception) {
+                _notification.value = UiNotification("Save failed: ${e.message}", false)
             } finally {
                 _isProcessing.value = false
             }
