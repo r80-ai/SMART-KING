@@ -968,8 +968,8 @@ fun PdfWorkspaceDialog(
                                                         val scaleY = canvasH / bmpH
 
                                                         val startDownPos = down.position
-                                                        val startPdfX = startDownPos.x / scaleX
-                                                        val startPdfY = startDownPos.y / scaleY
+                                                        val startPdfX = (startDownPos.x - panOffset.x) / (scaleX * zoomScale)
+                                                        val startPdfY = (startDownPos.y - panOffset.y) / (scaleY * zoomScale)
 
                                                         val currentSelected = editItems.find { it.id == selectedAnnotationId && it.pageIndex == currentPageIndex }
                                                         var activeHandle = PdfDragHandle.NONE
@@ -1131,8 +1131,8 @@ fun PdfWorkspaceDialog(
                                                             currentChange.consume()
 
                                                             val currentPos = currentChange.position
-                                                            val currPdfX = currentPos.x / scaleX
-                                                            val currPdfY = currentPos.y / scaleY
+                                                            val currPdfX = (currentPos.x - panOffset.x) / (scaleX * zoomScale)
+                                                            val currPdfY = (currentPos.y - panOffset.y) / (scaleY * zoomScale)
 
                                                             if (Math.hypot((currPdfX - startPdfX).toDouble(), (currPdfY - startPdfY).toDouble()) > 6.0) {
                                                                 hasMovedSignificantly = true

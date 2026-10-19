@@ -58,8 +58,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -122,9 +120,6 @@ fun PdfEditorMainView(
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var fitPageMode by remember { mutableStateOf(true) }
     var showThumbnailTray by remember { mutableStateOf(false) }
-    var isInteractingWithImage by remember { mutableStateOf(false) }
-    var currentPageLayoutWidth by remember { mutableFloatStateOf(0f) }
-    var currentPageLayoutHeight by remember { mutableFloatStateOf(0f) }
 
     // Edit history & accumulated items
     val editItems = remember { mutableStateListOf<PdfEngine.EditItem>() }
@@ -298,12 +293,10 @@ fun PdfEditorMainView(
                                     val pageBmp = pages.getOrNull(currentPageIndex)
                                     val pageW = pageBmp?.width?.toFloat() ?: 600f
                                     val pageH = pageBmp?.height?.toFloat() ?: 800f
-                                    val layoutW = if (currentPageLayoutWidth > 10f) currentPageLayoutWidth else pageW
-                                    val layoutH = if (currentPageLayoutHeight > 10f) currentPageLayoutHeight else pageH
-                                    val initW = (layoutW * 0.45f).coerceIn(100f, 600f)
+                                    val initW = (pageW * 0.45f).coerceIn(120f, 500f)
                                     val initH = (initW * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
-                                    val initX = ((layoutW - initW) / 2f).coerceAtLeast(0f)
-                                    val initY = ((layoutH - initH) / 3f).coerceAtLeast(0f)
+                                    val initX = ((pageW - initW) / 2f).coerceAtLeast(0f)
+                                    val initY = ((pageH - initH) / 3f).coerceAtLeast(0f)
 
                                     val newItem = PdfEngine.EditItem(
                                         pageIndex = currentPageIndex,
@@ -314,13 +307,13 @@ fun PdfEditorMainView(
                                         posY = initY,
                                         imageWidth = initW,
                                         imageHeight = initH,
-                                        baseWidth = layoutW,
-                                        baseHeight = layoutH
+                                        baseWidth = pageW,
+                                        baseHeight = pageH
                                     )
                                     editItems.add(newItem)
                                     selectedAnnotationId = newItem.id
                                     activeTab = EditorTopTab.IMAGE
-                                    Toast.makeText(context, "Image added! Drag or use corner handles to resize", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Image added! Drag and pinch to reposition & resize", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -744,15 +737,11 @@ fun PdfEditorMainView(
                                         if (idx != -1) {
                                             pushHistory()
                                             val old = editItems[idx]
-                                            val newW = (old.imageWidth * factor).coerceIn(30f, 2000f)
-                                            val newH = (old.imageHeight * factor).coerceIn(30f, 2000f)
-                                            val deltaW = newW - old.imageWidth
-                                            val deltaH = newH - old.imageHeight
-                                            val newX = old.posX - deltaW / 2f
-                                            val newY = old.posY - deltaH / 2f
-                                            editItems[idx] = old.copy(posX = newX, posY = newY, imageWidth = newW, imageHeight = newH)
+                                            val newW = (old.imageWidth * factor).coerceIn(40f, 800f)
+                                            val newH = (old.imageHeight * factor).coerceIn(40f, 800f)
+                                            editItems[idx] = old.copy(imageWidth = newW, imageHeight = newH)
                                         }
-                                    } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
+                                    }
                                 },
                                 onDeleteSelectedImage = {
                                     selectedAnnotationId?.let { id ->
@@ -896,8 +885,7 @@ fun PdfEditorMainView(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(isInteractingWithImage) {
-                                if (isInteractingWithImage) return@pointerInput
+                            .pointerInput(Unit) {
                                 detectTransformGestures { centroid, pan, zoom, _ ->
                                     val oldScale = zoomScale
                                     val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
@@ -909,8 +897,7 @@ fun PdfEditorMainView(
                                     }
                                 }
                             }
-                            .pointerInput(isInteractingWithImage) {
-                                if (isInteractingWithImage) return@pointerInput
+                            .pointerInput(Unit) {
                                 detectTapGestures(
                                     onDoubleTap = { tapOffset ->
                                         if (zoomScale > 1.2f) {
@@ -1031,43 +1018,10 @@ fun PdfEditorMainView(
                             BoxWithConstraints(
                                 modifier = pageModifier
                                     .background(pageBackgroundColor)
-                                    .pointerInput(selectedAnnotationId, activeTab) {
-                                        detectTapGestures(
-                                            onTap = {
-                                                if (activeTab == EditorTopTab.IMAGE && selectedAnnotationId != null) {
-                                                    selectedAnnotationId = null
-                                                }
-                                            }
-                                        )
-                                    }
                             ) {
                                 val density = LocalDensity.current
                                 val pageWidthPx = constraints.maxWidth.toFloat()
                                 val pageHeightPx = constraints.maxHeight.toFloat()
-
-                                LaunchedEffect(pageWidthPx, pageHeightPx) {
-                                    if (pageWidthPx > 10f && pageHeightPx > 10f) {
-                                        currentPageLayoutWidth = pageWidthPx
-                                        currentPageLayoutHeight = pageHeightPx
-                                        val pageImages = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.IMAGE }
-                                        for (img in pageImages) {
-                                            if (img.baseWidth > 10f && Math.abs(img.baseWidth - pageWidthPx) > 1f) {
-                                                val factor = pageWidthPx / img.baseWidth
-                                                val idx = editItems.indexOfFirst { it.id == img.id }
-                                                if (idx != -1) {
-                                                    editItems[idx] = img.copy(
-                                                        posX = img.posX * factor,
-                                                        posY = img.posY * factor,
-                                                        imageWidth = img.imageWidth * factor,
-                                                        imageHeight = img.imageHeight * factor,
-                                                        baseWidth = pageWidthPx,
-                                                        baseHeight = pageHeightPx
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
 
                                     // 1. Rendered PDF Page Image
                                     Image(
@@ -1177,7 +1131,7 @@ fun PdfEditorMainView(
                                         }
                                     }
 
-                                    // 3. Interactive Image Overlays: zoom-independent drag, reposition, and 4-corner resizing
+                                    // 3. Interactive Image Overlays: freely drag, reposition, and resize using touch gestures
                                     val pageImageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.IMAGE }
                                     for (imgItem in pageImageItems) {
                                         val isSelected = selectedAnnotationId == imgItem.id
@@ -1196,48 +1150,35 @@ fun PdfEditorMainView(
                                                     .graphicsLayer {
                                                         rotationZ = imgItem.imageRotation
                                                     }
-                                                    .pointerInput(imgItem.id, zoomScale) {
-                                                        awaitEachGesture {
-                                                            val down = awaitFirstDown(requireUnconsumed = false)
-                                                            down.consume()
-                                                            selectedAnnotationId = imgItem.id
-                                                            activeTab = EditorTopTab.IMAGE
-                                                            isInteractingWithImage = true
-
-                                                            val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                            if (idx == -1) {
-                                                                isInteractingWithImage = false
-                                                                return@awaitEachGesture
+                                                    .pointerInput(imgItem.id) {
+                                                        detectTapGestures(
+                                                            onTap = {
+                                                                selectedAnnotationId = imgItem.id
+                                                                activeTab = EditorTopTab.IMAGE
                                                             }
-                                                            var cur = editItems[idx]
-                                                            var hasPushedHistory = false
-
-                                                            val rotRad = Math.toRadians(cur.imageRotation.toDouble())
-                                                            val cos = Math.cos(rotRad).toFloat()
-                                                            val sin = Math.sin(rotRad).toFloat()
-
-                                                            do {
-                                                                val event = awaitPointerEvent()
-                                                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                                if (change.pressed) {
-                                                                    val dragDelta = change.positionChange()
-                                                                    if (dragDelta != Offset.Zero) {
-                                                                        change.consume()
-                                                                        if (!hasPushedHistory) {
-                                                                            pushHistory()
-                                                                            hasPushedHistory = true
-                                                                        }
-                                                                        val unrotDx = dragDelta.x * cos - dragDelta.y * sin
-                                                                        val unrotDy = dragDelta.x * sin + dragDelta.y * cos
-                                                                        val newX = (cur.posX + unrotDx).coerceIn(-cur.imageWidth * 0.7f, pageWidthPx - cur.imageWidth * 0.3f)
-                                                                        val newY = (cur.posY + unrotDy).coerceIn(-cur.imageHeight * 0.7f, pageHeightPx - cur.imageHeight * 0.3f)
-                                                                        cur = cur.copy(posX = newX, posY = newY)
-                                                                        editItems[idx] = cur
-                                                                    }
+                                                        )
+                                                    }
+                                                    .pointerInput(imgItem.id) {
+                                                        detectDragGestures(
+                                                            onDragStart = {
+                                                                pushHistory()
+                                                                selectedAnnotationId = imgItem.id
+                                                                activeTab = EditorTopTab.IMAGE
+                                                            },
+                                                            onDrag = { change, dragAmount ->
+                                                                change.consume()
+                                                                val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                val dX = dragAmount.x / scale
+                                                                val dY = dragAmount.y / scale
+                                                                val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                if (idx != -1) {
+                                                                    val cur = editItems[idx]
+                                                                    val newX = (cur.posX + dX).coerceIn(-cur.imageWidth * 0.4f, pageWidthPx - cur.imageWidth * 0.6f)
+                                                                    val newY = (cur.posY + dY).coerceIn(-cur.imageHeight * 0.4f, pageHeightPx - cur.imageHeight * 0.6f)
+                                                                    editItems[idx] = cur.copy(posX = newX, posY = newY)
                                                                 }
-                                                            } while (event.changes.any { it.pressed })
-                                                            isInteractingWithImage = false
-                                                        }
+                                                            }
+                                                        )
                                                     }
                                             ) {
                                                 // 1. Image Bitmap
@@ -1250,63 +1191,49 @@ fun PdfEditorMainView(
                                                         .clip(RoundedCornerShape(2.dp))
                                                 )
 
-                                                // 2. Custom Image Adjustment Frame and 4 Corner Handles
+                                                // 2. Custom Image Adjustment Box (Clean Standard Crop/Selection Frame)
                                                 if (isSelected) {
-                                                    val effectiveZoom = zoomScale.coerceIn(0.4f, 6.0f)
-                                                    val borderThickness = (1.5f / effectiveZoom).coerceIn(1f, 3f).dp
+                                                    // Clean rectangular bounding box
                                                     Box(
                                                         modifier = Modifier
                                                             .fillMaxSize()
-                                                            .border(borderThickness, ToolBlue, RoundedCornerShape(2.dp))
+                                                            .border(1.5.dp, ToolBlue, RoundedCornerShape(2.dp))
                                                     )
 
-                                                    val cornerTouchSize = (44f / effectiveZoom).coerceIn(30f, 90f).dp
-                                                    val handleCircleSize = (13f / effectiveZoom).coerceIn(8f, 26f).dp
-                                                    val handleBorder = (2f / effectiveZoom).coerceIn(1.2f, 4f).dp
-                                                    val halfTouch = cornerTouchSize / 2
+                                                    val cornerTouchSize = 36.dp
+                                                    val handleCircleSize = 13.dp
                                                     val handleColor = ToolBlue
                                                     val handleInner = Color.White
+
+                                                    // --- 4 CORNER HANDLES (Fluid 2D Scaling / Resizing) ---
 
                                                     // TOP-LEFT CORNER HANDLE
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopStart)
-                                                            .offset(x = -halfTouch, y = -halfTouch)
+                                                            .offset(x = (-18).dp, y = (-18).dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id, zoomScale) {
-                                                                awaitEachGesture {
-                                                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                                                    down.consume()
-                                                                    isInteractingWithImage = true
-                                                                    pushHistory()
-
-                                                                    val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                    if (idx == -1) {
-                                                                        isInteractingWithImage = false
-                                                                        return@awaitEachGesture
-                                                                    }
-                                                                    var cur = editItems[idx]
-
-                                                                    do {
-                                                                        val event = awaitPointerEvent()
-                                                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                                        if (change.pressed) {
-                                                                            val dragDelta = change.positionChange()
-                                                                            if (dragDelta != Offset.Zero) {
-                                                                                change.consume()
-                                                                                val currentRight = cur.posX + cur.imageWidth
-                                                                                val currentBottom = cur.posY + cur.imageHeight
-                                                                                val newW = (cur.imageWidth - dragDelta.x).coerceIn(30f, currentRight + 200f)
-                                                                                val newH = (cur.imageHeight - dragDelta.y).coerceIn(30f, currentBottom + 200f)
-                                                                                val newX = currentRight - newW
-                                                                                val newY = currentBottom - newH
-                                                                                cur = cur.copy(posX = newX, posY = newY, imageWidth = newW, imageHeight = newH)
-                                                                                editItems[idx] = cur
-                                                                            }
+                                                            .pointerInput(imgItem.id) {
+                                                                detectDragGestures(
+                                                                    onDragStart = { pushHistory() },
+                                                                    onDrag = { change, dragAmount ->
+                                                                        change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
+                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                        if (idx != -1) {
+                                                                            val cur = editItems[idx]
+                                                                            val newW = (cur.imageWidth - dX).coerceIn(40f, cur.posX + cur.imageWidth)
+                                                                            val deltaW = cur.imageWidth - newW
+                                                                            val newX = cur.posX + deltaW
+                                                                            val newH = (cur.imageHeight - dY).coerceIn(40f, cur.posY + cur.imageHeight)
+                                                                            val deltaH = cur.imageHeight - newH
+                                                                            val newY = cur.posY + deltaH
+                                                                            editItems[idx] = cur.copy(posX = newX, posY = newY, imageWidth = newW, imageHeight = newH)
                                                                         }
-                                                                    } while (event.changes.any { it.pressed })
-                                                                    isInteractingWithImage = false
-                                                                }
+                                                                    }
+                                                                )
                                                             },
                                                         contentAlignment = Alignment.Center
                                                     ) {
@@ -1314,7 +1241,7 @@ fun PdfEditorMainView(
                                                             modifier = Modifier
                                                                 .size(handleCircleSize)
                                                                 .background(handleInner, CircleShape)
-                                                                .border(handleBorder, handleColor, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1322,40 +1249,27 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopEnd)
-                                                            .offset(x = halfTouch, y = -halfTouch)
+                                                            .offset(x = 18.dp, y = (-18).dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id, zoomScale) {
-                                                                awaitEachGesture {
-                                                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                                                    down.consume()
-                                                                    isInteractingWithImage = true
-                                                                    pushHistory()
-
-                                                                    val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                    if (idx == -1) {
-                                                                        isInteractingWithImage = false
-                                                                        return@awaitEachGesture
-                                                                    }
-                                                                    var cur = editItems[idx]
-
-                                                                    do {
-                                                                        val event = awaitPointerEvent()
-                                                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                                        if (change.pressed) {
-                                                                            val dragDelta = change.positionChange()
-                                                                            if (dragDelta != Offset.Zero) {
-                                                                                change.consume()
-                                                                                val currentBottom = cur.posY + cur.imageHeight
-                                                                                val newW = (cur.imageWidth + dragDelta.x).coerceIn(30f, pageWidthPx - cur.posX + 200f)
-                                                                                val newH = (cur.imageHeight - dragDelta.y).coerceIn(30f, currentBottom + 200f)
-                                                                                val newY = currentBottom - newH
-                                                                                cur = cur.copy(posY = newY, imageWidth = newW, imageHeight = newH)
-                                                                                editItems[idx] = cur
-                                                                            }
+                                                            .pointerInput(imgItem.id) {
+                                                                detectDragGestures(
+                                                                    onDragStart = { pushHistory() },
+                                                                    onDrag = { change, dragAmount ->
+                                                                        change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
+                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                        if (idx != -1) {
+                                                                            val cur = editItems[idx]
+                                                                            val newW = (cur.imageWidth + dX).coerceIn(40f, pageWidthPx - cur.posX)
+                                                                            val newH = (cur.imageHeight - dY).coerceIn(40f, cur.posY + cur.imageHeight)
+                                                                            val deltaH = cur.imageHeight - newH
+                                                                            val newY = cur.posY + deltaH
+                                                                            editItems[idx] = cur.copy(posY = newY, imageWidth = newW, imageHeight = newH)
                                                                         }
-                                                                    } while (event.changes.any { it.pressed })
-                                                                    isInteractingWithImage = false
-                                                                }
+                                                                    }
+                                                                )
                                                             },
                                                         contentAlignment = Alignment.Center
                                                     ) {
@@ -1363,7 +1277,7 @@ fun PdfEditorMainView(
                                                             modifier = Modifier
                                                                 .size(handleCircleSize)
                                                                 .background(handleInner, CircleShape)
-                                                                .border(handleBorder, handleColor, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1371,40 +1285,27 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomStart)
-                                                            .offset(x = -halfTouch, y = halfTouch)
+                                                            .offset(x = (-18).dp, y = 18.dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id, zoomScale) {
-                                                                awaitEachGesture {
-                                                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                                                    down.consume()
-                                                                    isInteractingWithImage = true
-                                                                    pushHistory()
-
-                                                                    val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                    if (idx == -1) {
-                                                                        isInteractingWithImage = false
-                                                                        return@awaitEachGesture
-                                                                    }
-                                                                    var cur = editItems[idx]
-
-                                                                    do {
-                                                                        val event = awaitPointerEvent()
-                                                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                                        if (change.pressed) {
-                                                                            val dragDelta = change.positionChange()
-                                                                            if (dragDelta != Offset.Zero) {
-                                                                                change.consume()
-                                                                                val currentRight = cur.posX + cur.imageWidth
-                                                                                val newW = (cur.imageWidth - dragDelta.x).coerceIn(30f, currentRight + 200f)
-                                                                                val newH = (cur.imageHeight + dragDelta.y).coerceIn(30f, pageHeightPx - cur.posY + 200f)
-                                                                                val newX = currentRight - newW
-                                                                                cur = cur.copy(posX = newX, imageWidth = newW, imageHeight = newH)
-                                                                                editItems[idx] = cur
-                                                                            }
+                                                            .pointerInput(imgItem.id) {
+                                                                detectDragGestures(
+                                                                    onDragStart = { pushHistory() },
+                                                                    onDrag = { change, dragAmount ->
+                                                                        change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
+                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                        if (idx != -1) {
+                                                                            val cur = editItems[idx]
+                                                                            val newW = (cur.imageWidth - dX).coerceIn(40f, cur.posX + cur.imageWidth)
+                                                                            val deltaW = cur.imageWidth - newW
+                                                                            val newX = cur.posX + deltaW
+                                                                            val newH = (cur.imageHeight + dY).coerceIn(40f, pageHeightPx - cur.posY)
+                                                                            editItems[idx] = cur.copy(posX = newX, imageWidth = newW, imageHeight = newH)
                                                                         }
-                                                                    } while (event.changes.any { it.pressed })
-                                                                    isInteractingWithImage = false
-                                                                }
+                                                                    }
+                                                                )
                                                             },
                                                         contentAlignment = Alignment.Center
                                                     ) {
@@ -1412,7 +1313,7 @@ fun PdfEditorMainView(
                                                             modifier = Modifier
                                                                 .size(handleCircleSize)
                                                                 .background(handleInner, CircleShape)
-                                                                .border(handleBorder, handleColor, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1420,38 +1321,25 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomEnd)
-                                                            .offset(x = halfTouch, y = halfTouch)
+                                                            .offset(x = 18.dp, y = 18.dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id, zoomScale) {
-                                                                awaitEachGesture {
-                                                                    val down = awaitFirstDown(requireUnconsumed = false)
-                                                                    down.consume()
-                                                                    isInteractingWithImage = true
-                                                                    pushHistory()
-
-                                                                    val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                    if (idx == -1) {
-                                                                        isInteractingWithImage = false
-                                                                        return@awaitEachGesture
-                                                                    }
-                                                                    var cur = editItems[idx]
-
-                                                                    do {
-                                                                        val event = awaitPointerEvent()
-                                                                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                                                        if (change.pressed) {
-                                                                            val dragDelta = change.positionChange()
-                                                                            if (dragDelta != Offset.Zero) {
-                                                                                change.consume()
-                                                                                val newW = (cur.imageWidth + dragDelta.x).coerceIn(30f, pageWidthPx - cur.posX + 200f)
-                                                                                val newH = (cur.imageHeight + dragDelta.y).coerceIn(30f, pageHeightPx - cur.posY + 200f)
-                                                                                cur = cur.copy(imageWidth = newW, imageHeight = newH)
-                                                                                editItems[idx] = cur
-                                                                            }
+                                                            .pointerInput(imgItem.id) {
+                                                                detectDragGestures(
+                                                                    onDragStart = { pushHistory() },
+                                                                    onDrag = { change, dragAmount ->
+                                                                        change.consume()
+                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                        val dX = dragAmount.x / scale
+                                                                        val dY = dragAmount.y / scale
+                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                        if (idx != -1) {
+                                                                            val cur = editItems[idx]
+                                                                            val newW = (cur.imageWidth + dX).coerceIn(40f, pageWidthPx - cur.posX)
+                                                                            val newH = (cur.imageHeight + dY).coerceIn(40f, pageHeightPx - cur.posY)
+                                                                            editItems[idx] = cur.copy(imageWidth = newW, imageHeight = newH)
                                                                         }
-                                                                    } while (event.changes.any { it.pressed })
-                                                                    isInteractingWithImage = false
-                                                                }
+                                                                    }
+                                                                )
                                                             },
                                                         contentAlignment = Alignment.Center
                                                     ) {
@@ -1459,7 +1347,7 @@ fun PdfEditorMainView(
                                                             modifier = Modifier
                                                                 .size(handleCircleSize)
                                                                 .background(handleInner, CircleShape)
-                                                                .border(handleBorder, handleColor, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
                                                 }
