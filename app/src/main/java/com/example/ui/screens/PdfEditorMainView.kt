@@ -1191,56 +1191,27 @@ fun PdfEditorMainView(
                                                         .clip(RoundedCornerShape(2.dp))
                                                 )
 
-                                                // 2. Custom Image Adjustment Box (Crop Tool Frame Design & Functionality)
+                                                // 2. Custom Image Adjustment Box (Clean Standard Crop/Selection Frame)
                                                 if (isSelected) {
-                                                    // Blue boundary border matching crop tool
+                                                    // Clean rectangular bounding box
                                                     Box(
                                                         modifier = Modifier
                                                             .fillMaxSize()
-                                                            .border(2.dp, ToolBlue, RoundedCornerShape(2.dp))
+                                                            .border(1.5.dp, ToolBlue, RoundedCornerShape(2.dp))
                                                     )
 
-                                                    // Rule-of-thirds grid lines matching crop tool frame
-                                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                                        val w = size.width
-                                                        val h = size.height
-                                                        val gridColor = Color.White.copy(alpha = 0.25f)
-                                                        drawLine(gridColor, Offset(w / 3f, 0f), Offset(w / 3f, h), strokeWidth = 1.dp.toPx())
-                                                        drawLine(gridColor, Offset(w * 2f / 3f, 0f), Offset(w * 2f / 3f, h), strokeWidth = 1.dp.toPx())
-                                                        drawLine(gridColor, Offset(0f, h / 3f), Offset(w, h / 3f), strokeWidth = 1.dp.toPx())
-                                                        drawLine(gridColor, Offset(0f, h * 2f / 3f), Offset(w, h * 2f / 3f), strokeWidth = 1.dp.toPx())
-                                                    }
-
-                                                    // Dimension pill badge indicator
-                                                    Surface(
-                                                        color = Color(0xFF0F172A).copy(alpha = 0.88f),
-                                                        shape = RoundedCornerShape(10.dp),
-                                                        border = androidx.compose.foundation.BorderStroke(1.dp, ToolBlue.copy(alpha = 0.6f)),
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopCenter)
-                                                            .offset(y = (-24).dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "${imgItem.imageWidth.roundToInt()} × ${imgItem.imageHeight.roundToInt()}",
-                                                            color = Color.White,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-
-                                                    val cornerTouchSize = 38.dp
-                                                    val handleRadiusDp = 8.dp
+                                                    val cornerTouchSize = 36.dp
+                                                    val handleCircleSize = 13.dp
                                                     val handleColor = ToolBlue
                                                     val handleInner = Color.White
 
-                                                    // --- 4 CORNER HANDLES (Fluid 2D Stretch / Shrink / Widen) ---
+                                                    // --- 4 CORNER HANDLES (Fluid 2D Scaling / Resizing) ---
 
                                                     // TOP-LEFT CORNER HANDLE
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopStart)
-                                                            .offset(x = (-19).dp, y = (-19).dp)
+                                                            .offset(x = (-18).dp, y = (-18).dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1268,9 +1239,9 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1278,7 +1249,7 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopEnd)
-                                                            .offset(x = 19.dp, y = (-19).dp)
+                                                            .offset(x = 18.dp, y = (-18).dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1304,9 +1275,9 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1314,7 +1285,7 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomStart)
-                                                            .offset(x = (-19).dp, y = 19.dp)
+                                                            .offset(x = (-18).dp, y = 18.dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1340,9 +1311,9 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1350,7 +1321,7 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomEnd)
-                                                            .offset(x = 19.dp, y = 19.dp)
+                                                            .offset(x = 18.dp, y = 18.dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1374,196 +1345,9 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
-                                                        )
-                                                    }
-
-                                                    // --- 4 EDGE MIDPOINT HANDLES (Independent Widen / Stretch / Shrink) ---
-
-                                                    // TOP EDGE HANDLE (Vertical Height Adjustment from Top)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopCenter)
-                                                            .offset(y = (-15).dp)
-                                                            .size(width = 44.dp, height = 30.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dY = dragAmount.y / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newH = (cur.imageHeight - dY).coerceIn(40f, cur.posY + cur.imageHeight)
-                                                                            val deltaH = cur.imageHeight - newH
-                                                                            val newY = cur.posY + deltaH
-                                                                            editItems[idx] = cur.copy(posY = newY, imageHeight = newH)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 24.dp, height = 7.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // BOTTOM EDGE HANDLE (Vertical Height Adjustment from Bottom)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.BottomCenter)
-                                                            .offset(y = 15.dp)
-                                                            .size(width = 44.dp, height = 30.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dY = dragAmount.y / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newH = (cur.imageHeight + dY).coerceIn(40f, pageHeightPx - cur.posY)
-                                                                            editItems[idx] = cur.copy(imageHeight = newH)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 24.dp, height = 7.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // LEFT EDGE HANDLE (Horizontal Width Adjustment from Left)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.CenterStart)
-                                                            .offset(x = (-15).dp)
-                                                            .size(width = 30.dp, height = 44.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth - dX).coerceIn(40f, cur.posX + cur.imageWidth)
-                                                                            val deltaW = cur.imageWidth - newW
-                                                                            val newX = cur.posX + deltaW
-                                                                            editItems[idx] = cur.copy(posX = newX, imageWidth = newW)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 7.dp, height = 24.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // RIGHT EDGE HANDLE (Horizontal Width Adjustment from Right)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.CenterEnd)
-                                                            .offset(x = 15.dp)
-                                                            .size(width = 30.dp, height = 44.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth + dX).coerceIn(40f, pageWidthPx - cur.posX)
-                                                                            editItems[idx] = cur.copy(imageWidth = newW)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 7.dp, height = 24.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // --- QUICK ACTION BUTTONS ---
-
-                                                    // Quick Delete Button (Top-Right Offset)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopEnd)
-                                                            .size(24.dp)
-                                                            .offset(x = 24.dp, y = (-24).dp)
-                                                            .background(CrimsonPrimary, CircleShape)
-                                                            .border(1.5.dp, Color.White, CircleShape)
-                                                            .clickable {
-                                                                pushHistory()
-                                                                editItems.removeAll { it.id == imgItem.id }
-                                                                selectedAnnotationId = null
-                                                                Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                             imageVector = Icons.Default.Close,
-                                                             contentDescription = "Delete Image",
-                                                             tint = Color.White,
-                                                             modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
-
-                                                    // Quick Rotate Handle (Top-Left Offset)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopStart)
-                                                            .size(24.dp)
-                                                            .offset(x = (-24).dp, y = (-24).dp)
-                                                            .background(ToolOrange, CircleShape)
-                                                            .border(1.5.dp, Color.White, CircleShape)
-                                                            .clickable {
-                                                                pushHistory()
-                                                                val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                if (idx != -1) {
-                                                                    val cur = editItems[idx]
-                                                                    editItems[idx] = cur.copy(imageRotation = (cur.imageRotation + 90f) % 360f)
-                                                                }
-                                                                Toast.makeText(context, "Image rotated +90°", Toast.LENGTH_SHORT).show()
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.RotateRight,
-                                                            contentDescription = "Rotate Image",
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(14.dp)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
                                                 }
