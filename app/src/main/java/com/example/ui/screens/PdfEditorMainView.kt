@@ -602,7 +602,7 @@ fun PdfEditorMainView(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                        .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 6.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     when (activeTab) {
@@ -2120,8 +2120,6 @@ private fun PageOptionsSection(
     onApplyChanges: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Page Management", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2174,8 +2172,6 @@ private fun EditOptionsSection(
     onApplyChanges: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Document Layout & Edit", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2317,12 +2313,10 @@ private fun ImageOptionsSection(
     onAddImage: () -> Unit,
     onReplaceImage: () -> Unit,
     onRotateSelectedImage: () -> Unit,
-    onResizeImage: (Float) -> Unit,
+    onResizeImage: (Float) -> Unit = {},
     onDeleteSelectedImage: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Image Tools", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -2336,9 +2330,8 @@ private fun ImageOptionsSection(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            ToolButtonCard(Modifier.weight(1f), "Enlarge (+)", Icons.Default.ZoomIn, ToolGreen) { onResizeImage(1.2f) }
-            ToolButtonCard(Modifier.weight(1f), "Shrink (-)", Icons.Default.ZoomOut, ToolGreen) { onResizeImage(0.8f) }
             ToolButtonCard(Modifier.weight(1f), "Delete Image", Icons.Default.Delete, CrimsonPrimary, onDeleteSelectedImage)
+            Spacer(modifier = Modifier.weight(2f))
         }
     }
 }
@@ -2435,8 +2428,6 @@ private fun MoreOptionsSection(
     onApplyChanges: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("More Document Actions", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
