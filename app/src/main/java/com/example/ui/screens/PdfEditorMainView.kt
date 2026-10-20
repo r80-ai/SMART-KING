@@ -12,10 +12,6 @@ import android.graphics.Paint as AndroidPaint
 import android.graphics.Rect as AndroidRect
 import android.graphics.Typeface as AndroidTypeface
 import android.net.Uri
-import android.view.LayoutInflater
-import android.view.View
-import android.widget.FrameLayout
-import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -72,8 +68,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import com.example.R
 import kotlin.math.roundToInt
 import com.example.model.PdfFileRecord
 import com.example.pdf.PdfEngine
@@ -173,7 +167,6 @@ fun PdfEditorMainView(
     var pdfCanvasWidthPx by remember { mutableFloatStateOf(800f) }
     var pdfCanvasHeightPx by remember { mutableFloatStateOf(1100f) }
     var textLayerUpdateTrigger by remember { mutableIntStateOf(0) }
-    var textOverlayViewRef by remember { mutableStateOf<TextOverlayView?>(null) }
 
     // Draw tool state
     var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
@@ -1109,54 +1102,12 @@ fun PdfEditorMainView(
                                     pdfCanvasHeightPx = pageHeightPx
                                 }
 
-                                    // 1. PDF Renderer & TextOverlayView hosted inside FrameLayout via pdf_editor_canvas layout
-                                    AndroidView(
-                                        modifier = Modifier.fillMaxSize(),
-                                        factory = { ctx ->
-                                            val inflater = LayoutInflater.from(ctx)
-                                            val root = inflater.inflate(R.layout.pdf_editor_canvas, null, false) as FrameLayout
-                                            val imgView = root.findViewById<ImageView>(R.id.pdf_renderer_view)
-                                            val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
-
-                                            imgView.setImageBitmap(currentBmp)
-                                            overlay.visibility = View.VISIBLE
-                                            overlay.bringToFront()
-
-                                            overlay.onLayerSelected = { id ->
-                                                selectedAnnotationId = id
-                                                if (id != null) activeTab = EditorTopTab.TEXT
-                                            }
-                                            overlay.onLayerUpdated = { updatedItem ->
-                                                val idx = editItems.indexOfFirst { it.id == updatedItem.id }
-                                                if (idx != -1) {
-                                                    editItems[idx] = updatedItem
-                                                }
-                                                textLayerUpdateTrigger++
-                                            }
-                                            overlay.onLayerEditRequested = { item ->
-                                                selectedAnnotationId = item.id
-                                                textInputContent = item.text
-                                                showAddTextDialog = true
-                                            }
-                                            overlay.onHistoryPush = {
-                                                pushHistory()
-                                            }
-
-                                            textOverlayViewRef = overlay
-                                            root
-                                        },
-                                        update = { root ->
-                                            val imgView = root.findViewById<ImageView>(R.id.pdf_renderer_view)
-                                            imgView.setImageBitmap(currentBmp)
-                                            val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
-                                            textOverlayViewRef = overlay
-                                            overlay.visibility = View.VISIBLE
-                                            overlay.bringToFront()
-                                            overlay.updateLayers(
-                                                items = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT },
-                                                selectedId = selectedAnnotationId
-                                            )
-                                        }
+                                    // 1. Rendered PDF Page Image
+                                    Image(
+                                        bitmap = currentBmp.asImageBitmap(),
+                                        contentDescription = "PDF Page ${currentPageIndex + 1}",
+                                        contentScale = ContentScale.Fit,
+                                        modifier = Modifier.fillMaxSize()
                                     )
 
                                     // 2. Interactive Annotation & Drawing Canvas
@@ -1471,7 +1422,45 @@ fun PdfEditorMainView(
                                             }
                                         }
 
-                                        // 4. Text overlays and bounding boxes are rendered directly on TextOverlayView (in pdf_editor_canvas)
+                                        // 4. Interactive Text Overlays: interactive bounding box, 4 corner handles, drag & move
+                                        val pageTextItems = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT }
+                                        for (textItem in pageTextItems) {
+                                            key(textItem.id, textLayerUpdateTrigger) {
+                                                val isSelected = selectedAnnotationId == textItem.id
+                                                InteractivePdfTextOverlay(
+                                                    item = textItem,
+                                                    isSelected = isSelected,
+                                                    zoomScale = zoomScale,
+                                                    pageWidthPx = pageWidthPx,
+                                                    pageHeightPx = pageHeightPx,
+                                                    onSelect = {
+                                                        selectedAnnotationId = textItem.id
+                                                        activeTab = EditorTopTab.TEXT
+                                                    },
+                                                    onEdit = {
+                                                        selectedAnnotationId = textItem.id
+                                                        textInputContent = textItem.text
+                                                        showAddTextDialog = true
+                                                    },
+                                                    onDelete = {
+                                                        pushHistory()
+                                                        editItems.removeAll { it.id == textItem.id }
+                                                        if (selectedAnnotationId == textItem.id) {
+                                                            selectedAnnotationId = null
+                                                        }
+                                                        textLayerUpdateTrigger++
+                                                    },
+                                                    onUpdate = { updated ->
+                                                        val idx = editItems.indexOfFirst { it.id == textItem.id }
+                                                        if (idx != -1) {
+                                                            editItems[idx] = updated
+                                                        }
+                                                        textLayerUpdateTrigger++
+                                                    },
+                                                    onHistoryPush = { pushHistory() }
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -1930,44 +1919,30 @@ fun PdfEditorMainView(
                             if (editingItem != null) {
                                 val idx = editItems.indexOfFirst { it.id == editingItem.id }
                                 if (idx != -1) {
-                                    val updated = editingItem.copy(text = textInputContent)
-                                    editItems[idx] = updated
-                                    textOverlayViewRef?.apply {
-                                        visibility = View.VISIBLE
-                                        bringToFront()
-                                        addOrSelectLayer(updated)
-                                        postInvalidate()
-                                    }
+                                    editItems[idx] = editingItem.copy(text = textInputContent)
                                 }
                                 textLayerUpdateTrigger++
                                 Toast.makeText(context, "Text updated", Toast.LENGTH_SHORT).show()
                             } else {
-                                val overlay = textOverlayViewRef
-                                val canvasW = if (overlay != null && overlay.width > 0) overlay.width.toFloat() else if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f
-                                val canvasH = if (overlay != null && overlay.height > 0) overlay.height.toFloat() else if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                val canvasW = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f
+                                val canvasH = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
                                 val defaultW = 320f
                                 val defaultH = 110f
-                                // Initial Coordinates: strictly at center of visible PDF page viewport
-                                // startX = overlayView.width / 2f, startY = overlayView.height / 3f. Fallback to (200f, 200f)
-                                val startX = if (overlay != null && overlay.width > 0) overlay.width / 2f else (canvasW / 2f)
-                                val startY = if (overlay != null && overlay.height > 0) overlay.height / 3f else (canvasH / 3f)
-                                val initX = if (startX > 0f) (startX - defaultW / 2f).coerceAtLeast(20f) else 200f
-                                val initY = if (startY > 0f) (startY - defaultH / 2f).coerceAtLeast(30f) else 200f
-
-                                val defaultColor = if (textColor != 0) textColor else AndroidColor.RED
-                                val defaultFontSize = if (textFontSize >= 24f) textFontSize else 28f
+                                // Strictly center of visible PDF page viewport (x = canvasWidth / 2, y = canvasHeight / 3)
+                                val initX = (canvasW / 2f) - (defaultW / 2f)
+                                val initY = (canvasH / 3f) - (defaultH / 2f)
 
                                 val newItem = PdfEngine.EditItem(
                                     pageIndex = currentPageIndex,
                                     type = PdfEngine.AnnotationType.TEXT,
                                     text = textInputContent,
-                                    colorHex = defaultColor,
-                                    fontSize = defaultFontSize,
+                                    colorHex = if (textColor != 0) textColor else AndroidColor.RED,
+                                    fontSize = if (textFontSize >= 24f) textFontSize else 28f,
                                     isBold = textIsBold,
                                     isItalic = textIsItalic,
                                     alignment = textAlignment,
-                                    posX = initX,
-                                    posY = initY,
+                                    posX = initX.coerceAtLeast(20f),
+                                    posY = initY.coerceAtLeast(30f),
                                     boxWidth = defaultW,
                                     boxHeight = defaultH,
                                     isVisible = true,
@@ -1979,15 +1954,6 @@ fun PdfEditorMainView(
                                 selectedAnnotationId = newItem.id
                                 activeTab = EditorTopTab.TEXT
                                 textLayerUpdateTrigger++
-
-                                // Force View Attachment & Visibility: programmatically ensure overlayView.visibility = View.VISIBLE and invoke overlayView.bringToFront()
-                                // Invalidation: Immediately call overlayView.postInvalidate() right after appending the new text layer object
-                                overlay?.apply {
-                                    visibility = View.VISIBLE
-                                    bringToFront()
-                                    addOrSelectLayer(newItem)
-                                    postInvalidate()
-                                }
                                 Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
                             }
                         }
