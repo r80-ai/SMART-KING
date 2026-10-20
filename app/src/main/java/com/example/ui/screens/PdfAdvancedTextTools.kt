@@ -30,7 +30,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
@@ -53,7 +55,7 @@ import java.io.File
 import kotlin.math.roundToInt
 
 enum class TextToolActionId {
-    EDIT, DELETE, COPY, TO_FRONT, TO_BACK,
+    EDIT, DELETE, COPY, TO_FRONT, TO_BACK, LAYERS,
     POSITION, REL_POSITION, SIZE, PADDING, COLOR,
     TEXTURE, OPACITY, ROTATE, MASK, FONT,
     STYLE, CURVE, BACKGROUND, ALIGN, SPACING,
@@ -71,6 +73,7 @@ val ADVANCED_TEXT_TOOLS: List<TextToolButtonDef> = listOf(
     TextToolButtonDef(TextToolActionId.EDIT, "Edit", Icons.Default.Edit),
     TextToolButtonDef(TextToolActionId.DELETE, "Delete", Icons.Default.Delete),
     TextToolButtonDef(TextToolActionId.COPY, "Copy", Icons.Default.ContentCopy),
+    TextToolButtonDef(TextToolActionId.LAYERS, "Layers", Icons.Default.Layers),
     TextToolButtonDef(TextToolActionId.TO_FRONT, "To Front", Icons.Default.FlipToFront),
     TextToolButtonDef(TextToolActionId.TO_BACK, "To Back", Icons.Default.FlipToBack),
     TextToolButtonDef(TextToolActionId.POSITION, "Position", Icons.Default.OpenWith),
@@ -101,30 +104,62 @@ val ADVANCED_TEXT_TOOLS: List<TextToolButtonDef> = listOf(
 )
 
 val PRESET_COLORS: List<Int> = listOf(
+    // Neutrals & Monochromes
     AndroidColor.BLACK,
     AndroidColor.WHITE,
     AndroidColor.rgb(30, 41, 59),
+    AndroidColor.rgb(71, 85, 105),
+    AndroidColor.rgb(148, 163, 184),
+    AndroidColor.rgb(203, 213, 225),
+    AndroidColor.rgb(241, 245, 249),
+
+    // Reds & Warm Oranges
     AndroidColor.rgb(220, 38, 38),
     AndroidColor.rgb(239, 68, 68),
+    AndroidColor.rgb(234, 88, 12),
+    AndroidColor.rgb(249, 115, 22),
     AndroidColor.rgb(217, 119, 6),
     AndroidColor.rgb(234, 179, 8),
+    AndroidColor.rgb(253, 224, 71),
+    AndroidColor.rgb(254, 240, 138),
+
+    // Greens & Teals
+    AndroidColor.rgb(101, 163, 13),
+    AndroidColor.rgb(132, 204, 22),
     AndroidColor.rgb(22, 163, 74),
     AndroidColor.rgb(16, 185, 129),
+    AndroidColor.rgb(167, 243, 208),
+    AndroidColor.rgb(13, 148, 136),
+    AndroidColor.rgb(20, 184, 166),
+    AndroidColor.rgb(6, 182, 212),
+
+    // Blues & Indigos
     AndroidColor.rgb(14, 165, 233),
+    AndroidColor.rgb(186, 230, 253),
     AndroidColor.rgb(37, 99, 235),
+    AndroidColor.rgb(29, 78, 216),
     AndroidColor.rgb(79, 70, 229),
+    AndroidColor.rgb(199, 210, 254),
+
+    // Purples & Pinks
+    AndroidColor.rgb(124, 58, 237),
     AndroidColor.rgb(147, 51, 234),
+    AndroidColor.rgb(192, 38, 211),
+    AndroidColor.rgb(233, 213, 255),
     AndroidColor.rgb(219, 39, 119),
-    AndroidColor.rgb(107, 114, 128)
+    AndroidColor.rgb(254, 205, 211),
+    AndroidColor.rgb(225, 29, 72),
+
+    // Earthy & Warm Tones
+    AndroidColor.rgb(120, 53, 15),
+    AndroidColor.rgb(69, 26, 3),
+    AndroidColor.rgb(255, 237, 213)
 )
 
 /**
  * Interactive text overlay for the PDF editor canvas.
- * Renders on top of the PDF page, handles touch selection, dragging, and the 4 active corner handles:
- * - Top-Left: Edit (pencil icon) -> opens text edit dialog
- * - Top-Right: Delete (cross icon) -> removes layer
- * - Bottom-Right: Resize & Scale handle -> adjusts size
- * - Bottom-Left: Rotate handle -> free rotation
+ * Renders on top of the PDF page, handles touch selection, dragging, and clean corner/edge drag handles strictly for resizing width & height.
+ * All corner action buttons (pencil/edit, delete, rotate icons) are removed.
  */
 @Composable
 fun InteractivePdfTextOverlay(
@@ -139,87 +174,60 @@ fun InteractivePdfTextOverlay(
     onUpdate: (PdfEngine.EditItem) -> Unit,
     onHistoryPush: () -> Unit
 ) {
-    val context = LocalContext.current
+    if (!item.isVisible) return
+
     val density = LocalDensity.current
-    var measuredSize by remember { mutableStateOf(IntSize.Zero) }
 
-    // Map font family
-    val customFontFamily = remember(item.customFontPath, item.fontFamily) {
-        when {
-            item.customFontPath != null -> {
-                try {
-                    val tf = AndroidTypeface.createFromFile(item.customFontPath)
-                    FontFamily(tf)
-                } catch (_: Exception) {
-                    FontFamily.Default
-                }
+    // Dynamic measurement using TextPaint
+    val textPaint = remember(item.fontSize, item.fontFamily, item.isBold, item.isItalic, item.customFontPath) {
+        android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            textSize = item.fontSize.coerceAtLeast(8f)
+            typeface = when {
+                item.customFontPath != null -> try { AndroidTypeface.createFromFile(item.customFontPath) } catch (_: Exception) { AndroidTypeface.DEFAULT }
+                item.fontFamily.equals("SERIF", ignoreCase = true) -> AndroidTypeface.SERIF
+                item.fontFamily.equals("MONOSPACE", ignoreCase = true) -> AndroidTypeface.MONOSPACE
+                else -> AndroidTypeface.DEFAULT
             }
-            item.fontFamily.equals("BENGALI", ignoreCase = true) -> {
-                try {
-                    val tf = androidx.core.content.res.ResourcesCompat.getFont(
-                        context,
-                        com.example.R.font.noto_sans_bengali
-                    )
-                    if (tf != null) FontFamily(tf) else FontFamily.Default
-                } catch (_: Exception) {
-                    FontFamily.Default
-                }
-            }
-            item.fontFamily.equals("SERIF", ignoreCase = true) -> FontFamily.Serif
-            item.fontFamily.equals("MONOSPACE", ignoreCase = true) -> FontFamily.Monospace
-            item.fontFamily.equals("HANDWRITING", ignoreCase = true) || item.fontFamily.equals("CURSIVE", ignoreCase = true) -> FontFamily.Cursive
-            else -> FontFamily.Default
         }
     }
 
-    val textDecoration = remember(item.isUnderline, item.isStrikethrough) {
-        when {
-            item.isUnderline && item.isStrikethrough -> TextDecoration.combine(
-                listOf(TextDecoration.Underline, TextDecoration.LineThrough)
-            )
-            item.isUnderline -> TextDecoration.Underline
-            item.isStrikethrough -> TextDecoration.LineThrough
-            else -> TextDecoration.None
+    val measuredWidth = remember(item.text, item.fontSize, item.backgroundPadding, item.boxWidth) {
+        val lines = (if (item.text.isEmpty()) " " else item.text).split("\n")
+        var maxW = 0f
+        for (l in lines) {
+            val w = textPaint.measureText(l)
+            if (w > maxW) maxW = w
         }
+        val nat = maxW + item.backgroundPadding * 2f + 20f
+        if (item.boxWidth > 0f) kotlin.math.max(item.boxWidth, 40f) else nat
     }
 
-    val textAlign = remember(item.alignment) {
-        when (item.alignment.uppercase()) {
-            "CENTER" -> TextAlign.Center
-            "RIGHT" -> TextAlign.End
-            "JUSTIFY" -> TextAlign.Justify
-            else -> TextAlign.Start
-        }
+    val measuredHeight = remember(item.text, item.fontSize, item.backgroundPadding, item.boxHeight, item.lineSpacingMultiplier) {
+        val lines = (if (item.text.isEmpty()) " " else item.text).split("\n")
+        val fm = textPaint.fontMetrics
+        val lineH = (fm.bottom - fm.top) * if (item.lineSpacingMultiplier > 0f) item.lineSpacingMultiplier else 1.15f
+        val nat = lines.size * lineH + item.backgroundPadding * 2f + 16f
+        if (item.boxHeight > 0f) kotlin.math.max(item.boxHeight, 30f) else nat
     }
 
-    val textShadow = remember(item.shadowRadius, item.shadowColorHex, item.shadowDx, item.shadowDy) {
-        if (item.shadowRadius > 0f && item.shadowColorHex != 0) {
-            Shadow(
-                color = Color(item.shadowColorHex),
-                offset = androidx.compose.ui.geometry.Offset(item.shadowDx, item.shadowDy),
-                blurRadius = item.shadowRadius
-            )
-        } else {
-            null
-        }
-    }
-
-    val textToDisplay = if (item.text.isEmpty()) " " else item.text
+    val widthDp = with(density) { measuredWidth.toDp() }
+    val heightDp = with(density) { measuredHeight.toDp() }
 
     Box(
         modifier = Modifier
             .offset { IntOffset(item.posX.roundToInt(), item.posY.roundToInt()) }
-            .graphicsLayer {
-                rotationZ = item.getRotationAngle()
-                rotationX = item.rotate3dX
-                rotationY = item.rotate3dY
-            }
+            .size(widthDp, heightDp)
             .pointerInput(item.id) {
                 detectTapGestures(
-                    onTap = { onSelect() }
+                    onTap = { onSelect() },
+                    onDoubleTap = {
+                        onSelect()
+                        if (!item.isLocked) onEdit()
+                    }
                 )
             }
-            .pointerInput(item.id) {
+            .pointerInput(item.id, zoomScale, item.isLocked) {
+                if (item.isLocked) return@pointerInput
                 detectDragGestures(
                     onDragStart = {
                         onHistoryPush()
@@ -237,206 +245,230 @@ fun InteractivePdfTextOverlay(
                 )
             }
     ) {
-        // Text Content Container with optional background styling
-        Column(
-            modifier = Modifier
-                .onSizeChanged { measuredSize = it }
-                .then(
-                    if (item.backgroundColorHex != 0) {
-                        Modifier.background(
-                            Color(item.backgroundColorHex),
-                            RoundedCornerShape(item.backgroundCornerRadius.dp)
-                        )
-                    } else Modifier
-                )
-                .padding(item.backgroundPadding.dp)
+        // High-fidelity real-time Canvas rendering for all text effects
+        androidx.compose.foundation.Canvas(
+            modifier = Modifier.fillMaxSize()
         ) {
-            // Optional 3D Text Depth Extrusion
-            if (item.is3dText && item.depth3d > 0f) {
-                Text(
-                    text = textToDisplay,
-                    color = Color.DarkGray.copy(alpha = item.opacity * 0.7f),
-                    fontSize = item.fontSize.sp,
-                    fontWeight = if (item.isBold) FontWeight.Bold else FontWeight.Normal,
-                    fontStyle = if (item.isItalic) FontStyle.Italic else FontStyle.Normal,
-                    fontFamily = customFontFamily,
-                    textAlign = textAlign,
-                    letterSpacing = if (item.letterSpacing != 0f) (item.letterSpacing * 0.5f).sp else androidx.compose.ui.unit.TextUnit.Unspecified,
-                    modifier = Modifier.offset(x = (item.depth3d * 0.5f).dp, y = (item.depth3d * 0.5f).dp)
-                )
-            }
-
-            // Primary Main Text Layer
-            Text(
-                text = textToDisplay,
-                color = Color(item.colorHex).copy(alpha = item.opacity),
-                fontSize = item.fontSize.sp,
-                fontWeight = if (item.isBold) FontWeight.Bold else FontWeight.Normal,
-                fontStyle = if (item.isItalic) FontStyle.Italic else FontStyle.Normal,
-                fontFamily = customFontFamily,
-                textAlign = textAlign,
-                textDecoration = textDecoration,
-                letterSpacing = if (item.letterSpacing != 0f) (item.letterSpacing * 0.5f).sp else androidx.compose.ui.unit.TextUnit.Unspecified,
-                lineHeight = (item.fontSize * if (item.lineSpacingMultiplier > 0f) item.lineSpacingMultiplier else 1.15f).sp,
-                style = TextStyle(shadow = textShadow)
-            )
-
-            // Optional Mirror Reflection
-            if (item.isReflection) {
-                Text(
-                    text = textToDisplay,
-                    color = Color(item.colorHex).copy(alpha = item.opacity * 0.25f),
-                    fontSize = item.fontSize.sp,
-                    fontWeight = if (item.isBold) FontWeight.Bold else FontWeight.Normal,
-                    fontStyle = if (item.isItalic) FontStyle.Italic else FontStyle.Normal,
-                    fontFamily = customFontFamily,
-                    textAlign = textAlign,
-                    modifier = Modifier
-                        .graphicsLayer {
-                            scaleY = -0.6f
-                            translationY = 8f
-                        }
+            drawIntoCanvas { composeCanvas ->
+                TextEffectRenderer.drawPdfEditItem(
+                    canvas = composeCanvas.nativeCanvas,
+                    item = item.copy(posX = 0f, posY = 0f, boxWidth = measuredWidth, boxHeight = measuredHeight),
+                    strokeScale = 1f
                 )
             }
         }
 
-        // Active Bounding Box and 4 Corner Interactive Handles when selected
+        // Active Bounding Box with clean corner and edge drag handles (NO action buttons)
         if (isSelected) {
-            // Rectangular outline frame
+            // Clean selection frame
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .border(1.5.dp, ToolBlue, RoundedCornerShape(2.dp))
             )
 
-            val handleSize = 34.dp
-            val innerSize = 22.dp
-
-            // 1. TOP-LEFT CORNER: Edit Handle (Pencil Icon)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .offset(x = (-17).dp, y = (-17).dp)
-                    .size(handleSize)
-                    .pointerInput(item.id) {
-                        detectTapGestures { onEdit() }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
+            // Locked Indicator badge if locked
+            if (item.isLocked) {
                 Box(
                     modifier = Modifier
-                        .size(innerSize)
-                        .background(Color.White, CircleShape)
-                        .border(1.5.dp, ToolBlue, CircleShape),
-                    contentAlignment = Alignment.Center
+                        .align(Alignment.TopEnd)
+                        .padding(4.dp)
+                        .background(Color(0xFF0F172A).copy(alpha = 0.8f), CircleShape)
+                        .padding(4.dp)
                 ) {
                     Icon(
-                        Icons.Default.Edit,
-                        contentDescription = "Edit Text",
-                        tint = ToolBlue,
-                        modifier = Modifier.size(13.dp)
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Locked",
+                        tint = Color(0xFFF59E0B),
+                        modifier = Modifier.size(12.dp)
                     )
                 }
-            }
-
-            // 2. TOP-RIGHT CORNER: Delete Handle (Cross / Trash Icon)
-            Box(
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .offset(x = 17.dp, y = (-17).dp)
-                    .size(handleSize)
-                    .pointerInput(item.id) {
-                        detectTapGestures { onDelete() }
-                    },
-                contentAlignment = Alignment.Center
-            ) {
+            } else {
+                // 1. TOP-LEFT CORNER: Resize Width & Height Drag Handle
                 Box(
                     modifier = Modifier
-                        .size(innerSize)
-                        .background(Color.White, CircleShape)
-                        .border(1.5.dp, CrimsonPrimary, CircleShape),
+                        .align(Alignment.TopStart)
+                        .offset(x = (-16).dp, y = (-16).dp)
+                        .size(36.dp)
+                        .pointerInput(item.id, zoomScale) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val scale = zoomScale.coerceAtLeast(0.1f)
+                                    val dX = dragAmount.x / scale
+                                    val dY = dragAmount.y / scale
+                                    val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                    val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                    val newW = (curW - dX).coerceAtLeast(40f)
+                                    val newH = (curH - dY).coerceAtLeast(30f)
+                                    val newX = item.posX + dX
+                                    val newY = item.posY + dY
+                                    onUpdate(item.copy(posX = newX, posY = newY, boxWidth = newW, boxHeight = newH))
+                                }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Close,
-                        contentDescription = "Delete Text",
-                        tint = CrimsonPrimary,
-                        modifier = Modifier.size(13.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(Color.White, CircleShape)
+                            .border(2.dp, ToolBlue, CircleShape)
                     )
                 }
-            }
 
-            // 3. BOTTOM-LEFT CORNER: Free Rotate Handle
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .offset(x = (-17).dp, y = 17.dp)
-                    .size(handleSize)
-                    .pointerInput(item.id) {
-                        detectDragGestures(
-                            onDragStart = { onHistoryPush() },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                val scale = zoomScale.coerceAtLeast(0.1f)
-                                val delta = (dragAmount.x - dragAmount.y) * 0.5f / scale
-                                val currentRot = item.getRotationAngle()
-                                val newRot = ((currentRot + delta) % 360f + 360f) % 360f
-                                onUpdate(item.copy(rotation = newRot, imageRotation = newRot))
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
+                // 2. TOP-RIGHT CORNER: Resize Width & Height Drag Handle
                 Box(
                     modifier = Modifier
-                        .size(innerSize)
-                        .background(Color.White, CircleShape)
-                        .border(1.5.dp, ToolBlue, CircleShape),
+                        .align(Alignment.TopEnd)
+                        .offset(x = 16.dp, y = (-16).dp)
+                        .size(36.dp)
+                        .pointerInput(item.id, zoomScale) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val scale = zoomScale.coerceAtLeast(0.1f)
+                                    val dX = dragAmount.x / scale
+                                    val dY = dragAmount.y / scale
+                                    val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                    val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                    val newW = (curW + dX).coerceAtLeast(40f)
+                                    val newH = (curH - dY).coerceAtLeast(30f)
+                                    val newY = item.posY + dY
+                                    onUpdate(item.copy(posY = newY, boxWidth = newW, boxHeight = newH))
+                                }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.Refresh,
-                        contentDescription = "Rotate Text",
-                        tint = ToolBlue,
-                        modifier = Modifier.size(13.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(Color.White, CircleShape)
+                            .border(2.dp, ToolBlue, CircleShape)
                     )
                 }
-            }
 
-            // 4. BOTTOM-RIGHT CORNER: Resize & Scale Handle
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .offset(x = 17.dp, y = 17.dp)
-                    .size(handleSize)
-                    .pointerInput(item.id) {
-                        detectDragGestures(
-                            onDragStart = { onHistoryPush() },
-                            onDrag = { change, dragAmount ->
-                                change.consume()
-                                val scale = zoomScale.coerceAtLeast(0.1f)
-                                val dX = dragAmount.x / scale
-                                val dY = dragAmount.y / scale
-                                val delta = (dX + dY) * 0.15f
-                                val newSize = (item.fontSize + delta).coerceIn(8f, 140f)
-                                onUpdate(item.copy(fontSize = newSize))
-                            }
-                        )
-                    },
-                contentAlignment = Alignment.Center
-            ) {
+                // 3. BOTTOM-LEFT CORNER: Resize Width & Height Drag Handle
                 Box(
                     modifier = Modifier
-                        .size(innerSize)
-                        .background(Color.White, CircleShape)
-                        .border(1.5.dp, ToolBlue, CircleShape),
+                        .align(Alignment.BottomStart)
+                        .offset(x = (-16).dp, y = 16.dp)
+                        .size(36.dp)
+                        .pointerInput(item.id, zoomScale) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val scale = zoomScale.coerceAtLeast(0.1f)
+                                    val dX = dragAmount.x / scale
+                                    val dY = dragAmount.y / scale
+                                    val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                    val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                    val newW = (curW - dX).coerceAtLeast(40f)
+                                    val newH = (curH + dY).coerceAtLeast(30f)
+                                    val newX = item.posX + dX
+                                    onUpdate(item.copy(posX = newX, boxWidth = newW, boxHeight = newH))
+                                }
+                            )
+                        },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        Icons.Default.OpenInFull,
-                        contentDescription = "Resize Text",
-                        tint = ToolBlue,
-                        modifier = Modifier.size(13.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(Color.White, CircleShape)
+                            .border(2.dp, ToolBlue, CircleShape)
+                    )
+                }
+
+                // 4. BOTTOM-RIGHT CORNER: Resize Width & Height Drag Handle
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 16.dp, y = 16.dp)
+                        .size(36.dp)
+                        .pointerInput(item.id, zoomScale) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val scale = zoomScale.coerceAtLeast(0.1f)
+                                    val dX = dragAmount.x / scale
+                                    val dY = dragAmount.y / scale
+                                    val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                    val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                    val newW = (curW + dX).coerceAtLeast(40f)
+                                    val newH = (curH + dY).coerceAtLeast(30f)
+                                    onUpdate(item.copy(boxWidth = newW, boxHeight = newH))
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(12.dp)
+                            .background(Color.White, CircleShape)
+                            .border(2.dp, ToolBlue, CircleShape)
+                    )
+                }
+
+                // 5. RIGHT EDGE: Stretch Width Drag Handle
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .offset(x = 12.dp)
+                        .size(width = 24.dp, height = 36.dp)
+                        .pointerInput(item.id, zoomScale) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val scale = zoomScale.coerceAtLeast(0.1f)
+                                    val dX = dragAmount.x / scale
+                                    val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                    val newW = (curW + dX).coerceAtLeast(40f)
+                                    onUpdate(item.copy(boxWidth = newW))
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 6.dp, height = 18.dp)
+                            .background(ToolBlue, RoundedCornerShape(3.dp))
+                    )
+                }
+
+                // 6. BOTTOM EDGE: Stretch Height Drag Handle
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .offset(y = 12.dp)
+                        .size(width = 36.dp, height = 24.dp)
+                        .pointerInput(item.id, zoomScale) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val scale = zoomScale.coerceAtLeast(0.1f)
+                                    val dY = dragAmount.y / scale
+                                    val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                    val newH = (curH + dY).coerceAtLeast(30f)
+                                    onUpdate(item.copy(boxHeight = newH))
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(width = 18.dp, height = 6.dp)
+                            .background(ToolBlue, RoundedCornerShape(3.dp))
                     )
                 }
             }
@@ -460,7 +492,8 @@ fun AdvancedTextToolPanel(
     onBringToFront: () -> Unit,
     onSendToBack: () -> Unit,
     onUpdateItem: (PdfEngine.EditItem) -> Unit,
-    onHistoryPush: () -> Unit
+    onHistoryPush: () -> Unit,
+    onOpenLayers: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var activeSubTool by remember { mutableStateOf<TextToolActionId?>(null) }
@@ -719,6 +752,10 @@ fun AdvancedTextToolPanel(
                     def = tool,
                     isActive = isCurrentActive,
                     onClick = {
+                        if (tool.id == TextToolActionId.LAYERS) {
+                            onOpenLayers?.invoke()
+                            return@CompactTextToolButton
+                        }
                         if (selectedItem == null && tool.id != TextToolActionId.EDIT) {
                             Toast.makeText(context, "Tap on text to select it first", Toast.LENGTH_SHORT).show()
                             return@CompactTextToolButton
@@ -1301,15 +1338,7 @@ private fun TextBackgroundControl(
                 Icon(Icons.Default.Close, contentDescription = "None", tint = Color.LightGray, modifier = Modifier.size(14.dp))
             }
 
-            listOf(
-                AndroidColor.WHITE,
-                AndroidColor.BLACK,
-                AndroidColor.rgb(254, 240, 138), // Pale yellow
-                AndroidColor.rgb(219, 234, 254), // Pale blue
-                AndroidColor.rgb(220, 252, 231), // Pale green
-                AndroidColor.rgb(254, 226, 226), // Pale red
-                AndroidColor.rgb(243, 232, 255)  // Pale purple
-            ).forEach { c ->
+            PRESET_COLORS.forEach { c ->
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -1359,7 +1388,7 @@ private fun TextStrokeControl(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            PRESET_COLORS.take(8).forEach { c ->
+            PRESET_COLORS.forEach { c ->
                 Box(
                     modifier = Modifier
                         .size(22.dp)

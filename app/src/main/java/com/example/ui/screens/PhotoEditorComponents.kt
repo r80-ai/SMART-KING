@@ -39,10 +39,12 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Colorize
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.ZoomOutMap
 import androidx.compose.ui.graphics.Shadow
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -73,7 +75,8 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
@@ -733,11 +736,41 @@ fun TextOverlayCanvas(
         val heightPx = constraints.maxHeight.toFloat().coerceAtLeast(1f)
 
         for (item in textItems) {
+            if (!item.isVisible) continue
             val isSelected = item.id == selectedTextId
             val centerX = item.normX * widthPx
             val centerY = item.normY * heightPx
-            val font = PhotoFonts.getFont(item.fontId)
             val currentItemState = rememberUpdatedState(item)
+
+            // Measure bounds for this item
+            val textPaint = remember(item.fontSizeSp, item.fontId, item.isBold, item.isItalic, item.customTypeface) {
+                android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                    textSize = item.fontSizeSp.coerceAtLeast(8f)
+                    typeface = item.customTypeface ?: PhotoFonts.getTypeface(item.fontId, item.isBold, item.isItalic)
+                }
+            }
+
+            val measuredWidth = remember(item.text, item.fontSizeSp, item.backgroundPadding, item.paddingX, item.boxWidth) {
+                val lines = (if (item.text.isEmpty()) " " else item.text).split("\n")
+                var maxW = 0f
+                for (l in lines) {
+                    val w = textPaint.measureText(l)
+                    if (w > maxW) maxW = w
+                }
+                val nat = maxW + (item.backgroundPadding + item.paddingX) * 2f + 24f
+                if (item.boxWidth > 0f) kotlin.math.max(item.boxWidth, 40f) else nat
+            }
+
+            val measuredHeight = remember(item.text, item.fontSizeSp, item.backgroundPadding, item.paddingY, item.boxHeight, item.lineSpacingMultiplier) {
+                val lines = (if (item.text.isEmpty()) " " else item.text).split("\n")
+                val fm = textPaint.fontMetrics
+                val lineH = (fm.bottom - fm.top) * if (item.lineSpacingMultiplier > 0f) item.lineSpacingMultiplier else 1f
+                val nat = lines.size * lineH + (item.backgroundPadding + item.paddingY) * 2f + 16f
+                if (item.boxHeight > 0f) kotlin.math.max(item.boxHeight, 30f) else nat
+            }
+
+            val widthDp = with(LocalDensity.current) { measuredWidth.toDp() }
+            val heightDp = with(LocalDensity.current) { measuredHeight.toDp() }
 
             Box(
                 modifier = Modifier
@@ -749,296 +782,257 @@ fun TextOverlayCanvas(
                             placeable.placeRelative(x, y)
                         }
                     }
-                    .graphicsLayer {
-                        rotationZ = item.rotationDeg
-                        rotationX = item.rotationX
-                        rotationY = item.rotationY
-                        alpha = item.opacity.coerceIn(0.05f, 1f)
-                    }
-                    .padding(8.dp)
-            ) {
-                // Text Bounding Box with Smooth Drag, Pinch & Rotate
-                Column(
-                    modifier = Modifier
-                        .border(
-                            width = if (isSelected) 2.dp else 0.dp,
-                            color = if (isSelected) CrimsonPrimary else Color.Transparent,
-                            shape = RoundedCornerShape(item.backgroundCornerRadius.coerceAtLeast(8f).dp)
-                        )
-                        .background(
-                            when {
-                                item.backgroundColor != null && isSelected -> Color(item.backgroundColor!!)
-                                item.backgroundColor != null -> Color(item.backgroundColor!!)
-                                isSelected -> Color(0x33E11D48)
-                                else -> Color.Transparent
-                            },
-                            shape = RoundedCornerShape(item.backgroundCornerRadius.coerceAtLeast(8f).dp)
-                        )
-                        .padding(
-                            horizontal = (14 + item.paddingX + item.backgroundPadding).dp,
-                            vertical = (10 + item.paddingY + item.backgroundPadding).dp
-                        )
-                        .pointerInput(item.id, widthPx, heightPx) {
-                            detectTapGestures(
-                                onPress = {
-                                    currentOnSelectState.value(item.id)
-                                },
-                                onTap = {
-                                    currentOnSelectState.value(item.id)
-                                },
-                                onDoubleTap = {
-                                    currentOnSelectState.value(item.id)
+                    .size(widthDp, heightDp)
+                    .pointerInput(item.id, widthPx, heightPx) {
+                        detectTapGestures(
+                            onTap = { currentOnSelectState.value(item.id) },
+                            onDoubleTap = {
+                                currentOnSelectState.value(item.id)
+                                if (!item.isLocked) {
                                     currentOnEditTextState.value(currentItemState.value)
                                 }
-                            )
-                        }
-                        .pointerInput(item.id, widthPx, heightPx) {
-                            awaitEachGesture {
-                                awaitFirstDown(requireUnconsumed = false)
-                                currentOnSelectState.value(item.id)
-                                currentOnStartTransformState.value?.invoke()
-
-                                var accNormX = currentItemState.value.normX
-                                var accNormY = currentItemState.value.normY
-                                var accSize = currentItemState.value.fontSizeSp
-                                var accRot = currentItemState.value.rotationDeg
-
-                                var touchSlopPassed = false
-                                val touchSlop = viewConfiguration.touchSlop
-
-                                do {
-                                    val event = awaitPointerEvent()
-                                    val canceled = event.changes.any { it.isConsumed }
-                                    if (canceled) break
-
-                                    val pressedCount = event.changes.count { it.pressed }
-                                    if (pressedCount == 0) break
-
-                                    val pan = event.calculatePan()
-                                    val zoom = event.calculateZoom()
-                                    val rotation = event.calculateRotation()
-
-                                    if (!touchSlopPassed) {
-                                        if (pan.getDistance() > touchSlop || zoom != 1f || rotation != 0f) {
-                                            touchSlopPassed = true
-                                        }
-                                    }
-
-                                    if (touchSlopPassed) {
-                                        accNormX = (accNormX + pan.x / widthPx)
-                                        accNormY = (accNormY + pan.y / heightPx)
-                                        accSize = (accSize * zoom).coerceAtLeast(8f)
-                                        accRot = (accRot + rotation) % 360f
-
-                                        currentOnUpdateState.value(
-                                            currentItemState.value.copy(
-                                                normX = accNormX,
-                                                normY = accNormY,
-                                                fontSizeSp = accSize,
-                                                rotationDeg = accRot
-                                            )
-                                        )
-                                        event.changes.forEach { it.consume() }
-                                    }
-                                } while (event.changes.any { it.pressed })
                             }
-                        }
-                ) {
-                    val combinedDecoration = when {
-                        item.isUnderline && item.isStrikethrough -> TextDecoration.combine(listOf(TextDecoration.Underline, TextDecoration.LineThrough))
-                        item.isUnderline -> TextDecoration.Underline
-                        item.isStrikethrough -> TextDecoration.LineThrough
-                        else -> TextDecoration.None
+                        )
                     }
-
-                    Text(
-                        text = item.text,
-                        color = Color(item.color),
-                        fontSize = item.fontSizeSp.sp,
-                        letterSpacing = item.letterSpacing.sp,
-                        lineHeight = (item.fontSizeSp * item.lineSpacingMultiplier).sp,
-                        fontFamily = font.fontFamily,
-                        fontWeight = if (item.isBold || font.defaultBold) FontWeight.Bold else FontWeight.Normal,
-                        fontStyle = if (item.isItalic || font.defaultItalic) FontStyle.Italic else FontStyle.Normal,
-                        textDecoration = combinedDecoration,
-                        textAlign = when (item.alignment) {
-                            TextAlignment.LEFT -> TextAlign.Start
-                            TextAlignment.CENTER -> TextAlign.Center
-                            TextAlignment.RIGHT -> TextAlign.End
-                            TextAlignment.JUSTIFY -> TextAlign.Justify
-                        },
-                        style = TextStyle(
-                            shadow = if (item.shadowColor != null && item.shadowRadius > 0f) {
-                                Shadow(
-                                    color = Color(item.shadowColor!!),
-                                    offset = Offset(item.shadowDx, item.shadowDy),
-                                    blurRadius = item.shadowRadius
-                                )
-                            } else null
-                        ),
-                        modifier = Modifier.padding(4.dp)
-                    )
-
-                    // Reflection Preview
-                    if (item.hasReflection) {
-                        Text(
-                            text = item.text,
-                            color = Color(item.color).copy(alpha = 0.35f),
-                            fontSize = item.fontSizeSp.sp,
-                            letterSpacing = item.letterSpacing.sp,
-                            fontFamily = font.fontFamily,
-                            fontWeight = if (item.isBold || font.defaultBold) FontWeight.Bold else FontWeight.Normal,
-                            fontStyle = if (item.isItalic || font.defaultItalic) FontStyle.Italic else FontStyle.Normal,
-                            textAlign = when (item.alignment) {
-                                TextAlignment.LEFT -> TextAlign.Start
-                                TextAlignment.CENTER -> TextAlign.Center
-                                TextAlignment.RIGHT -> TextAlign.End
-                                TextAlignment.JUSTIFY -> TextAlign.Justify
+                    .pointerInput(item.id, widthPx, heightPx, item.isLocked) {
+                        if (item.isLocked) return@pointerInput
+                        detectDragGestures(
+                            onDragStart = {
+                                currentOnStartTransformState.value?.invoke()
+                                currentOnSelectState.value(item.id)
                             },
-                            modifier = Modifier
-                                .graphicsLayer {
-                                    scaleY = -0.7f
-                                    alpha = 0.4f
-                                }
-                                .padding(top = 2.dp)
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val newNormX = currentItemState.value.normX + dragAmount.x / widthPx
+                                val newNormY = currentItemState.value.normY + dragAmount.y / heightPx
+                                currentOnUpdateState.value(
+                                    currentItemState.value.copy(
+                                        normX = newNormX,
+                                        normY = newNormY
+                                    )
+                                )
+                            }
+                        )
+                    }
+            ) {
+                // High-fidelity real-time canvas rendering
+                androidx.compose.foundation.Canvas(modifier = Modifier.fillMaxSize()) {
+                    drawIntoCanvas { composeCanvas ->
+                        TextEffectRenderer.drawPhotoTextItem(
+                            canvas = composeCanvas.nativeCanvas,
+                            item = item.copy(normX = 0f, normY = 0f, boxWidth = measuredWidth, boxHeight = measuredHeight),
+                            viewWidth = measuredWidth,
+                            viewHeight = measuredHeight,
+                            canvasScale = 1f
                         )
                     }
                 }
 
-                // Interactive Corner Handles when selected (Touch targets >= 48dp)
+                // Selection Box & Clean Drag Handles (No action buttons)
                 if (isSelected) {
-                    // Top-Left: Edit Text Handle (Pencil Icon -> opens text edit dialog)
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopStart)
-                            .offset(x = (-14).dp, y = (-14).dp)
-                            .size(48.dp)
-                            .clickable { currentOnEditTextState.value(currentItemState.value) },
-                        contentAlignment = Alignment.Center
-                    ) {
+                            .matchParentSize()
+                            .border(1.5.dp, CrimsonPrimary, RoundedCornerShape(2.dp))
+                    )
+
+                    if (item.isLocked) {
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF0F172A))
-                                .border(1.5.dp, CrimsonPrimary, CircleShape),
-                            contentAlignment = Alignment.Center
+                                .align(Alignment.TopEnd)
+                                .padding(4.dp)
+                                .background(Color(0xFF0F172A).copy(alpha = 0.8f), CircleShape)
+                                .padding(4.dp)
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = "Edit Text Content",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Locked",
+                                tint = Color(0xFFF59E0B),
+                                modifier = Modifier.size(12.dp)
                             )
                         }
-                    }
-
-                    // Top-Right: Delete Text Handle (Trash / Cross Icon -> removes immediately)
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 14.dp, y = (-14).dp)
-                            .size(48.dp)
-                            .clickable { currentOnDeleteTextState.value(item.id) },
-                        contentAlignment = Alignment.Center
-                    ) {
+                    } else {
+                        // 1. TOP-LEFT: Corner Drag Handle (Resize W & H)
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFDC2626))
-                                .border(1.5.dp, Color.White, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Delete,
-                                contentDescription = "Delete Text Layer",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                        }
-                    }
-
-                    // Bottom-Left / Corner: Rotate Handle (Touch-rotate 0° to 360°)
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .offset(x = (-14).dp, y = 14.dp)
-                            .size(48.dp)
-                            .pointerInput(item.id) {
-                                awaitEachGesture {
-                                    awaitFirstDown(requireUnconsumed = false)
-                                    currentOnStartTransformState.value?.invoke()
-                                    var accRot = currentItemState.value.rotationDeg
-                                    do {
-                                        val event = awaitPointerEvent()
-                                        val pan = event.calculatePan()
-                                        if (pan != Offset.Zero) {
-                                            val rotDelta = (pan.x - pan.y) * 0.75f
-                                            accRot = (accRot + rotDelta) % 360f
-                                            currentOnUpdateState.value(currentItemState.value.copy(rotationDeg = accRot))
-                                            event.changes.forEach { it.consume() }
+                                .align(Alignment.TopStart)
+                                .offset(x = (-16).dp, y = (-16).dp)
+                                .size(36.dp)
+                                .pointerInput(item.id, widthPx, heightPx) {
+                                    detectDragGestures(
+                                        onDragStart = { currentOnStartTransformState.value?.invoke() },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                            val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                            val newW = (curW - dragAmount.x).coerceAtLeast(40f)
+                                            val newH = (curH - dragAmount.y).coerceAtLeast(30f)
+                                            val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
+                                            val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
+                                            currentOnUpdateState.value(
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
+                                            )
                                         }
-                                    } while (event.changes.any { it.pressed })
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF0F172A))
-                                .border(1.5.dp, CrimsonPrimary, CircleShape),
+                                    )
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.RotateRight,
-                                contentDescription = "Rotate Text Handle",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(Color.White, CircleShape)
+                                    .border(2.dp, CrimsonPrimary, CircleShape)
                             )
                         }
-                    }
 
-                    // Bottom-Right: Resize & Scale Handle (Free-form drag to adjust scale)
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .offset(x = 14.dp, y = 14.dp)
-                            .size(48.dp)
-                            .pointerInput(item.id) {
-                                awaitEachGesture {
-                                    awaitFirstDown(requireUnconsumed = false)
-                                    currentOnStartTransformState.value?.invoke()
-                                    var accSize = currentItemState.value.fontSizeSp
-                                    do {
-                                        val event = awaitPointerEvent()
-                                        val pan = event.calculatePan()
-                                        if (pan != Offset.Zero) {
-                                            val sizeDelta = (pan.x + pan.y) * 0.35f
-                                            accSize = (accSize + sizeDelta).coerceAtLeast(8f)
-                                            currentOnUpdateState.value(currentItemState.value.copy(fontSizeSp = accSize))
-                                            event.changes.forEach { it.consume() }
-                                        }
-                                    } while (event.changes.any { it.pressed })
-                                }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
+                        // 2. TOP-RIGHT: Corner Drag Handle (Resize W & H)
                         Box(
                             modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF0F172A))
-                                .border(1.5.dp, CrimsonPrimary, CircleShape),
+                                .align(Alignment.TopEnd)
+                                .offset(x = 16.dp, y = (-16).dp)
+                                .size(36.dp)
+                                .pointerInput(item.id, widthPx, heightPx) {
+                                    detectDragGestures(
+                                        onDragStart = { currentOnStartTransformState.value?.invoke() },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                            val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                            val newW = (curW + dragAmount.x).coerceAtLeast(40f)
+                                            val newH = (curH - dragAmount.y).coerceAtLeast(30f)
+                                            val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
+                                            val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
+                                            currentOnUpdateState.value(
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
+                                            )
+                                        }
+                                    )
+                                },
                             contentAlignment = Alignment.Center
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.ZoomOutMap,
-                                contentDescription = "Resize Text Handle",
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(Color.White, CircleShape)
+                                    .border(2.dp, CrimsonPrimary, CircleShape)
+                            )
+                        }
+
+                        // 3. BOTTOM-LEFT: Corner Drag Handle (Resize W & H)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .offset(x = (-16).dp, y = 16.dp)
+                                .size(36.dp)
+                                .pointerInput(item.id, widthPx, heightPx) {
+                                    detectDragGestures(
+                                        onDragStart = { currentOnStartTransformState.value?.invoke() },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                            val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                            val newW = (curW - dragAmount.x).coerceAtLeast(40f)
+                                            val newH = (curH + dragAmount.y).coerceAtLeast(30f)
+                                            val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
+                                            val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
+                                            currentOnUpdateState.value(
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
+                                            )
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(Color.White, CircleShape)
+                                    .border(2.dp, CrimsonPrimary, CircleShape)
+                            )
+                        }
+
+                        // 4. BOTTOM-RIGHT: Corner Drag Handle (Resize W & H)
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .offset(x = 16.dp, y = 16.dp)
+                                .size(36.dp)
+                                .pointerInput(item.id, widthPx, heightPx) {
+                                    detectDragGestures(
+                                        onDragStart = { currentOnStartTransformState.value?.invoke() },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                            val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                            val newW = (curW + dragAmount.x).coerceAtLeast(40f)
+                                            val newH = (curH + dragAmount.y).coerceAtLeast(30f)
+                                            val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
+                                            val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
+                                            currentOnUpdateState.value(
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
+                                            )
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(12.dp)
+                                    .background(Color.White, CircleShape)
+                                    .border(2.dp, CrimsonPrimary, CircleShape)
+                            )
+                        }
+
+                        // 5. RIGHT EDGE: Stretch Width Drag Handle
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .offset(x = 12.dp)
+                                .size(width = 24.dp, height = 36.dp)
+                                .pointerInput(item.id) {
+                                    detectDragGestures(
+                                        onDragStart = { currentOnStartTransformState.value?.invoke() },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val curW = if (item.boxWidth > 0f) item.boxWidth else measuredWidth
+                                            val newW = (curW + dragAmount.x).coerceAtLeast(40f)
+                                            currentOnUpdateState.value(item.copy(boxWidth = newW))
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 6.dp, height = 18.dp)
+                                    .background(CrimsonPrimary, RoundedCornerShape(3.dp))
+                            )
+                        }
+
+                        // 6. BOTTOM EDGE: Stretch Height Drag Handle
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .offset(y = 12.dp)
+                                .size(width = 36.dp, height = 24.dp)
+                                .pointerInput(item.id) {
+                                    detectDragGestures(
+                                        onDragStart = { currentOnStartTransformState.value?.invoke() },
+                                        onDrag = { change, dragAmount ->
+                                            change.consume()
+                                            val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
+                                            val newH = (curH + dragAmount.y).coerceAtLeast(30f)
+                                            currentOnUpdateState.value(item.copy(boxHeight = newH))
+                                        }
+                                    )
+                                },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(width = 18.dp, height = 6.dp)
+                                    .background(CrimsonPrimary, RoundedCornerShape(3.dp))
                             )
                         }
                     }

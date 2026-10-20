@@ -86,7 +86,25 @@ data class TextItem(
     var textureBitmap: Bitmap? = null,
     var customTypeface: Typeface? = null,
     var paddingX: Float = 0f,
-    var paddingY: Float = 0f
+    var paddingY: Float = 0f,
+    var isVisible: Boolean = true,
+    var isLocked: Boolean = false,
+    var boxWidth: Float = 0f,
+    var boxHeight: Float = 0f,
+    var depth3DShadowDistance: Float = 12f
+)
+
+data class ImageLayerItem(
+    val id: String = java.util.UUID.randomUUID().toString(),
+    val bitmap: Bitmap,
+    var normX: Float = 0.5f,
+    var normY: Float = 0.5f,
+    var widthPx: Float = 220f,
+    var heightPx: Float = 220f,
+    var rotationDeg: Float = 0f,
+    var opacity: Float = 1f,
+    var isVisible: Boolean = true,
+    var isLocked: Boolean = false
 )
 
 enum class TextAlignment {

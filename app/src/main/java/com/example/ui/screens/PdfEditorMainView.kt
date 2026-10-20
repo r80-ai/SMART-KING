@@ -163,6 +163,7 @@ fun PdfEditorMainView(
     var textIsBold by remember { mutableStateOf(false) }
     var textIsItalic by remember { mutableStateOf(false) }
     var textAlignment by remember { mutableStateOf("LEFT") }
+    var showLayerManagerDialog by remember { mutableStateOf(false) }
 
     // Draw tool state
     var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
@@ -424,25 +425,54 @@ fun PdfEditorMainView(
                     )
                 }
 
-                // Right side: Only 3-dots overflow menu button visible
-                Box {
+                // Right side: Layers button and 3-dots overflow menu
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = { moreMenuExpanded = true },
-                        modifier = Modifier.testTag("editor_top_more_menu")
+                        onClick = { showLayerManagerDialog = true },
+                        modifier = Modifier.testTag("editor_top_layers_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More options",
-                            tint = Color.White
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = "Layers",
+                            tint = if (editItems.any { it.pageIndex == currentPageIndex }) Color(0xFF60A5FA) else Color.White
                         )
                     }
 
-                    DropdownMenu(
-                        expanded = moreMenuExpanded,
-                        onDismissRequest = { moreMenuExpanded = false }
-                    ) {
-                        // Save Option
-                        DropdownMenuItem(
+                    Box {
+                        IconButton(
+                            onClick = { moreMenuExpanded = true },
+                            modifier = Modifier.testTag("editor_top_more_menu")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = Color.White
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = moreMenuExpanded,
+                            onDismissRequest = { moreMenuExpanded = false }
+                        ) {
+                            // Layers Option
+                            DropdownMenuItem(
+                                text = { Text("Layers") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Layers,
+                                        contentDescription = null,
+                                        tint = Color(0xFF60A5FA)
+                                    )
+                                },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    showLayerManagerDialog = true
+                                },
+                                modifier = Modifier.testTag("menu_item_layers")
+                            )
+
+                            // Save Option
+                            DropdownMenuItem(
                             text = { Text("Save") },
                             leadingIcon = {
                                 Icon(
@@ -587,6 +617,7 @@ fun PdfEditorMainView(
                 }
             }
         }
+    }
 
         // ====================================================
         // 3. SUB-OPTIONS PANEL (When a top tab is active)
@@ -734,7 +765,8 @@ fun PdfEditorMainView(
                                         editItems[idx] = updated
                                     }
                                 },
-                                onHistoryPush = { pushHistory() }
+                                onHistoryPush = { pushHistory() },
+                                onOpenLayers = { showLayerManagerDialog = true }
                             )
                         }
 
@@ -1916,6 +1948,85 @@ fun PdfEditorMainView(
         context = context,
         onDismiss = { showJpgExportDialog = false }
     )
+
+    if (showLayerManagerDialog) {
+        val pageLayers = editItems
+            .filter { it.pageIndex == currentPageIndex }
+            .reversed()
+            .map { item ->
+                LayerEntry(
+                    id = item.id,
+                    title = if (item.type == PdfEngine.AnnotationType.TEXT) {
+                        if (item.text.isNotBlank()) item.text else "Text Layer"
+                    } else "Image Layer",
+                    subtitle = if (item.type == PdfEngine.AnnotationType.TEXT) "Text" else "Image",
+                    isText = item.type == PdfEngine.AnnotationType.TEXT,
+                    thumbnailBitmap = item.imageBitmap,
+                    isVisible = item.isVisible,
+                    isLocked = item.isLocked,
+                    opacity = item.opacity
+                )
+            }
+
+        FullLayerManagerDialog(
+            layers = pageLayers,
+            selectedId = selectedAnnotationId,
+            onSelect = { id -> selectedAnnotationId = id },
+            onToggleVisibility = { id ->
+                pushHistory()
+                val idx = editItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = editItems[idx]
+                    editItems[idx] = itm.copy(isVisible = !itm.isVisible)
+                }
+            },
+            onToggleLock = { id ->
+                pushHistory()
+                val idx = editItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = editItems[idx]
+                    editItems[idx] = itm.copy(isLocked = !itm.isLocked)
+                }
+            },
+            onChangeOpacity = { id, newOpacity ->
+                val idx = editItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = editItems[idx]
+                    editItems[idx] = itm.copy(opacity = newOpacity)
+                }
+            },
+            onMoveUp = { reversedIndex ->
+                pushHistory()
+                val pageItemIndices = editItems.mapIndexedNotNull { i, item -> if (item.pageIndex == currentPageIndex) i else null }
+                val origIndexInPage = (pageItemIndices.size - 1) - reversedIndex
+                if (origIndexInPage < pageItemIndices.size - 1) {
+                    val actualIdx1 = pageItemIndices[origIndexInPage]
+                    val actualIdx2 = pageItemIndices[origIndexInPage + 1]
+                    val temp = editItems[actualIdx1]
+                    editItems[actualIdx1] = editItems[actualIdx2]
+                    editItems[actualIdx2] = temp
+                }
+            },
+            onMoveDown = { reversedIndex ->
+                pushHistory()
+                val pageItemIndices = editItems.mapIndexedNotNull { i, item -> if (item.pageIndex == currentPageIndex) i else null }
+                val origIndexInPage = (pageItemIndices.size - 1) - reversedIndex
+                if (origIndexInPage > 0) {
+                    val actualIdx1 = pageItemIndices[origIndexInPage]
+                    val actualIdx2 = pageItemIndices[origIndexInPage - 1]
+                    val temp = editItems[actualIdx1]
+                    editItems[actualIdx1] = editItems[actualIdx2]
+                    editItems[actualIdx2] = temp
+                }
+            },
+            onDelete = { id ->
+                pushHistory()
+                editItems.removeAll { it.id == id }
+                if (selectedAnnotationId == id) selectedAnnotationId = null
+            },
+            onDismiss = { showLayerManagerDialog = false }
+        )
+    }
 
     if (showSaveAsDialog) {
         AlertDialog(

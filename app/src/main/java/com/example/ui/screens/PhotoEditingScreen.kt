@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.InvertColors
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.OpenInNew
@@ -213,6 +214,7 @@ fun PhotoEditingScreen(
     // Dialog States
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
+    var showLayerManagerDialog by remember { mutableStateOf(false) }
     var lastSaveResult by remember { mutableStateOf<SaveResult?>(null) }
 
     // Tool Specific States
@@ -721,6 +723,18 @@ fun PhotoEditingScreen(
                             contentDescription = "Hold to view original photo",
                             tint = if (isHoldingEyeComparison) AccentPink else if (originalBitmap != null) Color.White else Color(0xFF64748B),
                             modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // LAYERS BUTTON
+                    IconButton(
+                        onClick = { showLayerManagerDialog = true },
+                        modifier = Modifier.testTag("photo_editor_layers_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = "Layers",
+                            tint = if (textItems.isNotEmpty()) Color(0xFF60A5FA) else Color.White
                         )
                     }
 
@@ -2047,7 +2061,8 @@ fun PhotoEditingScreen(
                                             textItems.add(0, itm)
                                             selectedTextId = itm.id
                                         }
-                                    }
+                                    },
+                                    onOpenLayers = { showLayerManagerDialog = true }
                                 )
                             }
 
@@ -2514,6 +2529,75 @@ fun PhotoEditingScreen(
                 showCustomTextColorPicker = false
             },
             onDismiss = { showCustomTextColorPicker = false }
+        )
+    }
+
+    if (showLayerManagerDialog) {
+        val layers = textItems.reversed().map { item ->
+            LayerEntry(
+                id = item.id,
+                title = if (item.text.isNotBlank()) item.text else "Text Layer",
+                subtitle = "Text",
+                isText = true,
+                thumbnailBitmap = null,
+                isVisible = item.isVisible,
+                isLocked = item.isLocked,
+                opacity = item.opacity
+            )
+        }
+
+        FullLayerManagerDialog(
+            layers = layers,
+            selectedId = selectedTextId,
+            onSelect = { id ->
+                selectedTextId = id
+                activeTool = PhotoEditTool.TEXT
+            },
+            onToggleVisibility = { id ->
+                pushUndoHistory()
+                val idx = textItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = textItems[idx]
+                    textItems[idx] = itm.copy(isVisible = !itm.isVisible)
+                }
+            },
+            onToggleLock = { id ->
+                pushUndoHistory()
+                val idx = textItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = textItems[idx]
+                    textItems[idx] = itm.copy(isLocked = !itm.isLocked)
+                }
+            },
+            onChangeOpacity = { id, newOpacity ->
+                val idx = textItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = textItems[idx]
+                    textItems[idx] = itm.copy(opacity = newOpacity)
+                }
+            },
+            onMoveUp = { reversedIndex ->
+                pushUndoHistory()
+                val origIndex = (textItems.size - 1) - reversedIndex
+                if (origIndex < textItems.size - 1) {
+                    val itm = textItems.removeAt(origIndex)
+                    textItems.add(origIndex + 1, itm)
+                }
+            },
+            onMoveDown = { reversedIndex ->
+                pushUndoHistory()
+                val origIndex = (textItems.size - 1) - reversedIndex
+                if (origIndex > 0) {
+                    val itm = textItems.removeAt(origIndex)
+                    textItems.add(origIndex - 1, itm)
+                }
+            },
+            onDelete = { id ->
+                pushUndoHistory()
+                textItems.removeAll { it.id == id }
+                if (selectedTextId == id) selectedTextId = null
+            },
+            onDismiss = { showLayerManagerDialog = false }
         )
     }
 

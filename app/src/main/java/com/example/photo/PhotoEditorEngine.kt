@@ -1133,156 +1133,49 @@ object PhotoEditorEngine {
      * Burns user added text overlays directly onto the bitmap canvas.
      */
     fun burnText(bitmap: Bitmap, textItems: List<TextItem>): Bitmap {
-        if (bitmap.isRecycled || textItems.isEmpty()) return bitmap
+        return burnLayers(bitmap, textItems, emptyList())
+    }
+
+    fun burnLayers(
+        bitmap: Bitmap,
+        textItems: List<TextItem>,
+        imageLayers: List<ImageLayerItem> = emptyList()
+    ): Bitmap {
+        if (bitmap.isRecycled) return bitmap
         val output = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(output)
         val w = output.width.toFloat()
         val h = output.height.toFloat()
+        val scaleFactor = (max(w, h) / 1000f).coerceIn(0.5f, 5f)
 
-        for (item in textItems) {
-            val scaleFactor = (max(w, h) / 1000f).coerceIn(0.5f, 5f)
-            val px = item.normX * w
-            val py = item.normY * h
-
-            val baseAlpha = (item.color ushr 24) and 0xFF
-            val finalAlpha = (baseAlpha * item.opacity.coerceIn(0.05f, 1f)).toInt().coerceIn(0, 255)
-            val colorWithAlpha = (item.color and 0x00FFFFFF) or (finalAlpha shl 24)
-
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = colorWithAlpha
-                textSize = (item.fontSizeSp * scaleFactor).coerceAtLeast(14f)
-                typeface = item.customTypeface ?: PhotoFonts.getTypeface(item.fontId, item.isBold, item.isItalic)
-                isUnderlineText = item.isUnderline
-                isStrikeThruText = item.isStrikethrough
-                letterSpacing = item.letterSpacing
-                textAlign = when (item.alignment) {
-                    TextAlignment.LEFT -> Paint.Align.LEFT
-                    TextAlignment.CENTER -> Paint.Align.CENTER
-                    TextAlignment.RIGHT -> Paint.Align.RIGHT
-                    TextAlignment.JUSTIFY -> Paint.Align.LEFT
-                }
-            }
-
-            if (item.textureBitmap != null && !item.textureBitmap!!.isRecycled) {
-                paint.shader = android.graphics.BitmapShader(
-                    item.textureBitmap!!,
-                    android.graphics.Shader.TileMode.REPEAT,
-                    android.graphics.Shader.TileMode.REPEAT
-                )
-            }
-
+        // Draw image layers first (under text layers)
+        for (img in imageLayers) {
+            if (!img.isVisible || img.bitmap.isRecycled) continue
             canvas.save()
-            if (item.rotationDeg != 0f) {
-                canvas.rotate(item.rotationDeg, px, py)
+            val cx = img.normX * w
+            val cy = img.normY * h
+            canvas.translate(cx, cy)
+            canvas.rotate(img.rotationDeg)
+            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                alpha = (img.opacity.coerceIn(0.05f, 1f) * 255).toInt().coerceIn(0, 255)
             }
-            if (item.perspectiveSlant != 0f) {
-                canvas.skew(item.perspectiveSlant * 0.01f, 0f)
-            }
-
-            val lines = item.text.split("\n")
-            val fontMetrics = paint.fontMetrics
-            val lineHeight = (fontMetrics.bottom - fontMetrics.top) * item.lineSpacingMultiplier.coerceIn(0.5f, 3.0f)
-
-            // Measure bounds for background rect
-            var maxLineWidth = 0f
-            for (line in lines) {
-                val lw = paint.measureText(line)
-                if (lw > maxLineWidth) maxLineWidth = lw
-            }
-            val totalTextHeight = lines.size * lineHeight
-
-            val padX = (item.backgroundPadding + item.paddingX) * scaleFactor
-            val padY = (item.backgroundPadding + item.paddingY) * scaleFactor
-            val bgLeft = when (item.alignment) {
-                TextAlignment.LEFT, TextAlignment.JUSTIFY -> px - padX
-                TextAlignment.CENTER -> px - (maxLineWidth / 2f) - padX
-                TextAlignment.RIGHT -> px - maxLineWidth - padX
-            }
-            val bgTop = py - (totalTextHeight / 2f) - padY
-            val bgRight = bgLeft + maxLineWidth + (padX * 2f)
-            val bgBottom = bgTop + totalTextHeight + (padY * 2f)
-
-            // Draw Background if enabled
-            if (item.backgroundColor != null) {
-                val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                    color = item.backgroundColor!!
-                    style = Paint.Style.FILL
-                }
-                val cornerR = item.backgroundCornerRadius * scaleFactor
-                canvas.drawRoundRect(RectF(bgLeft, bgTop, bgRight, bgBottom), cornerR, cornerR, bgPaint)
-            }
-
-            // 3D Extrusion
-            if (item.depth3D > 0f) {
-                val depthColor = item.depth3DColor ?: Color.argb((finalAlpha * 0.7f).toInt(), 50, 50, 50)
-                val depthPaint = Paint(paint).apply {
-                    color = depthColor
-                    style = Paint.Style.FILL
-                    shader = null
-                }
-                val steps = item.depth3D.roundToInt().coerceIn(1, 20)
-                for (s in steps downTo 1) {
-                    val off = s * 1.5f * scaleFactor
-                    var dY = py - ((lines.size - 1) * lineHeight / 2f) + off
-                    for (line in lines) {
-                        canvas.drawText(line, px + off, dY, depthPaint)
-                        dY += lineHeight
-                    }
-                }
-            }
-
-            // Outer Shadow
-            if (item.shadowColor != null && item.shadowRadius > 0f) {
-                paint.setShadowLayer(
-                    item.shadowRadius * scaleFactor,
-                    item.shadowDx * scaleFactor,
-                    item.shadowDy * scaleFactor,
-                    item.shadowColor!!
-                )
-            } else {
-                paint.clearShadowLayer()
-            }
-
-            // Stroke
-            if (item.strokeColor != null && item.strokeWidth > 0f) {
-                val strokePaint = Paint(paint).apply {
-                    color = item.strokeColor!!
-                    style = Paint.Style.STROKE
-                    strokeWidth = item.strokeWidth * scaleFactor
-                    shader = null
-                    clearShadowLayer()
-                }
-                var curY = py - ((lines.size - 1) * lineHeight / 2f)
-                for (line in lines) {
-                    canvas.drawText(line, px, curY, strokePaint)
-                    curY += lineHeight
-                }
-            }
-
-            // Draw Main Text
-            var currentY = py - ((lines.size - 1) * lineHeight / 2f)
-            for (line in lines) {
-                canvas.drawText(line, px, currentY, paint)
-                currentY += lineHeight
-            }
-
-            // Reflection Effect
-            if (item.hasReflection) {
-                val reflectionPaint = Paint(paint).apply {
-                    alpha = (finalAlpha * 0.35f).toInt()
-                    clearShadowLayer()
-                }
-                canvas.save()
-                canvas.scale(1f, -0.6f, px, bgBottom)
-                var refY = bgBottom + lineHeight
-                for (line in lines) {
-                    canvas.drawText(line, px, refY, reflectionPaint)
-                    refY += lineHeight
-                }
-                canvas.restore()
-            }
-
+            val targetW = img.widthPx * scaleFactor
+            val targetH = img.heightPx * scaleFactor
+            val dst = RectF(-targetW / 2f, -targetH / 2f, targetW / 2f, targetH / 2f)
+            canvas.drawBitmap(img.bitmap, null, dst, p)
             canvas.restore()
+        }
+
+        // Draw text layers using advanced TextEffectRenderer
+        for (item in textItems) {
+            if (!item.isVisible) continue
+            com.example.ui.screens.TextEffectRenderer.drawPhotoTextItem(
+                canvas = canvas,
+                item = item,
+                viewWidth = w,
+                viewHeight = h,
+                canvasScale = scaleFactor
+            )
         }
         return output
     }

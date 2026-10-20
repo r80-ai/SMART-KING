@@ -42,7 +42,7 @@ import java.io.File
 import kotlin.math.roundToInt
 
 enum class PhotoTextToolActionId {
-    EDIT, DELETE, COPY, TO_FRONT, TO_BACK,
+    EDIT, DELETE, COPY, TO_FRONT, TO_BACK, LAYERS,
     POSITION, REL_POSITION, SIZE, PADDING, COLOR,
     TEXTURE, OPACITY, ROTATE, MASK, FONT,
     STYLE, CURVE, BACKGROUND, ALIGN, SPACING,
@@ -60,6 +60,7 @@ val PHOTO_ADVANCED_TEXT_TOOLS: List<PhotoTextToolDef> = listOf(
     PhotoTextToolDef(PhotoTextToolActionId.EDIT, "Edit", Icons.Default.Edit),
     PhotoTextToolDef(PhotoTextToolActionId.DELETE, "Delete", Icons.Default.Delete),
     PhotoTextToolDef(PhotoTextToolActionId.COPY, "Copy", Icons.Default.ContentCopy),
+    PhotoTextToolDef(PhotoTextToolActionId.LAYERS, "Layers", Icons.Default.Layers),
     PhotoTextToolDef(PhotoTextToolActionId.TO_FRONT, "To Front", Icons.Default.FlipToFront),
     PhotoTextToolDef(PhotoTextToolActionId.TO_BACK, "To Back", Icons.Default.FlipToBack),
     PhotoTextToolDef(PhotoTextToolActionId.POSITION, "Position", Icons.Default.OpenWith),
@@ -101,7 +102,8 @@ fun PhotoAdvancedTextToolPanel(
     onCopyItem: (TextItem) -> Unit,
     onBringToFront: (TextItem) -> Unit,
     onSendToBack: (TextItem) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onOpenLayers: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     var activeActionDialog by remember { mutableStateOf<PhotoTextToolActionId?>(null) }
@@ -168,21 +170,25 @@ fun PhotoAdvancedTextToolPanel(
             verticalAlignment = Alignment.CenterVertically
         ) {
             PHOTO_ADVANCED_TEXT_TOOLS.forEach { tool ->
-                val isEnabled = selectedItem != null || tool.id == PhotoTextToolActionId.EDIT
+                val isEnabled = selectedItem != null || tool.id == PhotoTextToolActionId.EDIT || tool.id == PhotoTextToolActionId.LAYERS
                 val isSelected = activeActionDialog == tool.id
 
                 Surface(
                     onClick = {
-                        if (selectedItem == null) {
+                        if (tool.id == PhotoTextToolActionId.LAYERS) {
+                            onOpenLayers?.invoke()
+                            return@Surface
+                        }
+                        if (selectedItem == null && tool.id != PhotoTextToolActionId.EDIT) {
                             Toast.makeText(context, "Please select or add a text layer first", Toast.LENGTH_SHORT).show()
                             return@Surface
                         }
                         when (tool.id) {
                             PhotoTextToolActionId.EDIT -> showEditContentDialog = true
-                            PhotoTextToolActionId.DELETE -> onDeleteItem(selectedItem.id)
-                            PhotoTextToolActionId.COPY -> onCopyItem(selectedItem)
-                            PhotoTextToolActionId.TO_FRONT -> onBringToFront(selectedItem)
-                            PhotoTextToolActionId.TO_BACK -> onSendToBack(selectedItem)
+                            PhotoTextToolActionId.DELETE -> onDeleteItem(selectedItem!!.id)
+                            PhotoTextToolActionId.COPY -> onCopyItem(selectedItem!!)
+                            PhotoTextToolActionId.TO_FRONT -> onBringToFront(selectedItem!!)
+                            PhotoTextToolActionId.TO_BACK -> onSendToBack(selectedItem!!)
                             else -> activeActionDialog = if (activeActionDialog == tool.id) null else tool.id
                         }
                     },
@@ -591,14 +597,7 @@ private fun PaddingControl(item: TextItem, onUpdate: (TextItem) -> Unit) {
 
 @Composable
 private fun ColorOpacityControl(item: TextItem, onUpdate: (TextItem) -> Unit) {
-    val presetColors = listOf(
-        AndroidColor.WHITE, AndroidColor.BLACK,
-        AndroidColor.parseColor("#E11D48"), AndroidColor.parseColor("#EF4444"),
-        AndroidColor.parseColor("#F97316"), AndroidColor.parseColor("#EAB308"),
-        AndroidColor.parseColor("#22C55E"), AndroidColor.parseColor("#06B6D4"),
-        AndroidColor.parseColor("#3B82F6"), AndroidColor.parseColor("#8B5CF6"),
-        AndroidColor.parseColor("#EC4899"), AndroidColor.parseColor("#64748B")
-    )
+    val presetColors = PRESET_COLORS
     val curColor = item.color
     var red by remember(curColor) { mutableIntStateOf(AndroidColor.red(curColor)) }
     var green by remember(curColor) { mutableIntStateOf(AndroidColor.green(curColor)) }
@@ -952,11 +951,7 @@ private fun CurveControl(item: TextItem, onUpdate: (TextItem) -> Unit) {
 
 @Composable
 private fun BackgroundControl(item: TextItem, onUpdate: (TextItem) -> Unit) {
-    val presetBgColors = listOf(
-        AndroidColor.BLACK, AndroidColor.DKGRAY, AndroidColor.WHITE,
-        AndroidColor.parseColor("#E11D48"), AndroidColor.parseColor("#3B82F6"),
-        AndroidColor.parseColor("#22C55E"), AndroidColor.parseColor("#EAB308")
-    )
+    val presetBgColors = PRESET_COLORS
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1114,6 +1109,30 @@ private fun StrokeControl(item: TextItem, onUpdate: (TextItem) -> Unit) {
                     modifier = Modifier.weight(1f),
                     colors = SliderDefaults.colors(thumbColor = CrimsonPrimary, activeTrackColor = CrimsonPrimary)
                 )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Stroke Color", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                PRESET_COLORS.forEach { col ->
+                    Box(
+                        modifier = Modifier
+                            .size(28.dp)
+                            .clip(CircleShape)
+                            .background(Color(col))
+                            .border(
+                                width = if (item.strokeColor == col) 2.5.dp else 1.dp,
+                                color = if (item.strokeColor == col) CrimsonPrimary else Color.Gray,
+                                shape = CircleShape
+                            )
+                            .clickable { onUpdate(item.copy(strokeColor = col)) }
+                    )
+                }
             }
         }
     }
