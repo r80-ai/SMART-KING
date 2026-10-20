@@ -130,11 +130,13 @@ object TextEffectRenderer {
     fun drawPdfEditItem(
         canvas: Canvas,
         item: PdfEngine.EditItem,
-        strokeScale: Float = 1f
+        strokeScale: Float = 1f,
+        densityDpiScale: Float = 1f
     ) {
         if (!item.isVisible || item.text.isBlank()) return
 
-        val fontSizePx = (item.fontSize * strokeScale).coerceAtLeast(8f)
+        val baseFontSize = if (item.fontSize < 60f) item.fontSize * densityDpiScale else item.fontSize
+        val fontSizePx = (baseFontSize * strokeScale).coerceAtLeast(14f)
 
         val tf = run {
             val base = when {
@@ -458,17 +460,19 @@ object TextEffectRenderer {
             if (abs(curveArc) > 0.01f) {
                 drawCurvedText(canvas, text, curveArc, maxLineW, fontSizePx, strokePaint, align)
             } else {
-                val strokeLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    StaticLayout.Builder.obtain(text, 0, text.length, strokePaint, targetW.toInt().coerceAtLeast(10))
-                        .setAlignment(align)
-                        .setLineSpacing(0f, lineSpacingMultiplier)
-                        .setIncludePad(false)
-                        .build()
-                } else {
-                    @Suppress("DEPRECATION")
-                    StaticLayout(text, strokePaint, targetW.toInt().coerceAtLeast(10), align, lineSpacingMultiplier, 0f, false)
+                val fm = strokePaint.fontMetrics
+                val lineHeight = (fm.descent - fm.ascent) * lineSpacingMultiplier
+                var baselineY = -fm.ascent
+                for (line in lines) {
+                    val lineW = strokePaint.measureText(line)
+                    val lineX = when (align) {
+                        Layout.Alignment.ALIGN_CENTER -> (targetW - lineW) / 2f
+                        Layout.Alignment.ALIGN_OPPOSITE -> targetW - lineW
+                        else -> 0f
+                    }
+                    canvas.drawText(line, lineX, baselineY, strokePaint)
+                    baselineY += lineHeight
                 }
-                strokeLayout.draw(canvas)
             }
             canvas.restore()
         }
@@ -479,7 +483,19 @@ object TextEffectRenderer {
         if (abs(curveArc) > 0.01f) {
             drawCurvedText(canvas, text, curveArc, maxLineW, fontSizePx, basePaint, align)
         } else {
-            staticLayout.draw(canvas)
+            val fm = basePaint.fontMetrics
+            val lineHeight = (fm.descent - fm.ascent) * lineSpacingMultiplier
+            var baselineY = -fm.ascent
+            for (line in lines) {
+                val lineW = basePaint.measureText(line)
+                val lineX = when (align) {
+                    Layout.Alignment.ALIGN_CENTER -> (targetW - lineW) / 2f
+                    Layout.Alignment.ALIGN_OPPOSITE -> targetW - lineW
+                    else -> 0f
+                }
+                canvas.drawText(line, lineX, baselineY, basePaint)
+                baselineY += lineHeight
+            }
         }
         canvas.restore()
 

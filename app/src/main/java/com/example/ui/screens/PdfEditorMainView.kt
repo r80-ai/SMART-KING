@@ -158,12 +158,15 @@ fun PdfEditorMainView(
     // Text tool state
     var showAddTextDialog by remember { mutableStateOf(false) }
     var textInputContent by remember { mutableStateOf("") }
-    var textColor by remember { mutableIntStateOf(AndroidColor.BLACK) }
-    var textFontSize by remember { mutableFloatStateOf(18f) }
+    var textColor by remember { mutableIntStateOf(AndroidColor.RED) }
+    var textFontSize by remember { mutableFloatStateOf(28f) }
     var textIsBold by remember { mutableStateOf(false) }
     var textIsItalic by remember { mutableStateOf(false) }
     var textAlignment by remember { mutableStateOf("LEFT") }
     var showLayerManagerDialog by remember { mutableStateOf(false) }
+    var pdfCanvasWidthPx by remember { mutableFloatStateOf(800f) }
+    var pdfCanvasHeightPx by remember { mutableFloatStateOf(1100f) }
+    var textLayerUpdateTrigger by remember { mutableIntStateOf(0) }
 
     // Draw tool state
     var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
@@ -711,8 +714,8 @@ fun PdfEditorMainView(
 
                             AdvancedTextToolPanel(
                                 selectedItem = currentSelectedTextItem,
-                                pageWidthPx = 800f,
-                                pageHeightPx = 1100f,
+                                pageWidthPx = pdfCanvasWidthPx,
+                                pageHeightPx = pdfCanvasHeightPx,
                                 onAddNewText = {
                                     textInputContent = ""
                                     selectedAnnotationId = null
@@ -740,6 +743,7 @@ fun PdfEditorMainView(
                                         )
                                         editItems.add(copy)
                                         selectedAnnotationId = copy.id
+                                        textLayerUpdateTrigger++
                                         Toast.makeText(context, "Text duplicated", Toast.LENGTH_SHORT).show()
                                     }
                                 },
@@ -748,6 +752,7 @@ fun PdfEditorMainView(
                                         pushHistory()
                                         editItems.remove(item)
                                         editItems.add(item)
+                                        textLayerUpdateTrigger++
                                         Toast.makeText(context, "Brought to front", Toast.LENGTH_SHORT).show()
                                     }
                                 },
@@ -756,6 +761,7 @@ fun PdfEditorMainView(
                                         pushHistory()
                                         editItems.remove(item)
                                         editItems.add(0, item)
+                                        textLayerUpdateTrigger++
                                         Toast.makeText(context, "Sent to back", Toast.LENGTH_SHORT).show()
                                     }
                                 },
@@ -764,6 +770,7 @@ fun PdfEditorMainView(
                                     if (idx != -1) {
                                         editItems[idx] = updated
                                     }
+                                    textLayerUpdateTrigger++
                                 },
                                 onHistoryPush = { pushHistory() },
                                 onOpenLayers = { showLayerManagerDialog = true }
@@ -1090,6 +1097,10 @@ fun PdfEditorMainView(
                                 val density = LocalDensity.current
                                 val pageWidthPx = constraints.maxWidth.toFloat()
                                 val pageHeightPx = constraints.maxHeight.toFloat()
+                                if (pageWidthPx > 0f && pageHeightPx > 0f) {
+                                    pdfCanvasWidthPx = pageWidthPx
+                                    pdfCanvasHeightPx = pageHeightPx
+                                }
 
                                     // 1. Rendered PDF Page Image
                                     Image(
@@ -1414,37 +1425,41 @@ fun PdfEditorMainView(
                                         // 4. Interactive Text Overlays: interactive bounding box, 4 corner handles, drag & move
                                         val pageTextItems = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT }
                                         for (textItem in pageTextItems) {
-                                            val isSelected = selectedAnnotationId == textItem.id
-                                            InteractivePdfTextOverlay(
-                                                item = textItem,
-                                                isSelected = isSelected,
-                                                zoomScale = zoomScale,
-                                                pageWidthPx = pageWidthPx,
-                                                pageHeightPx = pageHeightPx,
-                                                onSelect = {
-                                                    selectedAnnotationId = textItem.id
-                                                    activeTab = EditorTopTab.TEXT
-                                                },
-                                                onEdit = {
-                                                    selectedAnnotationId = textItem.id
-                                                    textInputContent = textItem.text
-                                                    showAddTextDialog = true
-                                                },
-                                                onDelete = {
-                                                    pushHistory()
-                                                    editItems.removeAll { it.id == textItem.id }
-                                                    if (selectedAnnotationId == textItem.id) {
-                                                        selectedAnnotationId = null
-                                                    }
-                                                },
-                                                onUpdate = { updated ->
-                                                    val idx = editItems.indexOfFirst { it.id == textItem.id }
-                                                    if (idx != -1) {
-                                                        editItems[idx] = updated
-                                                    }
-                                                },
-                                                onHistoryPush = { pushHistory() }
-                                            )
+                                            key(textItem.id, textLayerUpdateTrigger) {
+                                                val isSelected = selectedAnnotationId == textItem.id
+                                                InteractivePdfTextOverlay(
+                                                    item = textItem,
+                                                    isSelected = isSelected,
+                                                    zoomScale = zoomScale,
+                                                    pageWidthPx = pageWidthPx,
+                                                    pageHeightPx = pageHeightPx,
+                                                    onSelect = {
+                                                        selectedAnnotationId = textItem.id
+                                                        activeTab = EditorTopTab.TEXT
+                                                    },
+                                                    onEdit = {
+                                                        selectedAnnotationId = textItem.id
+                                                        textInputContent = textItem.text
+                                                        showAddTextDialog = true
+                                                    },
+                                                    onDelete = {
+                                                        pushHistory()
+                                                        editItems.removeAll { it.id == textItem.id }
+                                                        if (selectedAnnotationId == textItem.id) {
+                                                            selectedAnnotationId = null
+                                                        }
+                                                        textLayerUpdateTrigger++
+                                                    },
+                                                    onUpdate = { updated ->
+                                                        val idx = editItems.indexOfFirst { it.id == textItem.id }
+                                                        if (idx != -1) {
+                                                            editItems[idx] = updated
+                                                        }
+                                                        textLayerUpdateTrigger++
+                                                    },
+                                                    onHistoryPush = { pushHistory() }
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -1906,23 +1921,39 @@ fun PdfEditorMainView(
                                 if (idx != -1) {
                                     editItems[idx] = editingItem.copy(text = textInputContent)
                                 }
+                                textLayerUpdateTrigger++
                                 Toast.makeText(context, "Text updated", Toast.LENGTH_SHORT).show()
                             } else {
+                                val canvasW = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f
+                                val canvasH = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                val defaultW = 320f
+                                val defaultH = 110f
+                                // Strictly center of visible PDF page viewport (x = canvasWidth / 2, y = canvasHeight / 3)
+                                val initX = (canvasW / 2f) - (defaultW / 2f)
+                                val initY = (canvasH / 3f) - (defaultH / 2f)
+
                                 val newItem = PdfEngine.EditItem(
                                     pageIndex = currentPageIndex,
                                     type = PdfEngine.AnnotationType.TEXT,
                                     text = textInputContent,
-                                    colorHex = textColor,
-                                    fontSize = textFontSize,
+                                    colorHex = if (textColor != 0) textColor else AndroidColor.RED,
+                                    fontSize = if (textFontSize >= 24f) textFontSize else 28f,
                                     isBold = textIsBold,
                                     isItalic = textIsItalic,
                                     alignment = textAlignment,
-                                    posX = 80f,
-                                    posY = 140f
+                                    posX = initX.coerceAtLeast(20f),
+                                    posY = initY.coerceAtLeast(30f),
+                                    boxWidth = defaultW,
+                                    boxHeight = defaultH,
+                                    isVisible = true,
+                                    opacity = 1f,
+                                    baseWidth = canvasW,
+                                    baseHeight = canvasH
                                 )
                                 editItems.add(newItem)
                                 selectedAnnotationId = newItem.id
                                 activeTab = EditorTopTab.TEXT
+                                textLayerUpdateTrigger++
                                 Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
                             }
                         }

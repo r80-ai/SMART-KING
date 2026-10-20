@@ -27,6 +27,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
@@ -178,10 +179,15 @@ fun InteractivePdfTextOverlay(
 
     val density = LocalDensity.current
 
-    // Dynamic measurement using TextPaint
-    val textPaint = remember(item.fontSize, item.fontFamily, item.isBold, item.isItalic, item.customFontPath) {
+    // Convert font size from sp to actual screen pixels for crisp, visible drawing
+    val fontSizePx = with(density) {
+        if (item.fontSize < 60f) item.fontSize.sp.toPx() else item.fontSize
+    }.coerceAtLeast(18f)
+
+    // Dynamic measurement using TextPaint with actual pixel font size
+    val textPaint = remember(fontSizePx, item.fontFamily, item.isBold, item.isItalic, item.customFontPath) {
         android.text.TextPaint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
-            textSize = item.fontSize.coerceAtLeast(8f)
+            textSize = fontSizePx
             typeface = when {
                 item.customFontPath != null -> try { AndroidTypeface.createFromFile(item.customFontPath) } catch (_: Exception) { AndroidTypeface.DEFAULT }
                 item.fontFamily.equals("SERIF", ignoreCase = true) -> AndroidTypeface.SERIF
@@ -191,23 +197,23 @@ fun InteractivePdfTextOverlay(
         }
     }
 
-    val measuredWidth = remember(item.text, item.fontSize, item.backgroundPadding, item.boxWidth) {
+    val measuredWidth = remember(item.text, fontSizePx, item.backgroundPadding, item.boxWidth) {
         val lines = (if (item.text.isEmpty()) " " else item.text).split("\n")
         var maxW = 0f
         for (l in lines) {
             val w = textPaint.measureText(l)
             if (w > maxW) maxW = w
         }
-        val nat = maxW + item.backgroundPadding * 2f + 20f
-        if (item.boxWidth > 0f) kotlin.math.max(item.boxWidth, 40f) else nat
+        val nat = maxW + item.backgroundPadding * 2f + 28f
+        if (item.boxWidth > 0f) kotlin.math.max(item.boxWidth, nat) else nat
     }
 
-    val measuredHeight = remember(item.text, item.fontSize, item.backgroundPadding, item.boxHeight, item.lineSpacingMultiplier) {
+    val measuredHeight = remember(item.text, fontSizePx, item.backgroundPadding, item.boxHeight, item.lineSpacingMultiplier) {
         val lines = (if (item.text.isEmpty()) " " else item.text).split("\n")
         val fm = textPaint.fontMetrics
-        val lineH = (fm.bottom - fm.top) * if (item.lineSpacingMultiplier > 0f) item.lineSpacingMultiplier else 1.15f
-        val nat = lines.size * lineH + item.backgroundPadding * 2f + 16f
-        if (item.boxHeight > 0f) kotlin.math.max(item.boxHeight, 30f) else nat
+        val lineH = (fm.descent - fm.ascent) * if (item.lineSpacingMultiplier > 0f) item.lineSpacingMultiplier else 1.15f
+        val nat = lines.size * lineH + item.backgroundPadding * 2f + 24f
+        if (item.boxHeight > 0f) kotlin.math.max(item.boxHeight, nat) else nat
     }
 
     val widthDp = with(density) { measuredWidth.toDp() }
@@ -215,6 +221,7 @@ fun InteractivePdfTextOverlay(
 
     Box(
         modifier = Modifier
+            .zIndex(100f) // Sits strictly on top of PDF render canvas / viewer
             .offset { IntOffset(item.posX.roundToInt(), item.posY.roundToInt()) }
             .size(widthDp, heightDp)
             .pointerInput(item.id) {
@@ -250,11 +257,25 @@ fun InteractivePdfTextOverlay(
             modifier = Modifier.fillMaxSize()
         ) {
             drawIntoCanvas { composeCanvas ->
+                val nativeCanvas = composeCanvas.nativeCanvas
+
+                // 1. Text glyphs and visual effects rendered with Paint
                 TextEffectRenderer.drawPdfEditItem(
-                    canvas = composeCanvas.nativeCanvas,
+                    canvas = nativeCanvas,
                     item = item.copy(posX = 0f, posY = 0f, boxWidth = measuredWidth, boxHeight = measuredHeight),
-                    strokeScale = 1f
+                    strokeScale = 1f,
+                    densityDpiScale = density.density
                 )
+
+                // 2. Explicitly draw interactive bounding box on canvas using Paint
+                if (isSelected) {
+                    val framePaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                        color = android.graphics.Color.parseColor("#3B82F6") // ToolBlue
+                        style = android.graphics.Paint.Style.STROKE
+                        strokeWidth = 2f * density.density
+                    }
+                    nativeCanvas.drawRect(0f, 0f, measuredWidth, measuredHeight, framePaint)
+                }
             }
         }
 
