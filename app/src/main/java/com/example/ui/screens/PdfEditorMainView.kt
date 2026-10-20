@@ -675,29 +675,66 @@ fun PdfEditorMainView(
                         }
 
                         EditorTopTab.TEXT -> {
-                            TextOptionsSection(
-                                onAddText = {
+                            val currentSelectedTextItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.TEXT }
+                                ?: editItems.firstOrNull { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT }
+
+                            AdvancedTextToolPanel(
+                                selectedItem = currentSelectedTextItem,
+                                pageWidthPx = 800f,
+                                pageHeightPx = 1100f,
+                                onAddNewText = {
                                     textInputContent = ""
+                                    selectedAnnotationId = null
                                     showAddTextDialog = true
                                 },
-                                textColor = textColor,
-                                onColorChange = { textColor = it },
-                                fontSize = textFontSize,
-                                onFontSizeChange = { textFontSize = it },
-                                isBold = textIsBold,
-                                onToggleBold = { textIsBold = !textIsBold },
-                                isItalic = textIsItalic,
-                                onToggleItalic = { textIsItalic = !textIsItalic },
-                                alignment = textAlignment,
-                                onAlignmentChange = { textAlignment = it },
-                                onDeleteSelectedText = {
-                                    selectedAnnotationId?.let { id ->
+                                onOpenEditDialog = {
+                                    textInputContent = currentSelectedTextItem?.text ?: ""
+                                    showAddTextDialog = true
+                                },
+                                onDeleteSelected = {
+                                    currentSelectedTextItem?.let { item ->
                                         pushHistory()
-                                        editItems.removeAll { it.id == id }
+                                        editItems.removeAll { it.id == item.id }
                                         selectedAnnotationId = null
                                         Toast.makeText(context, "Text deleted", Toast.LENGTH_SHORT).show()
                                     }
-                                }
+                                },
+                                onCopySelected = {
+                                    currentSelectedTextItem?.let { item ->
+                                        pushHistory()
+                                        val copy = item.copy(
+                                            id = java.util.UUID.randomUUID().toString(),
+                                            posX = item.posX + 20f,
+                                            posY = item.posY + 20f
+                                        )
+                                        editItems.add(copy)
+                                        selectedAnnotationId = copy.id
+                                        Toast.makeText(context, "Text duplicated", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onBringToFront = {
+                                    currentSelectedTextItem?.let { item ->
+                                        pushHistory()
+                                        editItems.remove(item)
+                                        editItems.add(item)
+                                        Toast.makeText(context, "Brought to front", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onSendToBack = {
+                                    currentSelectedTextItem?.let { item ->
+                                        pushHistory()
+                                        editItems.remove(item)
+                                        editItems.add(0, item)
+                                        Toast.makeText(context, "Sent to back", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onUpdateItem = { updated ->
+                                    val idx = editItems.indexOfFirst { it.id == updated.id }
+                                    if (idx != -1) {
+                                        editItems[idx] = updated
+                                    }
+                                },
+                                onHistoryPush = { pushHistory() }
                             )
                         }
 
@@ -1073,8 +1110,8 @@ fun PdfEditorMainView(
                                                 }
                                             }
                                     ) {
-                                        // Draw existing non-image edit items on this page (drawings, text)
-                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.IMAGE }
+                                        // Draw existing drawing edit items on this page
+                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.IMAGE && it.type != PdfEngine.AnnotationType.TEXT }
                                         for (item in pageItems) {
                                             when (item.type) {
                                                 PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
@@ -1094,17 +1131,6 @@ fun PdfEditorMainView(
                                                                 join = androidx.compose.ui.graphics.StrokeJoin.Round
                                                             )
                                                         )
-                                                    }
-                                                }
-                                                PdfEngine.AnnotationType.TEXT -> {
-                                                    drawContext.canvas.nativeCanvas.apply {
-                                                        val p = AndroidPaint().apply {
-                                                            color = item.colorHex
-                                                            textSize = item.fontSize * density.density
-                                                            isFakeBoldText = item.isBold
-                                                            isAntiAlias = true
-                                                        }
-                                                        drawText(item.text, item.posX, item.posY, p)
                                                     }
                                                 }
                                                 else -> {}
@@ -1351,6 +1377,42 @@ fun PdfEditorMainView(
                                                     }
                                                 }
                                             }
+                                        }
+
+                                        // 4. Interactive Text Overlays: interactive bounding box, 4 corner handles, drag & move
+                                        val pageTextItems = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT }
+                                        for (textItem in pageTextItems) {
+                                            val isSelected = selectedAnnotationId == textItem.id
+                                            InteractivePdfTextOverlay(
+                                                item = textItem,
+                                                isSelected = isSelected,
+                                                zoomScale = zoomScale,
+                                                pageWidthPx = pageWidthPx,
+                                                pageHeightPx = pageHeightPx,
+                                                onSelect = {
+                                                    selectedAnnotationId = textItem.id
+                                                    activeTab = EditorTopTab.TEXT
+                                                },
+                                                onEdit = {
+                                                    selectedAnnotationId = textItem.id
+                                                    textInputContent = textItem.text
+                                                    showAddTextDialog = true
+                                                },
+                                                onDelete = {
+                                                    pushHistory()
+                                                    editItems.removeAll { it.id == textItem.id }
+                                                    if (selectedAnnotationId == textItem.id) {
+                                                        selectedAnnotationId = null
+                                                    }
+                                                },
+                                                onUpdate = { updated ->
+                                                    val idx = editItems.indexOfFirst { it.id == textItem.id }
+                                                    if (idx != -1) {
+                                                        editItems[idx] = updated
+                                                    }
+                                                },
+                                                onHistoryPush = { pushHistory() }
+                                            )
                                         }
                                     }
                                 }
@@ -1781,15 +1843,25 @@ fun PdfEditorMainView(
     }
 
     if (showAddTextDialog) {
+        val editingItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.TEXT }
         AlertDialog(
             onDismissRequest = { showAddTextDialog = false },
-            title = { Text("Insert Text") },
+            title = { Text(if (editingItem != null) "Edit Text" else "Insert Text") },
             text = {
                 OutlinedTextField(
                     value = textInputContent,
                     onValueChange = { textInputContent = it },
                     placeholder = { Text("Type text to place on page...") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 6,
+                    trailingIcon = {
+                        if (textInputContent.isNotEmpty()) {
+                            IconButton(onClick = { textInputContent = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear text", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
                 )
             },
             confirmButton = {
@@ -1797,8 +1869,14 @@ fun PdfEditorMainView(
                     onClick = {
                         if (textInputContent.isNotBlank()) {
                             pushHistory()
-                            editItems.add(
-                                PdfEngine.EditItem(
+                            if (editingItem != null) {
+                                val idx = editItems.indexOfFirst { it.id == editingItem.id }
+                                if (idx != -1) {
+                                    editItems[idx] = editingItem.copy(text = textInputContent)
+                                }
+                                Toast.makeText(context, "Text updated", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val newItem = PdfEngine.EditItem(
                                     pageIndex = currentPageIndex,
                                     type = PdfEngine.AnnotationType.TEXT,
                                     text = textInputContent,
@@ -1807,17 +1885,20 @@ fun PdfEditorMainView(
                                     isBold = textIsBold,
                                     isItalic = textIsItalic,
                                     alignment = textAlignment,
-                                    posX = 100f,
-                                    posY = 200f
+                                    posX = 80f,
+                                    posY = 140f
                                 )
-                            )
-                            Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
+                                editItems.add(newItem)
+                                selectedAnnotationId = newItem.id
+                                activeTab = EditorTopTab.TEXT
+                                Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
+                            }
                         }
                         showAddTextDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
                 ) {
-                    Text("Add Text")
+                    Text(if (editingItem != null) "Apply" else "Add Text")
                 }
             },
             dismissButton = {

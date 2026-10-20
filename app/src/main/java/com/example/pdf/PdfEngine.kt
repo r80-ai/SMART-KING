@@ -755,8 +755,8 @@ object PdfEngine {
         val maskRect: android.graphics.Rect? = null,
         val maskColor: Int = android.graphics.Color.WHITE,
         val isUnderline: Boolean = false,
-        val fontFamily: String = "DEFAULT", // "DEFAULT", "SERIF", "MONOSPACE"
-        val alignment: String = "LEFT", // "LEFT", "CENTER", "RIGHT"
+        val fontFamily: String = "DEFAULT", // "DEFAULT", "SERIF", "MONOSPACE", "BENGALI", "HANDWRITING"
+        val alignment: String = "LEFT", // "LEFT", "CENTER", "RIGHT", "JUSTIFY"
         val endX: Float = posX + 100f,
         val endY: Float = posY + 50f,
         val strokeWidth: Float = 3f,
@@ -773,7 +773,31 @@ object PdfEngine {
         val baseHeight: Float = 0f,
         val boxWidth: Float = 0f,
         val boxHeight: Float = 0f,
-        val isTiled: Boolean = false
+        val isTiled: Boolean = false,
+        val isStrikethrough: Boolean = false,
+        val letterSpacing: Float = 0f,
+        val lineSpacingMultiplier: Float = 1.15f,
+        val strokeColorHex: Int = 0,
+        val textStrokeWidth: Float = 0f,
+        val shadowColorHex: Int = 0,
+        val shadowRadius: Float = 0f,
+        val shadowDx: Float = 0f,
+        val shadowDy: Float = 0f,
+        val innerShadowRadius: Float = 0f,
+        val innerShadowColorHex: Int = 0,
+        val backgroundColorHex: Int = 0,
+        val backgroundPadding: Float = 0f,
+        val backgroundCornerRadius: Float = 0f,
+        val curveRadius: Float = 0f,
+        val is3dText: Boolean = false,
+        val depth3d: Float = 0f,
+        val rotate3dX: Float = 0f,
+        val rotate3dY: Float = 0f,
+        val isReflection: Boolean = false,
+        val isEmboss: Boolean = false,
+        val textureBitmap: Bitmap? = null,
+        val customFontPath: String? = null,
+        val customFontName: String? = null
     ) {
         fun getRotationAngle(): Float = if (rotation != 0f) rotation else imageRotation
     }
@@ -1340,13 +1364,25 @@ object PdfEngine {
                     val fontSz = (item.fontSize * strokeScale).coerceAtLeast(8f)
                     val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
                         color = item.colorHex
+                        alpha = (item.opacity * 255).toInt().coerceIn(0, 255)
                         textSize = fontSz
                         isUnderlineText = item.isUnderline
-                        val baseTypeface = when (item.fontFamily) {
-                            "HANDWRITING", "Handwriting", "CURSIVE", "Cursive" -> try { Typeface.create("casual", Typeface.NORMAL) } catch (_: Exception) { Typeface.create("cursive", Typeface.NORMAL) }
-                            "SERIF", "Serif" -> Typeface.SERIF
-                            "MONOSPACE", "Monospace" -> Typeface.MONOSPACE
-                            "BENGALI", "Bengali" -> Typeface.SANS_SERIF
+                        isStrikeThruText = item.isStrikethrough
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP && item.letterSpacing != 0f) {
+                            letterSpacing = item.letterSpacing * 0.05f
+                        }
+                        val baseTypeface = when {
+                            item.customFontPath != null -> try {
+                                Typeface.createFromFile(item.customFontPath)
+                            } catch (_: Exception) { Typeface.DEFAULT }
+                            item.fontFamily == "BENGALI" || item.fontFamily == "Bengali" -> try {
+                                androidx.core.content.res.ResourcesCompat.getFont(context, com.example.R.font.noto_sans_bengali) ?: Typeface.SANS_SERIF
+                            } catch (_: Exception) { Typeface.SANS_SERIF }
+                            item.fontFamily.equals("HANDWRITING", ignoreCase = true) || item.fontFamily.equals("CURSIVE", ignoreCase = true) -> try {
+                                Typeface.create("casual", Typeface.NORMAL)
+                            } catch (_: Exception) { Typeface.create("cursive", Typeface.NORMAL) }
+                            item.fontFamily.equals("SERIF", ignoreCase = true) -> Typeface.SERIF
+                            item.fontFamily.equals("MONOSPACE", ignoreCase = true) -> Typeface.MONOSPACE
                             else -> Typeface.DEFAULT
                         }
                         val style = when {
@@ -1356,6 +1392,23 @@ object PdfEngine {
                             else -> Typeface.NORMAL
                         }
                         typeface = Typeface.create(baseTypeface, style)
+
+                        if (item.textureBitmap != null) {
+                            shader = android.graphics.BitmapShader(
+                                item.textureBitmap,
+                                android.graphics.Shader.TileMode.REPEAT,
+                                android.graphics.Shader.TileMode.REPEAT
+                            )
+                        }
+
+                        if (item.shadowRadius > 0f && item.shadowColorHex != 0) {
+                            setShadowLayer(
+                                item.shadowRadius * strokeScale,
+                                item.shadowDx * strokeScale,
+                                item.shadowDy * strokeScale,
+                                item.shadowColorHex
+                            )
+                        }
                     }
 
                     val textToRender = if (item.text.isEmpty()) " " else item.text
@@ -1365,7 +1418,8 @@ object PdfEngine {
                         val lw = textPaint.measureText(l)
                         if (lw > maxLineW) maxLineW = lw
                     }
-                    val naturalW = (maxLineW + 16f * strokeScale).coerceAtLeast(40f * strokeScale)
+                    val bgPad = item.backgroundPadding * strokeScale
+                    val naturalW = (maxLineW + (bgPad * 2f + 16f) * strokeScale).coerceAtLeast(40f * strokeScale)
                     val targetW = if (item.boxWidth > 0f) (item.boxWidth * strokeScale).coerceAtLeast(30f) else naturalW
                     val align = when (item.alignment) {
                         "CENTER" -> Layout.Alignment.ALIGN_CENTER
@@ -1373,25 +1427,114 @@ object PdfEngine {
                         else -> Layout.Alignment.ALIGN_NORMAL
                     }
 
+                    val lineMultiplier = if (item.lineSpacingMultiplier > 0f) item.lineSpacingMultiplier else 1.15f
                     val staticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                         StaticLayout.Builder.obtain(textToRender, 0, textToRender.length, textPaint, targetW.toInt().coerceAtLeast(10))
                             .setAlignment(align)
-                            .setLineSpacing(0f, 1.15f)
+                            .setLineSpacing(0f, lineMultiplier)
                             .setIncludePad(false)
                             .build()
                     } else {
                         @Suppress("DEPRECATION")
-                        StaticLayout(textToRender, textPaint, targetW.toInt().coerceAtLeast(10), align, 1.15f, 0f, false)
+                        StaticLayout(textToRender, textPaint, targetW.toInt().coerceAtLeast(10), align, lineMultiplier, 0f, false)
                     }
 
                     val layoutW = targetW
-                    val layoutH = if (item.boxHeight > 0f) Math.max(staticLayout.height.toFloat(), item.boxHeight * strokeScale) else staticLayout.height.toFloat()
+                    val layoutH = if (item.boxHeight > 0f) Math.max(staticLayout.height.toFloat() + bgPad * 2f, item.boxHeight * strokeScale) else staticLayout.height.toFloat() + bgPad * 2f
 
                     canvas.save()
                     if (itemRot != 0f) {
                         canvas.rotate(itemRot, posX + layoutW / 2f, posY + layoutH / 2f)
                     }
-                    canvas.translate(posX, posY)
+
+                    // Render background if set
+                    if (item.backgroundColorHex != 0) {
+                        val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                            color = item.backgroundColorHex
+                            style = Paint.Style.FILL
+                        }
+                        val cr = item.backgroundCornerRadius * strokeScale
+                        if (cr > 0f) {
+                            canvas.drawRoundRect(
+                                posX, posY, posX + layoutW, posY + layoutH,
+                                cr, cr, bgPaint
+                            )
+                        } else {
+                            canvas.drawRect(posX, posY, posX + layoutW, posY + layoutH, bgPaint)
+                        }
+                    }
+
+                    // Render Reflection
+                    if (item.isReflection) {
+                        canvas.save()
+                        canvas.translate(posX, posY + layoutH * 1.8f)
+                        canvas.scale(1f, -0.6f)
+                        val refPaint = TextPaint(textPaint).apply {
+                            alpha = ((item.opacity * 0.3f) * 255).toInt().coerceIn(0, 255)
+                        }
+                        val refLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            StaticLayout.Builder.obtain(textToRender, 0, textToRender.length, refPaint, targetW.toInt().coerceAtLeast(10))
+                                .setAlignment(align)
+                                .setIncludePad(false)
+                                .build()
+                        } else {
+                            @Suppress("DEPRECATION")
+                            StaticLayout(textToRender, refPaint, targetW.toInt().coerceAtLeast(10), align, lineMultiplier, 0f, false)
+                        }
+                        refLayout.draw(canvas)
+                        canvas.restore()
+                    }
+
+                    // Render 3D Depth
+                    if (item.is3dText && item.depth3d > 0f) {
+                        val depthSteps = (item.depth3d * strokeScale).toInt().coerceIn(1, 15)
+                        val depthPaint = TextPaint(textPaint).apply {
+                            color = Color.DKGRAY
+                            clearShadowLayer()
+                        }
+                        val depthLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            StaticLayout.Builder.obtain(textToRender, 0, textToRender.length, depthPaint, targetW.toInt().coerceAtLeast(10))
+                                .setAlignment(align)
+                                .setLineSpacing(0f, lineMultiplier)
+                                .setIncludePad(false)
+                                .build()
+                        } else {
+                            @Suppress("DEPRECATION")
+                            StaticLayout(textToRender, depthPaint, targetW.toInt().coerceAtLeast(10), align, lineMultiplier, 0f, false)
+                        }
+                        for (d in depthSteps downTo 1) {
+                            canvas.save()
+                            canvas.translate(posX + bgPad + d * 1.5f, posY + bgPad + d * 1.5f)
+                            depthLayout.draw(canvas)
+                            canvas.restore()
+                        }
+                    }
+
+                    // Render Stroke / Outline
+                    if (item.textStrokeWidth > 0f && item.strokeColorHex != 0) {
+                        val strokePaint = TextPaint(textPaint).apply {
+                            style = Paint.Style.STROKE
+                            strokeWidth = item.textStrokeWidth * strokeScale
+                            color = item.strokeColorHex
+                            clearShadowLayer()
+                        }
+                        val strokeLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                            StaticLayout.Builder.obtain(textToRender, 0, textToRender.length, strokePaint, targetW.toInt().coerceAtLeast(10))
+                                .setAlignment(align)
+                                .setLineSpacing(0f, lineMultiplier)
+                                .setIncludePad(false)
+                                .build()
+                        } else {
+                            @Suppress("DEPRECATION")
+                            StaticLayout(textToRender, strokePaint, targetW.toInt().coerceAtLeast(10), align, lineMultiplier, 0f, false)
+                        }
+                        canvas.save()
+                        canvas.translate(posX + bgPad, posY + bgPad)
+                        strokeLayout.draw(canvas)
+                        canvas.restore()
+                    }
+
+                    canvas.translate(posX + bgPad, posY + bgPad)
                     staticLayout.draw(canvas)
                     canvas.restore()
                 }
