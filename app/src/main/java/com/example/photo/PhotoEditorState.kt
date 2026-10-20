@@ -1,6 +1,8 @@
 package com.example.photo
 
+import android.graphics.Bitmap
 import android.graphics.PointF
+import android.graphics.Typeface
 
 enum class PhotoEditCategory(val displayName: String) {
     BASIC("Basic"),
@@ -54,14 +56,41 @@ data class TextItem(
     var isBold: Boolean = false,
     var isItalic: Boolean = false,
     var isUnderline: Boolean = false,
+    var isStrikethrough: Boolean = false,
     var alignment: TextAlignment = TextAlignment.CENTER,
     var opacity: Float = 1.0f,
     var rotationDeg: Float = 0f,
-    var fontId: String = "sans_serif"
+    var fontId: String = "sans_serif",
+    var letterSpacing: Float = 0f,
+    var lineSpacingMultiplier: Float = 1.0f,
+    var curveArc: Float = 0f,
+    var backgroundColor: Int? = null,
+    var backgroundCornerRadius: Float = 0f,
+    var backgroundPadding: Float = 0f,
+    var strokeColor: Int? = null,
+    var strokeWidth: Float = 0f,
+    var shadowColor: Int? = null,
+    var shadowRadius: Float = 0f,
+    var shadowDx: Float = 0f,
+    var shadowDy: Float = 0f,
+    var innerShadowColor: Int? = null,
+    var innerShadowRadius: Float = 0f,
+    var isEmboss: Boolean = false,
+    var perspectiveSlant: Float = 0f,
+    var rotationX: Float = 0f,
+    var rotationY: Float = 0f,
+    var depth3D: Float = 0f,
+    var depth3DColor: Int? = null,
+    var shadow3D: Boolean = false,
+    var hasReflection: Boolean = false,
+    var textureBitmap: Bitmap? = null,
+    var customTypeface: Typeface? = null,
+    var paddingX: Float = 0f,
+    var paddingY: Float = 0f
 )
 
 enum class TextAlignment {
-    LEFT, CENTER, RIGHT
+    LEFT, CENTER, RIGHT, JUSTIFY
 }
 
 data class DrawingStroke(

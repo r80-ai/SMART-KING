@@ -37,10 +37,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Colorize
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.RotateRight
 import androidx.compose.material.icons.filled.ZoomOutMap
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -76,8 +78,10 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -747,23 +751,33 @@ fun TextOverlayCanvas(
                     }
                     .graphicsLayer {
                         rotationZ = item.rotationDeg
+                        rotationX = item.rotationX
+                        rotationY = item.rotationY
                         alpha = item.opacity.coerceIn(0.05f, 1f)
                     }
                     .padding(8.dp)
             ) {
                 // Text Bounding Box with Smooth Drag, Pinch & Rotate
-                Box(
+                Column(
                     modifier = Modifier
                         .border(
                             width = if (isSelected) 2.dp else 0.dp,
                             color = if (isSelected) CrimsonPrimary else Color.Transparent,
-                            shape = RoundedCornerShape(8.dp)
+                            shape = RoundedCornerShape(item.backgroundCornerRadius.coerceAtLeast(8f).dp)
                         )
                         .background(
-                            if (isSelected) Color(0x33E11D48) else Color.Transparent,
-                            shape = RoundedCornerShape(8.dp)
+                            when {
+                                item.backgroundColor != null && isSelected -> Color(item.backgroundColor!!)
+                                item.backgroundColor != null -> Color(item.backgroundColor!!)
+                                isSelected -> Color(0x33E11D48)
+                                else -> Color.Transparent
+                            },
+                            shape = RoundedCornerShape(item.backgroundCornerRadius.coerceAtLeast(8f).dp)
                         )
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .padding(
+                            horizontal = (14 + item.paddingX + item.backgroundPadding).dp,
+                            vertical = (10 + item.paddingY + item.backgroundPadding).dp
+                        )
                         .pointerInput(item.id, widthPx, heightPx) {
                             detectTapGestures(
                                 onPress = {
@@ -813,7 +827,7 @@ fun TextOverlayCanvas(
                                     if (touchSlopPassed) {
                                         accNormX = (accNormX + pan.x / widthPx)
                                         accNormY = (accNormY + pan.y / heightPx)
-                                        accSize = (accSize * zoom).coerceAtLeast(1f)
+                                        accSize = (accSize * zoom).coerceAtLeast(8f)
                                         accRot = (accRot + rotation) % 360f
 
                                         currentOnUpdateState.value(
@@ -830,26 +844,70 @@ fun TextOverlayCanvas(
                             }
                         }
                 ) {
+                    val combinedDecoration = when {
+                        item.isUnderline && item.isStrikethrough -> TextDecoration.combine(listOf(TextDecoration.Underline, TextDecoration.LineThrough))
+                        item.isUnderline -> TextDecoration.Underline
+                        item.isStrikethrough -> TextDecoration.LineThrough
+                        else -> TextDecoration.None
+                    }
+
                     Text(
                         text = item.text,
                         color = Color(item.color),
                         fontSize = item.fontSizeSp.sp,
+                        letterSpacing = item.letterSpacing.sp,
+                        lineHeight = (item.fontSizeSp * item.lineSpacingMultiplier).sp,
                         fontFamily = font.fontFamily,
                         fontWeight = if (item.isBold || font.defaultBold) FontWeight.Bold else FontWeight.Normal,
                         fontStyle = if (item.isItalic || font.defaultItalic) FontStyle.Italic else FontStyle.Normal,
-                        textDecoration = if (item.isUnderline) TextDecoration.Underline else TextDecoration.None,
+                        textDecoration = combinedDecoration,
                         textAlign = when (item.alignment) {
-                            TextAlignment.LEFT -> androidx.compose.ui.text.style.TextAlign.Start
-                            TextAlignment.CENTER -> androidx.compose.ui.text.style.TextAlign.Center
-                            TextAlignment.RIGHT -> androidx.compose.ui.text.style.TextAlign.End
+                            TextAlignment.LEFT -> TextAlign.Start
+                            TextAlignment.CENTER -> TextAlign.Center
+                            TextAlignment.RIGHT -> TextAlign.End
+                            TextAlignment.JUSTIFY -> TextAlign.Justify
                         },
+                        style = TextStyle(
+                            shadow = if (item.shadowColor != null && item.shadowRadius > 0f) {
+                                Shadow(
+                                    color = Color(item.shadowColor!!),
+                                    offset = Offset(item.shadowDx, item.shadowDy),
+                                    blurRadius = item.shadowRadius
+                                )
+                            } else null
+                        ),
                         modifier = Modifier.padding(4.dp)
                     )
+
+                    // Reflection Preview
+                    if (item.hasReflection) {
+                        Text(
+                            text = item.text,
+                            color = Color(item.color).copy(alpha = 0.35f),
+                            fontSize = item.fontSizeSp.sp,
+                            letterSpacing = item.letterSpacing.sp,
+                            fontFamily = font.fontFamily,
+                            fontWeight = if (item.isBold || font.defaultBold) FontWeight.Bold else FontWeight.Normal,
+                            fontStyle = if (item.isItalic || font.defaultItalic) FontStyle.Italic else FontStyle.Normal,
+                            textAlign = when (item.alignment) {
+                                TextAlignment.LEFT -> TextAlign.Start
+                                TextAlignment.CENTER -> TextAlign.Center
+                                TextAlignment.RIGHT -> TextAlign.End
+                                TextAlignment.JUSTIFY -> TextAlign.Justify
+                            },
+                            modifier = Modifier
+                                .graphicsLayer {
+                                    scaleY = -0.7f
+                                    alpha = 0.4f
+                                }
+                                .padding(top = 2.dp)
+                        )
+                    }
                 }
 
                 // Interactive Corner Handles when selected (Touch targets >= 48dp)
                 if (isSelected) {
-                    // Top-Left: Edit Text Handle
+                    // Top-Left: Edit Text Handle (Pencil Icon -> opens text edit dialog)
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopStart)
@@ -875,11 +933,11 @@ fun TextOverlayCanvas(
                         }
                     }
 
-                    // Bottom-Left: Delete Text Handle
+                    // Top-Right: Delete Text Handle (Trash / Cross Icon -> removes immediately)
                     Box(
                         modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .offset(x = (-14).dp, y = 14.dp)
+                            .align(Alignment.TopEnd)
+                            .offset(x = 14.dp, y = (-14).dp)
                             .size(48.dp)
                             .clickable { currentOnDeleteTextState.value(item.id) },
                         contentAlignment = Alignment.Center
@@ -893,19 +951,19 @@ fun TextOverlayCanvas(
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Close,
-                                contentDescription = "Delete Text",
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Delete Text Layer",
                                 tint = Color.White,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
                     }
 
-                    // Top-Right: Rotate Handle (Smooth real-time drag to rotate)
+                    // Bottom-Left / Corner: Rotate Handle (Touch-rotate 0° to 360°)
                     Box(
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .offset(x = 14.dp, y = (-14).dp)
+                            .align(Alignment.BottomStart)
+                            .offset(x = (-14).dp, y = 14.dp)
                             .size(48.dp)
                             .pointerInput(item.id) {
                                 awaitEachGesture {
@@ -916,7 +974,7 @@ fun TextOverlayCanvas(
                                         val event = awaitPointerEvent()
                                         val pan = event.calculatePan()
                                         if (pan != Offset.Zero) {
-                                            val rotDelta = (pan.x + pan.y) * 0.75f
+                                            val rotDelta = (pan.x - pan.y) * 0.75f
                                             accRot = (accRot + rotDelta) % 360f
                                             currentOnUpdateState.value(currentItemState.value.copy(rotationDeg = accRot))
                                             event.changes.forEach { it.consume() }
@@ -943,7 +1001,7 @@ fun TextOverlayCanvas(
                         }
                     }
 
-                    // Bottom-Right: Resize Handle (Smooth real-time drag to scale font size)
+                    // Bottom-Right: Resize & Scale Handle (Free-form drag to adjust scale)
                     Box(
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -959,7 +1017,7 @@ fun TextOverlayCanvas(
                                         val pan = event.calculatePan()
                                         if (pan != Offset.Zero) {
                                             val sizeDelta = (pan.x + pan.y) * 0.35f
-                                            accSize = (accSize + sizeDelta).coerceAtLeast(1f)
+                                            accSize = (accSize + sizeDelta).coerceAtLeast(8f)
                                             currentOnUpdateState.value(currentItemState.value.copy(fontSizeSp = accSize))
                                             event.changes.forEach { it.consume() }
                                         }
