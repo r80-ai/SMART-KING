@@ -2117,7 +2117,7 @@ private fun PageOptionsSection(
     onSplitPdf: () -> Unit,
     onMergePdf: () -> Unit,
     onSelectAll: () -> Unit,
-    onApplyChanges: () -> Unit
+    onApplyChanges: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -2146,18 +2146,6 @@ private fun PageOptionsSection(
             ToolButtonCard(Modifier.weight(1f), "Merge PDF", Icons.Default.MergeType, ToolGreen, onMergePdf)
             ToolButtonCard(Modifier.weight(1f), "Select All", Icons.Default.SelectAll, ToolPurple, onSelectAll)
         }
-        Spacer(modifier = Modifier.height(6.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp)
-                .testTag("btn_apply_page_changes")
-        ) {
-            Text("Apply Page Changes", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-        }
     }
 }
 
@@ -2169,7 +2157,7 @@ private fun EditOptionsSection(
     onMargins: () -> Unit,
     onWatermark: () -> Unit,
     onBackground: () -> Unit,
-    onApplyChanges: () -> Unit
+    onApplyChanges: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -2188,18 +2176,6 @@ private fun EditOptionsSection(
             ToolButtonCard(Modifier.weight(1f), "Margins", Icons.Default.BorderOuter, ToolGreen, onMargins)
             ToolButtonCard(Modifier.weight(1f), "Watermark", Icons.Default.Layers, ToolPurple, onWatermark)
             ToolButtonCard(Modifier.weight(1f), "Background", Icons.Default.Palette, ToolOrange, onBackground)
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp)
-                .testTag("btn_apply_edit_changes")
-        ) {
-            Text("Apply Edits", fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -2425,7 +2401,7 @@ private fun MoreOptionsSection(
     onAddPageNumbers: () -> Unit,
     onSaveExport: () -> Unit,
     onExportSAF: () -> Unit,
-    onApplyChanges: () -> Unit
+    onApplyChanges: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -2452,18 +2428,6 @@ private fun MoreOptionsSection(
         ) {
             ToolButtonCard(Modifier.weight(1f), "Export to Device", Icons.Default.Download, ToolGreen, onExportSAF)
             Spacer(modifier = Modifier.weight(2f))
-        }
-        Spacer(modifier = Modifier.height(6.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(34.dp)
-                .testTag("btn_apply_more_changes")
-        ) {
-            Text("Apply Changes", fontSize = 12.sp, fontWeight = FontWeight.Bold)
         }
     }
 }
