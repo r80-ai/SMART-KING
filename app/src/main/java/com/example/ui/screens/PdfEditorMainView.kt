@@ -1299,28 +1299,12 @@ fun PdfEditorMainView(
                                                                 }.lastOrNull { item ->
                                                                     isAnnotationHit(item, offset.x, offset.y, 16f)
                                                                 }
-                                                                if (clicked != null) {
-                                                                    selectedAnnotationId = clicked.id
-                                                                } else {
-                                                                    selectedAnnotationId = null
-                                                                }
+                                                                selectedAnnotationId = clicked?.id
                                                             }
                                                         )
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
                                     ) {
                                         // Draw existing annotation edit items on this page
                                         val pageItems = editItems.filter {
@@ -1922,14 +1906,14 @@ fun PdfEditorMainView(
                                 onColorChange = { newC ->
                                     pushHistory()
                                     val idx = editItems.indexOfFirst { it.id == selItem.id }
-                                    if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = AndroidColor.parseColor(newC))
+                                    if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = newC)
                                 },
                                 onOpenColorPicker = {
                                     colorPickerInitialColor = selItem.colorHex
                                     onCustomColorSelected = { newC ->
                                         pushHistory()
                                         val idx = editItems.indexOfFirst { it.id == selItem.id }
-                                        if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = AndroidColor.parseColor(newC))
+                                        if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = newC)
                                     }
                                     showCustomColorPicker = true
                                 },
@@ -3416,8 +3400,8 @@ private fun DrawAnnotationSection(
     onBrushSizeChange: (Float) -> Unit,
     opacity: Float,
     onOpacityChange: (Float) -> Unit,
-    colorHex: Int,
-    onColorChange: (Int) -> Unit,
+    colorHex: String,
+    onColorChange: (String) -> Unit,
     onOpenColorPicker: () -> Unit,
     onUndo: () -> Unit,
     canUndo: Boolean,
@@ -3535,7 +3519,7 @@ private fun DrawAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val isSel = colorHex == AndroidColor.parseColor(hex)
+                val isSel = colorHex.equals(hex, ignoreCase = true)
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -3569,8 +3553,8 @@ private fun HighlightAnnotationSection(
     onThicknessChange: (Float) -> Unit,
     opacity: Float,
     onOpacityChange: (Float) -> Unit,
-    colorHex: Int,
-    onColorChange: (Int) -> Unit,
+    colorHex: String,
+    onColorChange: (String) -> Unit,
     onOpenColorPicker: () -> Unit,
     onUndo: () -> Unit,
     canUndo: Boolean,
@@ -3688,7 +3672,7 @@ private fun HighlightAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             highlightPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Yellow }
-                val isSel = colorHex == AndroidColor.parseColor(hex)
+                val isSel = colorHex.equals(hex, ignoreCase = true)
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -4109,7 +4093,7 @@ private fun SelectedAnnotationBar(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val isSel = item.colorHex == AndroidColor.parseColor(hex)
+                val isSel = item.colorHex.equals(hex, ignoreCase = true)
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -4221,21 +4205,21 @@ private fun isAnnotationHit(
         PdfEngine.AnnotationType.DRAW,
         PdfEngine.AnnotationType.PEN,
         PdfEngine.AnnotationType.HIGHLIGHTER -> {
-            val pts = item.points
+            val pts = item.strokePoints
             if (pts.isEmpty()) {
                 val dx = touchX - item.posX
                 val dy = touchY - item.posY
                 dx * dx + dy * dy <= strokeTolSq
             } else if (pts.size == 1) {
-                val dx = touchX - pts[0].first
-                val dy = touchY - pts[0].second
+                val dx = touchX - pts[0].x
+                val dy = touchY - pts[0].y
                 dx * dx + dy * dy <= strokeTolSq
             } else {
                 var hit = false
                 for (i in 0 until pts.size - 1) {
                     val p1 = pts[i]
                     val p2 = pts[i + 1]
-                    if (distToSegmentSq(touchX, touchY, p1.first, p1.second, p2.first, p2.second) <= strokeTolSq) {
+                    if (distToSegmentSq(touchX, touchY, p1.x, p1.y, p2.x, p2.y) <= strokeTolSq) {
                         hit = true
                         break
                     }
