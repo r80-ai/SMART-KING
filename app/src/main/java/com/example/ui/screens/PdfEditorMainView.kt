@@ -80,6 +80,7 @@ import com.example.pdf.PdfEngine
 import com.example.pdf.PdfToJpgConversionResult
 import com.example.pdf.PdfToJpgConverter
 import com.example.storage.GlobalSaveManager
+import com.example.ui.ActiveModal
 import com.example.ui.PdfMasterViewModel
 import com.example.ui.dialogs.WorkspaceCropDialog
 import com.example.ui.dialogs.WorkspacePageNumbersDialog
@@ -302,10 +303,10 @@ fun PdfEditorMainView(
                                 } else {
                                     pushHistory()
                                     val pageBmp = pages.getOrNull(currentPageIndex)
-                                    val pageW = pageBmp?.width?.toFloat() ?: 600f
-                                    val pageH = pageBmp?.height?.toFloat() ?: 800f
-                                    val initW = (pageW * 0.45f).coerceIn(120f, 500f)
-                                    val initH = (initW * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
+                                    val pageW = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else (pageBmp?.width?.toFloat() ?: 600f)
+                                    val pageH = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else (pageBmp?.height?.toFloat() ?: 800f)
+                                    val initW = (pageW * 0.45f).coerceIn(100f, pageW * 0.9f)
+                                    val initH = (initW * bmp.height / bmp.width.coerceAtLeast(1)).coerceIn(40f, pageH * 0.9f)
                                     val initX = ((pageW - initW) / 2f).coerceAtLeast(0f)
                                     val initY = ((pageH - initH) / 3f).coerceAtLeast(0f)
 
@@ -324,7 +325,7 @@ fun PdfEditorMainView(
                                     editItems.add(newItem)
                                     selectedAnnotationId = newItem.id
                                     activeTab = EditorTopTab.IMAGE
-                                    Toast.makeText(context, "Image added! Drag and pinch to reposition & resize", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "Image added! Drag and resize with corner handles", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -602,9 +603,7 @@ fun PdfEditorMainView(
                             leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
                             onClick = {
                                 moreMenuExpanded = false
-                                val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                viewModel.compressPdfCustom(currentFile, targetKB, outName)
+                                viewModel.openModal(ActiveModal.COMPRESS, currentFile)
                             },
                             modifier = Modifier.testTag("menu_item_compress")
                         )
@@ -855,10 +854,7 @@ fun PdfEditorMainView(
                         EditorTopTab.MORE -> {
                             MoreOptionsSection(
                                 onCompress = {
-                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
-                                    Toast.makeText(context, "Compressing PDF...", Toast.LENGTH_SHORT).show()
+                                    viewModel.openModal(ActiveModal.COMPRESS, currentFile)
                                 },
                                 onConvertToImages = {
                                     handleConvertToImages()
@@ -1275,7 +1271,7 @@ fun PdfEditorMainView(
                                                             }
                                                         )
                                                     }
-                                                    .pointerInput(imgItem.id) {
+                                                    .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                         detectDragGestures(
                                                             onDragStart = {
                                                                 pushHistory()
@@ -1284,9 +1280,8 @@ fun PdfEditorMainView(
                                                             },
                                                             onDrag = { change, dragAmount ->
                                                                 change.consume()
-                                                                val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                val dX = dragAmount.x / scale
-                                                                val dY = dragAmount.y / scale
+                                                                val dX = dragAmount.x
+                                                                val dY = dragAmount.y
                                                                 val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                 if (idx != -1) {
                                                                     val cur = editItems[idx]
@@ -1317,27 +1312,26 @@ fun PdfEditorMainView(
                                                             .border(1.5.dp, ToolBlue, RoundedCornerShape(2.dp))
                                                     )
 
-                                                    val cornerTouchSize = 36.dp
+                                                    val cornerTouchSize = 44.dp
                                                     val handleCircleSize = 13.dp
                                                     val handleColor = ToolBlue
                                                     val handleInner = Color.White
 
-                                                    // --- 4 CORNER HANDLES (Fluid 2D Scaling / Resizing) ---
+                                                    // --- 4 CORNER HANDLES (Independent W & H 2D Scaling / Resizing) ---
 
                                                     // TOP-LEFT CORNER HANDLE
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopStart)
-                                                            .offset(x = (-18).dp, y = (-18).dp)
+                                                            .offset(x = (-22).dp, y = (-22).dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
@@ -1366,16 +1360,15 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopEnd)
-                                                            .offset(x = 18.dp, y = (-18).dp)
+                                                            .offset(x = 22.dp, y = (-22).dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
@@ -1402,16 +1395,15 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomStart)
-                                                            .offset(x = (-18).dp, y = 18.dp)
+                                                            .offset(x = (-22).dp, y = 22.dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
@@ -1438,16 +1430,15 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomEnd)
-                                                            .offset(x = 18.dp, y = 18.dp)
+                                                            .offset(x = 22.dp, y = 22.dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
