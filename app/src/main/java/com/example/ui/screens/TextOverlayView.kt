@@ -66,13 +66,6 @@ class TextOverlayView @JvmOverloads constructor(
     private var activeResizeCorner = -1
     private var lastTouchX = 0f
     private var lastTouchY = 0f
-    private var initialDownX = 0f
-    private var initialDownY = 0f
-    private var initialBoxW = 0f
-    private var initialBoxH = 0f
-    private var initialFontSize = 24f
-    private var initialPosX = 0f
-    private var initialPosY = 0f
     private var initialItem: PdfEngine.EditItem? = null
 
     private enum class TouchMode {
@@ -214,7 +207,7 @@ class TextOverlayView @JvmOverloads constructor(
                 curY += lineHeight
             }
 
-            // Bounding box display and interactive handles (exact blue border line and 4 corner points)
+            // Bounding box display and interactive handles
             if (isSelected) {
                 boundingPaint.strokeWidth = stroke3dp
                 boundingPaint.color = Color.parseColor("#3B82F6") // ToolBlue Accent
@@ -248,24 +241,16 @@ class TextOverlayView @JvmOverloads constructor(
             MotionEvent.ACTION_DOWN -> {
                 lastTouchX = x
                 lastTouchY = y
-                initialDownX = x
-                initialDownY = y
 
                 // 1. Check if user clicked a handle on the selected layer
                 val selItem = layers.find { it.id == selectedLayerId }
                 if (selItem != null && !selItem.isLocked) {
                     val cornerIdx = getHitCorner(selItem, x, y)
                     if (cornerIdx != -1) {
-                        parent?.requestDisallowInterceptTouchEvent(true)
                         onHistoryPush?.invoke()
                         activeMode = TouchMode.RESIZE
                         activeResizeCorner = cornerIdx
                         initialItem = selItem
-                        initialBoxW = getLayerBoxWidth(selItem)
-                        initialBoxH = getLayerBoxHeight(selItem)
-                        initialFontSize = selItem.fontSize
-                        initialPosX = selItem.posX
-                        initialPosY = selItem.posY
                         return true
                     }
                 }
@@ -273,14 +258,11 @@ class TextOverlayView @JvmOverloads constructor(
                 // 2. Check if user touched any layer
                 val hit = findLayerAt(x, y)
                 if (hit != null) {
-                    parent?.requestDisallowInterceptTouchEvent(true)
                     onHistoryPush?.invoke()
                     selectedLayerId = hit.id
                     onLayerSelected?.invoke(hit.id)
                     activeMode = if (!hit.isLocked) TouchMode.DRAG else TouchMode.NONE
                     initialItem = hit
-                    initialPosX = hit.posX
-                    initialPosY = hit.posY
                     postInvalidate()
                     return true
                 } else {
@@ -294,10 +276,6 @@ class TextOverlayView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                if (activeMode != TouchMode.NONE) {
-                    parent?.requestDisallowInterceptTouchEvent(true)
-                }
-
                 val dx = x - lastTouchX
                 val dy = y - lastTouchY
                 lastTouchX = x
@@ -318,61 +296,41 @@ class TextOverlayView @JvmOverloads constructor(
                         }
 
                         TouchMode.RESIZE -> {
-                            val totalDx = x - initialDownX
-                            val totalDy = y - initialDownY
-
-                            var newX = initialPosX
-                            var newY = initialPosY
-                            var newW = initialBoxW
-                            var newH = initialBoxH
+                            val curW = getLayerBoxWidth(curItem)
+                            val curH = getLayerBoxHeight(curItem)
+                            var newX = curItem.posX
+                            var newY = curItem.posY
+                            var newW = curW
+                            var newH = curH
 
                             when (activeResizeCorner) {
                                 0 -> { // Top-Left
-                                    newW = max(initialBoxW - totalDx, 40f)
-                                    newH = max(initialBoxH - totalDy, 30f)
-                                    newX = initialPosX + (initialBoxW - newW)
-                                    newY = initialPosY + (initialBoxH - newH)
+                                    newX = curItem.posX + dx
+                                    newY = curItem.posY + dy
+                                    newW = max(curW - dx, 40f)
+                                    newH = max(curH - dy, 30f)
                                 }
                                 1 -> { // Top-Right
-                                    newW = max(initialBoxW + totalDx, 40f)
-                                    newH = max(initialBoxH - totalDy, 30f)
-                                    newX = initialPosX
-                                    newY = initialPosY + (initialBoxH - newH)
+                                    newY = curItem.posY + dy
+                                    newW = max(curW + dx, 40f)
+                                    newH = max(curH - dy, 30f)
                                 }
                                 2 -> { // Bottom-Left
-                                    newW = max(initialBoxW - totalDx, 40f)
-                                    newH = max(initialBoxH + totalDy, 30f)
-                                    newX = initialPosX + (initialBoxW - newW)
-                                    newY = initialPosY
+                                    newX = curItem.posX + dx
+                                    newW = max(curW - dx, 40f)
+                                    newH = max(curH + dy, 30f)
                                 }
                                 3 -> { // Bottom-Right
-                                    newW = max(initialBoxW + totalDx, 40f)
-                                    newH = max(initialBoxH + totalDy, 30f)
-                                    newX = initialPosX
-                                    newY = initialPosY
+                                    newW = max(curW + dx, 40f)
+                                    newH = max(curH + dy, 30f)
                                 }
-                            }
-
-                            // Determine if diagonal scaling (scale font & box together) or horizontal/vertical stretching
-                            val scaleW = newW / initialBoxW.coerceAtLeast(1f)
-                            val scaleH = newH / initialBoxH.coerceAtLeast(1f)
-                            val dw = abs(newW - initialBoxW)
-                            val dh = abs(newH - initialBoxH)
-
-                            val isDiagonal = (scaleW - 1f) * (scaleH - 1f) > 0f && dw > 8f && dh > 8f
-                            val targetFontSize = if (isDiagonal) {
-                                val avgScale = (scaleW + scaleH) / 2f
-                                (initialFontSize * avgScale).coerceIn(10f, 250f)
-                            } else {
-                                initialFontSize
                             }
 
                             val updated = curItem.copy(
                                 posX = newX,
                                 posY = newY,
                                 boxWidth = newW,
-                                boxHeight = newH,
-                                fontSize = targetFontSize
+                                boxHeight = newH
                             )
                             updateSingleLayer(updated)
                             onLayerUpdated?.invoke(updated)
@@ -386,7 +344,6 @@ class TextOverlayView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                parent?.requestDisallowInterceptTouchEvent(false)
                 activeMode = TouchMode.NONE
                 activeResizeCorner = -1
                 initialItem = null
@@ -401,18 +358,6 @@ class TextOverlayView @JvmOverloads constructor(
         if (idx != -1) {
             layers[idx] = updated
         }
-    }
-
-    private fun unrotatePoint(px: Float, py: Float, cx: Float, cy: Float, angleDegrees: Float): Pair<Float, Float> {
-        if (angleDegrees == 0f) return Pair(px, py)
-        val rad = Math.toRadians(-angleDegrees.toDouble())
-        val cos = Math.cos(rad).toFloat()
-        val sin = Math.sin(rad).toFloat()
-        val dx = px - cx
-        val dy = py - cy
-        val rx = cx + (dx * cos - dy * sin)
-        val ry = cy + (dx * sin + dy * cos)
-        return Pair(rx, ry)
     }
 
     private fun getLayerBoxWidth(layer: PdfEngine.EditItem): Float {
@@ -447,12 +392,8 @@ class TextOverlayView @JvmOverloads constructor(
             if (!item.isVisible) continue
             val w = getLayerBoxWidth(item)
             val h = getLayerBoxHeight(item)
-            val cx = item.posX + w / 2f
-            val cy = item.posY + h / 2f
-            val rot = item.getRotationAngle()
-            val (ux, uy) = if (rot != 0f) unrotatePoint(x, y, cx, cy, rot) else Pair(x, y)
             val rect = RectF(item.posX, item.posY, item.posX + w, item.posY + h)
-            if (rect.contains(ux, uy)) {
+            if (rect.contains(x, y)) {
                 return item
             }
         }
@@ -462,11 +403,7 @@ class TextOverlayView @JvmOverloads constructor(
     private fun getHitCorner(item: PdfEngine.EditItem, x: Float, y: Float): Int {
         val w = getLayerBoxWidth(item)
         val h = getLayerBoxHeight(item)
-        val cx = item.posX + w / 2f
-        val cy = item.posY + h / 2f
-        val rot = item.getRotationAngle()
-        val (ux, uy) = if (rot != 0f) unrotatePoint(x, y, cx, cy, rot) else Pair(x, y)
-        val hitRadius = 28f * resources.displayMetrics.density
+        val hitRadius = 24f * resources.displayMetrics.density
         val corners = listOf(
             Pair(item.posX, item.posY),
             Pair(item.posX + w, item.posY),
@@ -475,7 +412,7 @@ class TextOverlayView @JvmOverloads constructor(
         )
         for (i in corners.indices) {
             val c = corners[i]
-            if (abs(ux - c.first) <= hitRadius && abs(uy - c.second) <= hitRadius) {
+            if (abs(x - c.first) <= hitRadius && abs(y - c.second) <= hitRadius) {
                 return i
             }
         }
