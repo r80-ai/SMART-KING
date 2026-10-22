@@ -1133,49 +1133,49 @@ object PhotoEditorEngine {
      * Burns user added text overlays directly onto the bitmap canvas.
      */
     fun burnText(bitmap: Bitmap, textItems: List<TextItem>): Bitmap {
-        return burnLayers(bitmap, textItems, emptyList())
-    }
-
-    fun burnLayers(
-        bitmap: Bitmap,
-        textItems: List<TextItem>,
-        imageLayers: List<ImageLayerItem> = emptyList()
-    ): Bitmap {
-        if (bitmap.isRecycled) return bitmap
+        if (bitmap.isRecycled || textItems.isEmpty()) return bitmap
         val output = bitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(output)
         val w = output.width.toFloat()
         val h = output.height.toFloat()
-        val scaleFactor = (max(w, h) / 1000f).coerceIn(0.5f, 5f)
 
-        // Draw image layers first (under text layers)
-        for (img in imageLayers) {
-            if (!img.isVisible || img.bitmap.isRecycled) continue
-            canvas.save()
-            val cx = img.normX * w
-            val cy = img.normY * h
-            canvas.translate(cx, cy)
-            canvas.rotate(img.rotationDeg)
-            val p = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                alpha = (img.opacity.coerceIn(0.05f, 1f) * 255).toInt().coerceIn(0, 255)
-            }
-            val targetW = img.widthPx * scaleFactor
-            val targetH = img.heightPx * scaleFactor
-            val dst = RectF(-targetW / 2f, -targetH / 2f, targetW / 2f, targetH / 2f)
-            canvas.drawBitmap(img.bitmap, null, dst, p)
-            canvas.restore()
-        }
-
-        // Draw text layers using advanced TextEffectRenderer
         for (item in textItems) {
-            if (!item.isVisible) continue
-            com.example.ui.screens.TextEffectRenderer.drawPhotoTextItem(
-                canvas = canvas,
-                item = item,
-                viewWidth = w,
-                viewHeight = h,
-                canvasScale = scaleFactor
-            )
+            val scaleFactor = (max(w, h) / 1000f).coerceIn(0.5f, 5f)
+            val px = item.normX * w
+            val py = item.normY * h
+
+            val baseAlpha = (item.color ushr 24) and 0xFF
+            val finalAlpha = (baseAlpha * item.opacity.coerceIn(0.05f, 1f)).toInt().coerceIn(0, 255)
+            val colorWithAlpha = (item.color and 0x00FFFFFF) or (finalAlpha shl 24)
+
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colorWithAlpha
+                textSize = (item.fontSizeSp * scaleFactor).coerceAtLeast(14f)
+                typeface = PhotoFonts.getTypeface(item.fontId, item.isBold, item.isItalic)
+                isUnderlineText = item.isUnderline
+                textAlign = when (item.alignment) {
+                    TextAlignment.LEFT -> Paint.Align.LEFT
+                    TextAlignment.CENTER -> Paint.Align.CENTER
+                    TextAlignment.RIGHT -> Paint.Align.RIGHT
+                }
+                setShadowLayer(4f * scaleFactor, 2f * scaleFactor, 2f * scaleFactor, Color.argb((160 * item.opacity).toInt(), 0, 0, 0))
+            }
+
+            canvas.save()
+            if (item.rotationDeg != 0f) {
+                canvas.rotate(item.rotationDeg, px, py)
+            }
+
+            val lines = item.text.split("\n")
+            val fontMetrics = paint.fontMetrics
+            val lineHeight = fontMetrics.bottom - fontMetrics.top
+
+            var currentY = py - ((lines.size - 1) * lineHeight / 2f)
+            for (line in lines) {
+                canvas.drawText(line, px, currentY, paint)
+                currentY += lineHeight
+            }
+            canvas.restore()
         }
         return output
     }
