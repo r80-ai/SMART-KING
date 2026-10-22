@@ -1299,12 +1299,28 @@ fun PdfEditorMainView(
                                                                 }.lastOrNull { item ->
                                                                     isAnnotationHit(item, offset.x, offset.y, 16f)
                                                                 }
-                                                                selectedAnnotationId = clicked?.id
+                                                                if (clicked != null) {
+                                                                    selectedAnnotationId = clicked.id
+                                                                } else {
+                                                                    selectedAnnotationId = null
+                                                                }
                                                             }
                                                         )
                                                     }
                                                 }
                                             }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
                                     ) {
                                         // Draw existing annotation edit items on this page
                                         val pageItems = editItems.filter {
@@ -1906,14 +1922,14 @@ fun PdfEditorMainView(
                                 onColorChange = { newC ->
                                     pushHistory()
                                     val idx = editItems.indexOfFirst { it.id == selItem.id }
-                                    if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = newC)
+                                    if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = AndroidColor.parseColor(newC))
                                 },
                                 onOpenColorPicker = {
                                     colorPickerInitialColor = selItem.colorHex
                                     onCustomColorSelected = { newC ->
                                         pushHistory()
                                         val idx = editItems.indexOfFirst { it.id == selItem.id }
-                                        if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = newC)
+                                        if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = AndroidColor.parseColor(newC))
                                     }
                                     showCustomColorPicker = true
                                 },
@@ -3400,8 +3416,8 @@ private fun DrawAnnotationSection(
     onBrushSizeChange: (Float) -> Unit,
     opacity: Float,
     onOpacityChange: (Float) -> Unit,
-    colorHex: String,
-    onColorChange: (String) -> Unit,
+    colorHex: Int,
+    onColorChange: (Int) -> Unit,
     onOpenColorPicker: () -> Unit,
     onUndo: () -> Unit,
     canUndo: Boolean,
@@ -3519,8 +3535,7 @@ private fun DrawAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
-                val isSel = colorHex == parsed
+                val isSel = colorHex == AndroidColor.parseColor(hex)
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -3531,7 +3546,7 @@ private fun DrawAnnotationSection(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onColorChange(parsed) }
+                        .clickable { onColorChange(hex) }
                 )
             }
             IconButton(
@@ -3554,8 +3569,8 @@ private fun HighlightAnnotationSection(
     onThicknessChange: (Float) -> Unit,
     opacity: Float,
     onOpacityChange: (Float) -> Unit,
-    colorHex: String,
-    onColorChange: (String) -> Unit,
+    colorHex: Int,
+    onColorChange: (Int) -> Unit,
     onOpenColorPicker: () -> Unit,
     onUndo: () -> Unit,
     canUndo: Boolean,
@@ -3673,8 +3688,7 @@ private fun HighlightAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             highlightPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Yellow }
-                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
-                val isSel = colorHex == parsed
+                val isSel = colorHex == AndroidColor.parseColor(hex)
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -3685,7 +3699,7 @@ private fun HighlightAnnotationSection(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onColorChange(parsed) }
+                        .clickable { onColorChange(hex) }
                 )
             }
             IconButton(
@@ -3878,8 +3892,7 @@ private fun ShapesAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
-                val isSel = strokeColorHex == parsed
+                val isSel = strokeColorHex.equals(hex, ignoreCase = true)
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -3890,7 +3903,7 @@ private fun ShapesAnnotationSection(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onStrokeColorChange(parsed) }
+                        .clickable { onStrokeColorChange(hex) }
                 )
             }
             IconButton(
@@ -4096,8 +4109,7 @@ private fun SelectedAnnotationBar(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
-                val isSel = item.colorHex == parsed
+                val isSel = item.colorHex == AndroidColor.parseColor(hex)
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -4108,7 +4120,7 @@ private fun SelectedAnnotationBar(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onColorChange(parsed) }
+                        .clickable { onColorChange(hex) }
                 )
             }
             IconButton(
@@ -4184,24 +4196,6 @@ private fun AnnotationToolbarTabItem(
     }
 }
 
-private fun eraseAnnotationsAt(
-    editItems: SnapshotStateList<PdfEngine.EditItem>,
-    pageIndex: Int,
-    eraseX: Float,
-    eraseY: Float,
-    radius: Float
-) {
-    val radiusSq = radius * radius
-    val toRemove = mutableListOf<PdfEngine.EditItem>()
-    for (item in editItems) {
-        if (item.pageIndex != pageIndex) continue
-        if (isAnnotationHit(item, eraseX, eraseY, radius)) {
-            toRemove.add(item)
-        }
-    }
-    editItems.removeAll(toRemove)
-}
-
 private fun distToSegmentSq(px: Float, py: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
     val l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)
     if (l2 == 0f) return (px - x1) * (px - x1) + (py - y1) * (py - y1)
@@ -4220,7 +4214,7 @@ private fun isAnnotationHit(
     touchY: Float,
     hitTolerance: Float
 ): Boolean {
-    val strokeTol = (item.strokeWidth) / 2f + hitTolerance
+    val strokeTol = (item.strokeWidth ?: 4f) / 2f + hitTolerance
     val strokeTolSq = strokeTol * strokeTol
 
     return when (item.type) {
@@ -4253,8 +4247,8 @@ private fun isAnnotationHit(
         PdfEngine.AnnotationType.ARROW -> {
             val x1 = item.posX
             val y1 = item.posY
-            val x2 = item.endX
-            val y2 = item.endY
+            val x2 = item.posX + item.imageWidth
+            val y2 = item.posY + item.imageHeight
             distToSegmentSq(touchX, touchY, x1, y1, x2, y2) <= strokeTolSq
         }
         PdfEngine.AnnotationType.RECTANGLE -> {
@@ -4296,7 +4290,14 @@ private fun isAnnotationHit(
                 perimeterDist <= strokeTol
             }
         }
-        else -> false
+        else -> {
+            val left = item.posX
+            val top = item.posY
+            val right = item.posX + item.imageWidth
+            val bottom = item.posY + item.imageHeight
+            touchX >= left - hitTolerance && touchX <= right + hitTolerance &&
+            touchY >= top - hitTolerance && touchY <= bottom + hitTolerance
+        }
     }
 }
 
