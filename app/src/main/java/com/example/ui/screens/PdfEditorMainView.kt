@@ -3519,7 +3519,8 @@ private fun DrawAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val isSel = colorHex.equals(hex, ignoreCase = true)
+                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
+                val isSel = colorHex == parsed
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -3530,7 +3531,7 @@ private fun DrawAnnotationSection(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onColorChange(hex) }
+                        .clickable { onColorChange(parsed) }
                 )
             }
             IconButton(
@@ -3672,7 +3673,8 @@ private fun HighlightAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             highlightPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Yellow }
-                val isSel = colorHex.equals(hex, ignoreCase = true)
+                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
+                val isSel = colorHex == parsed
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -3683,7 +3685,7 @@ private fun HighlightAnnotationSection(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onColorChange(hex) }
+                        .clickable { onColorChange(parsed) }
                 )
             }
             IconButton(
@@ -3876,7 +3878,8 @@ private fun ShapesAnnotationSection(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val isSel = strokeColorHex.equals(hex, ignoreCase = true)
+                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
+                val isSel = strokeColorHex == parsed
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -3887,7 +3890,7 @@ private fun ShapesAnnotationSection(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onStrokeColorChange(hex) }
+                        .clickable { onStrokeColorChange(parsed) }
                 )
             }
             IconButton(
@@ -4093,7 +4096,8 @@ private fun SelectedAnnotationBar(
             Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
             colorPresets.forEach { hex ->
                 val c = try { Color(AndroidColor.parseColor(hex)) } catch (e: Exception) { Color.Black }
-                val isSel = item.colorHex.equals(hex, ignoreCase = true)
+                val parsed = try { AndroidColor.parseColor(hex) } catch (e: Exception) { 0 }
+                val isSel = item.colorHex == parsed
                 Box(
                     modifier = Modifier
                         .size(24.dp)
@@ -4104,7 +4108,7 @@ private fun SelectedAnnotationBar(
                             color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onColorChange(hex) }
+                        .clickable { onColorChange(parsed) }
                 )
             }
             IconButton(
@@ -4180,6 +4184,24 @@ private fun AnnotationToolbarTabItem(
     }
 }
 
+private fun eraseAnnotationsAt(
+    editItems: SnapshotStateList<PdfEngine.EditItem>,
+    pageIndex: Int,
+    eraseX: Float,
+    eraseY: Float,
+    radius: Float
+) {
+    val radiusSq = radius * radius
+    val toRemove = mutableListOf<PdfEngine.EditItem>()
+    for (item in editItems) {
+        if (item.pageIndex != pageIndex) continue
+        if (isAnnotationHit(item, eraseX, eraseY, radius)) {
+            toRemove.add(item)
+        }
+    }
+    editItems.removeAll(toRemove)
+}
+
 private fun distToSegmentSq(px: Float, py: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
     val l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)
     if (l2 == 0f) return (px - x1) * (px - x1) + (py - y1) * (py - y1)
@@ -4198,28 +4220,28 @@ private fun isAnnotationHit(
     touchY: Float,
     hitTolerance: Float
 ): Boolean {
-    val strokeTol = (item.strokeWidth ?: 4f) / 2f + hitTolerance
+    val strokeTol = (item.strokeWidth) / 2f + hitTolerance
     val strokeTolSq = strokeTol * strokeTol
 
     return when (item.type) {
         PdfEngine.AnnotationType.DRAW,
         PdfEngine.AnnotationType.PEN,
         PdfEngine.AnnotationType.HIGHLIGHTER -> {
-            val pts = item.strokePoints
+            val pts = item.points
             if (pts.isEmpty()) {
                 val dx = touchX - item.posX
                 val dy = touchY - item.posY
                 dx * dx + dy * dy <= strokeTolSq
             } else if (pts.size == 1) {
-                val dx = touchX - pts[0].x
-                val dy = touchY - pts[0].y
+                val dx = touchX - pts[0].first
+                val dy = touchY - pts[0].second
                 dx * dx + dy * dy <= strokeTolSq
             } else {
                 var hit = false
                 for (i in 0 until pts.size - 1) {
                     val p1 = pts[i]
                     val p2 = pts[i + 1]
-                    if (distToSegmentSq(touchX, touchY, p1.x, p1.y, p2.x, p2.y) <= strokeTolSq) {
+                    if (distToSegmentSq(touchX, touchY, p1.first, p1.second, p2.first, p2.second) <= strokeTolSq) {
                         hit = true
                         break
                     }
@@ -4231,8 +4253,8 @@ private fun isAnnotationHit(
         PdfEngine.AnnotationType.ARROW -> {
             val x1 = item.posX
             val y1 = item.posY
-            val x2 = item.posX + item.imageWidth
-            val y2 = item.posY + item.imageHeight
+            val x2 = item.endX
+            val y2 = item.endY
             distToSegmentSq(touchX, touchY, x1, y1, x2, y2) <= strokeTolSq
         }
         PdfEngine.AnnotationType.RECTANGLE -> {
@@ -4274,14 +4296,7 @@ private fun isAnnotationHit(
                 perimeterDist <= strokeTol
             }
         }
-        else -> {
-            val left = item.posX
-            val top = item.posY
-            val right = item.posX + item.imageWidth
-            val bottom = item.posY + item.imageHeight
-            touchX >= left - hitTolerance && touchX <= right + hitTolerance &&
-            touchY >= top - hitTolerance && touchY <= bottom + hitTolerance
-        }
+        else -> false
     }
 }
 

@@ -1,7 +1,0 @@
-{
-  "name": "SMART KING",
-  "description": "All PDF Tools in One App: Merge, Split, Compress, Convert, Edit, Scanner, AI Tools, and File Manager",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
-
