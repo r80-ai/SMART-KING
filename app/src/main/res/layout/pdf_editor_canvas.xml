@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pdf_parent_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- PDF Renderer / Canvas View -->
+    <ImageView
+        android:id="@+id/pdf_renderer_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitCenter"
+        android:adjustViewBounds="true" />
+
+    <!-- TextOverlayView placed LAST in the layout XML so it naturally draws above the PDF bitmap canvas -->
+    <com.example.ui.screens.TextOverlayView
+        android:id="@+id/text_overlay_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="16dp" />
+
+</FrameLayout>
