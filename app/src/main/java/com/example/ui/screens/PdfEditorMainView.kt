@@ -45,6 +45,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.Undo
 import androidx.compose.material.icons.automirrored.filled.Redo
 import androidx.compose.material.icons.filled.*
@@ -80,6 +81,7 @@ import com.example.pdf.PdfEngine
 import com.example.pdf.PdfToJpgConversionResult
 import com.example.pdf.PdfToJpgConverter
 import com.example.storage.GlobalSaveManager
+import com.example.ui.ActiveModal
 import com.example.ui.PdfMasterViewModel
 import com.example.ui.dialogs.WorkspaceCropDialog
 import com.example.ui.dialogs.WorkspacePageNumbersDialog
@@ -90,6 +92,18 @@ import com.example.ui.theme.ToolBlue
 import com.example.ui.theme.ToolGreen
 import com.example.ui.theme.ToolOrange
 import com.example.ui.theme.ToolPurple
+import com.example.ui.dialogs.AnnotationColorPickerDialog
+import kotlin.math.abs
+import kotlin.math.min
+import kotlin.math.max
+import kotlin.math.sqrt
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.Fill
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.PathEffect
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -97,7 +111,15 @@ import java.io.File
 import java.io.FileOutputStream
 
 enum class EditorTopTab {
-    NONE, PAGE, EDIT, TEXT, IMAGE, DRAW, MORE
+    NONE, PAGE, EDIT, MORE
+}
+
+enum class AnnotationTool {
+    NONE, TEXT, IMAGE, DRAW, HIGHLIGHT, SHAPES, ERASER
+}
+
+enum class ShapeKind {
+    RECTANGLE, CIRCLE, LINE, ARROW
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,6 +144,7 @@ fun PdfEditorMainView(
 
     var currentPageIndex by remember { mutableIntStateOf(0) }
     var activeTab by remember { mutableStateOf(EditorTopTab.NONE) }
+    var activeAnnotationTool by remember { mutableStateOf(AnnotationTool.NONE) }
     var zoomScale by remember { mutableFloatStateOf(1.0f) }
     var panOffset by remember { mutableStateOf(Offset.Zero) }
     var fitPageMode by remember { mutableStateOf(true) }
@@ -149,6 +172,7 @@ fun PdfEditorMainView(
             val previous = undoStack.removeAt(undoStack.size - 1)
             editItems.clear()
             editItems.addAll(previous)
+            selectedAnnotationId = null
         }
     }
 
@@ -158,6 +182,7 @@ fun PdfEditorMainView(
             val next = redoStack.removeAt(redoStack.size - 1)
             editItems.clear()
             editItems.addAll(next)
+            selectedAnnotationId = null
         }
     }
 
@@ -175,11 +200,44 @@ fun PdfEditorMainView(
     var textLayerUpdateTrigger by remember { mutableIntStateOf(0) }
     var textOverlayViewRef by remember { mutableStateOf<TextOverlayView?>(null) }
 
+    // Dedicated Annotation Tools state
     // Draw tool state
-    var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
-    var drawColor by remember { mutableIntStateOf(AndroidColor.rgb(37, 99, 235)) }
-    var strokeThickness by remember { mutableFloatStateOf(4f) }
-    val activeStroke = remember { mutableStateListOf<Pair<Float, Float>>() }
+    var drawBrushSize by remember { mutableFloatStateOf(4f) }
+    var drawOpacity by remember { mutableFloatStateOf(1.0f) }
+    var drawColorHex by remember { mutableIntStateOf(AndroidColor.rgb(37, 99, 235)) } // Blue
+
+    // Highlight tool state
+    var highlightThickness by remember { mutableFloatStateOf(24f) }
+    var highlightOpacity by remember { mutableFloatStateOf(0.40f) }
+    var highlightColorHex by remember { mutableIntStateOf(AndroidColor.rgb(234, 179, 8)) } // Yellow
+
+    // Shapes tool state
+    var selectedShapeChoice by remember { mutableStateOf(ShapeKind.RECTANGLE) }
+    var shapeStrokeColorHex by remember { mutableIntStateOf(AndroidColor.rgb(220, 38, 38)) } // Crimson
+    var shapeFillColorHex by remember { mutableIntStateOf(AndroidColor.rgb(220, 38, 38)) }
+    var shapeHasFill by remember { mutableStateOf(false) }
+    var shapeStrokeWidth by remember { mutableFloatStateOf(4f) }
+    var shapeOpacity by remember { mutableFloatStateOf(1.0f) }
+
+    // Eraser tool state
+    var eraserRadius by remember { mutableFloatStateOf(28f) }
+
+    // Active in-progress gestures
+    val inProgressStroke = remember { mutableStateListOf<Pair<Float, Float>>() }
+    var shapeStartPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+    var shapeCurrentPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+    var eraserTouchPoint by remember { mutableStateOf<Pair<Float, Float>?>(null) }
+
+    // Custom Color Picker Dialog state
+    var showCustomColorPicker by remember { mutableStateOf(false) }
+    var colorPickerInitialColor by remember { mutableIntStateOf(AndroidColor.BLACK) }
+    var onCustomColorSelected by remember { mutableStateOf<((Int) -> Unit)?>(null) }
+
+    // Clear confirmation dialog state
+    var showClearConfirmDialog by remember { mutableStateOf(false) }
+    var clearConfirmTitle by remember { mutableStateOf("") }
+    var clearConfirmMessage by remember { mutableStateOf("") }
+    var onConfirmClearAction by remember { mutableStateOf<(() -> Unit)?>(null) }
 
     // Sub-dialogs state
     var showPagesSheet by remember { mutableStateOf(false) }
@@ -302,10 +360,10 @@ fun PdfEditorMainView(
                                 } else {
                                     pushHistory()
                                     val pageBmp = pages.getOrNull(currentPageIndex)
-                                    val pageW = pageBmp?.width?.toFloat() ?: 600f
-                                    val pageH = pageBmp?.height?.toFloat() ?: 800f
-                                    val initW = (pageW * 0.45f).coerceIn(120f, 500f)
-                                    val initH = (initW * bmp.height / bmp.width.coerceAtLeast(1)).coerceAtLeast(40f)
+                                    val pageW = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else (pageBmp?.width?.toFloat() ?: 600f)
+                                    val pageH = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else (pageBmp?.height?.toFloat() ?: 800f)
+                                    val initW = (pageW * 0.45f).coerceIn(100f, pageW * 0.9f)
+                                    val initH = (initW * bmp.height / bmp.width.coerceAtLeast(1)).coerceIn(40f, pageH * 0.9f)
                                     val initX = ((pageW - initW) / 2f).coerceAtLeast(0f)
                                     val initY = ((pageH - initH) / 3f).coerceAtLeast(0f)
 
@@ -323,8 +381,9 @@ fun PdfEditorMainView(
                                     )
                                     editItems.add(newItem)
                                     selectedAnnotationId = newItem.id
-                                    activeTab = EditorTopTab.IMAGE
-                                    Toast.makeText(context, "Image added! Drag and pinch to reposition & resize", Toast.LENGTH_SHORT).show()
+                                    activeAnnotationTool = AnnotationTool.IMAGE
+                                    activeTab = EditorTopTab.NONE
+                                    Toast.makeText(context, "Image added! Drag and resize with corner handles", Toast.LENGTH_SHORT).show()
                                 }
                             }
                         }
@@ -348,6 +407,10 @@ fun PdfEditorMainView(
     BackHandler {
         if (showThumbnailTray) {
             showThumbnailTray = false
+        } else if (selectedAnnotationId != null) {
+            selectedAnnotationId = null
+        } else if (activeAnnotationTool != AnnotationTool.NONE) {
+            activeAnnotationTool = AnnotationTool.NONE
         } else if (activeTab != EditorTopTab.NONE) {
             activeTab = EditorTopTab.NONE
         } else {
@@ -365,7 +428,7 @@ fun PdfEditorMainView(
             modifier = Modifier.fillMaxSize()
         ) {
         // ====================================================
-        // 1. TOP APP BAR: [←] Document.pdf [Share] [Save] [⋮]
+        // 1. TOP APP BAR: [←] [Page] [Edit] [More] [Undo] [Redo] [Layers] [⋮]
         // ====================================================
         Surface(
             color = Color(0xFF1E293B),
@@ -389,62 +452,80 @@ fun PdfEditorMainView(
                     )
                 }
 
-                // Center: Toolbar tools (Page, Edit, Text, Image, Draw, More)
+                // Center: Top tabs (Page, Edit, More)
                 Row(
                     modifier = Modifier
                         .weight(1f)
                         .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     EditorToolbarTabItem(
                         label = "Page",
                         icon = Icons.Default.Description,
                         isSelected = activeTab == EditorTopTab.PAGE,
-                        onClick = { activeTab = if (activeTab == EditorTopTab.PAGE) EditorTopTab.NONE else EditorTopTab.PAGE }
+                        onClick = {
+                            activeAnnotationTool = AnnotationTool.NONE
+                            activeTab = if (activeTab == EditorTopTab.PAGE) EditorTopTab.NONE else EditorTopTab.PAGE
+                        }
                     )
                     EditorToolbarTabItem(
                         label = "Edit",
                         icon = Icons.Default.Tune,
                         isSelected = activeTab == EditorTopTab.EDIT,
-                        onClick = { activeTab = if (activeTab == EditorTopTab.EDIT) EditorTopTab.NONE else EditorTopTab.EDIT }
-                    )
-                    EditorToolbarTabItem(
-                        label = "Text",
-                        icon = Icons.Default.TextFields,
-                        isSelected = activeTab == EditorTopTab.TEXT,
-                        onClick = { activeTab = if (activeTab == EditorTopTab.TEXT) EditorTopTab.NONE else EditorTopTab.TEXT }
-                    )
-                    EditorToolbarTabItem(
-                        label = "Image",
-                        icon = Icons.Default.Image,
-                        isSelected = activeTab == EditorTopTab.IMAGE,
-                        onClick = { activeTab = if (activeTab == EditorTopTab.IMAGE) EditorTopTab.NONE else EditorTopTab.IMAGE }
-                    )
-                    EditorToolbarTabItem(
-                        label = "Draw",
-                        icon = Icons.Default.Draw,
-                        isSelected = activeTab == EditorTopTab.DRAW,
-                        onClick = { activeTab = if (activeTab == EditorTopTab.DRAW) EditorTopTab.NONE else EditorTopTab.DRAW }
+                        onClick = {
+                            activeAnnotationTool = AnnotationTool.NONE
+                            activeTab = if (activeTab == EditorTopTab.EDIT) EditorTopTab.NONE else EditorTopTab.EDIT
+                        }
                     )
                     EditorToolbarTabItem(
                         label = "More",
                         icon = Icons.Default.MoreHoriz,
                         isSelected = activeTab == EditorTopTab.MORE,
-                        onClick = { activeTab = if (activeTab == EditorTopTab.MORE) EditorTopTab.NONE else EditorTopTab.MORE }
+                        onClick = {
+                            activeAnnotationTool = AnnotationTool.NONE
+                            activeTab = if (activeTab == EditorTopTab.MORE) EditorTopTab.NONE else EditorTopTab.MORE
+                        }
                     )
                 }
 
-                // Right side: Layers button and 3-dots overflow menu
+                // Right side: Undo, Redo, Layers button and 3-dots overflow menu
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
+                        onClick = { handleUndo() },
+                        enabled = undoStack.isNotEmpty(),
+                        modifier = Modifier.size(34.dp).testTag("editor_top_undo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                            contentDescription = "Undo",
+                            tint = if (undoStack.isNotEmpty()) Color.White else Color(0xFF64748B),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
+                        onClick = { handleRedo() },
+                        enabled = redoStack.isNotEmpty(),
+                        modifier = Modifier.size(34.dp).testTag("editor_top_redo_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Redo,
+                            contentDescription = "Redo",
+                            tint = if (redoStack.isNotEmpty()) Color.White else Color(0xFF64748B),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    IconButton(
                         onClick = { showLayerManagerDialog = true },
-                        modifier = Modifier.testTag("editor_top_layers_button")
+                        modifier = Modifier.size(34.dp).testTag("editor_top_layers_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Layers,
                             contentDescription = "Layers",
-                            tint = if (editItems.any { it.pageIndex == currentPageIndex }) Color(0xFF60A5FA) else Color.White
+                            tint = if (editItems.any { it.pageIndex == currentPageIndex }) Color(0xFF60A5FA) else Color.White,
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
@@ -602,9 +683,7 @@ fun PdfEditorMainView(
                             leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
                             onClick = {
                                 moreMenuExpanded = false
-                                val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                viewModel.compressPdfCustom(currentFile, targetKB, outName)
+                                viewModel.openModal(ActiveModal.COMPRESS, currentFile)
                             },
                             modifier = Modifier.testTag("menu_item_compress")
                         )
@@ -715,150 +794,10 @@ fun PdfEditorMainView(
                             )
                         }
 
-                        EditorTopTab.TEXT -> {
-                            val currentSelectedTextItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.TEXT }
-                                ?: editItems.firstOrNull { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT }
-
-                            AdvancedTextToolPanel(
-                                selectedItem = currentSelectedTextItem,
-                                pageWidthPx = pdfCanvasWidthPx,
-                                pageHeightPx = pdfCanvasHeightPx,
-                                onAddNewText = {
-                                    textInputContent = ""
-                                    selectedAnnotationId = null
-                                    showAddTextDialog = true
-                                },
-                                onOpenEditDialog = {
-                                    textInputContent = currentSelectedTextItem?.text ?: ""
-                                    showAddTextDialog = true
-                                },
-                                onDeleteSelected = {
-                                    currentSelectedTextItem?.let { item ->
-                                        pushHistory()
-                                        editItems.removeAll { it.id == item.id }
-                                        selectedAnnotationId = null
-                                        Toast.makeText(context, "Text deleted", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onCopySelected = {
-                                    currentSelectedTextItem?.let { item ->
-                                        pushHistory()
-                                        val copy = item.copy(
-                                            id = java.util.UUID.randomUUID().toString(),
-                                            posX = item.posX + 20f,
-                                            posY = item.posY + 20f
-                                        )
-                                        editItems.add(copy)
-                                        selectedAnnotationId = copy.id
-                                        textLayerUpdateTrigger++
-                                        Toast.makeText(context, "Text duplicated", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onBringToFront = {
-                                    currentSelectedTextItem?.let { item ->
-                                        pushHistory()
-                                        editItems.remove(item)
-                                        editItems.add(item)
-                                        textLayerUpdateTrigger++
-                                        Toast.makeText(context, "Brought to front", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onSendToBack = {
-                                    currentSelectedTextItem?.let { item ->
-                                        pushHistory()
-                                        editItems.remove(item)
-                                        editItems.add(0, item)
-                                        textLayerUpdateTrigger++
-                                        Toast.makeText(context, "Sent to back", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onUpdateItem = { updated ->
-                                    val idx = editItems.indexOfFirst { it.id == updated.id }
-                                    if (idx != -1) {
-                                        editItems[idx] = updated
-                                    }
-                                    textLayerUpdateTrigger++
-                                },
-                                onHistoryPush = { pushHistory() },
-                                onOpenLayers = { showLayerManagerDialog = true }
-                            )
-                        }
-
-                        EditorTopTab.IMAGE -> {
-                            ImageOptionsSection(
-                                onAddImage = {
-                                    isReplacingImage = false
-                                    imagePickerLauncher.launch(
-                                        androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                    )
-                                },
-                                onReplaceImage = {
-                                    if (selectedAnnotationId != null) {
-                                        isReplacingImage = true
-                                        imagePickerLauncher.launch(
-                                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                        )
-                                    } else {
-                                        Toast.makeText(context, "Tap an image to select it first", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                onRotateSelectedImage = {
-                                    selectedAnnotationId?.let { id ->
-                                        val idx = editItems.indexOfFirst { it.id == id }
-                                        if (idx != -1) {
-                                            pushHistory()
-                                            val old = editItems[idx]
-                                            editItems[idx] = old.copy(imageRotation = (old.imageRotation + 90f) % 360f)
-                                            Toast.makeText(context, "Image rotated +90°", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
-                                },
-                                onResizeImage = { factor ->
-                                    selectedAnnotationId?.let { id ->
-                                        val idx = editItems.indexOfFirst { it.id == id }
-                                        if (idx != -1) {
-                                            pushHistory()
-                                            val old = editItems[idx]
-                                            val newW = (old.imageWidth * factor).coerceIn(40f, 800f)
-                                            val newH = (old.imageHeight * factor).coerceIn(40f, 800f)
-                                            editItems[idx] = old.copy(imageWidth = newW, imageHeight = newH)
-                                        }
-                                    }
-                                },
-                                onDeleteSelectedImage = {
-                                    selectedAnnotationId?.let { id ->
-                                        pushHistory()
-                                        editItems.removeAll { it.id == id }
-                                        selectedAnnotationId = null
-                                        Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
-                                    } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-
-                        EditorTopTab.DRAW -> {
-                            DrawOptionsSection(
-                                drawMode = drawMode,
-                                onDrawModeChange = { drawMode = it },
-                                drawColor = drawColor,
-                                onColorChange = { drawColor = it },
-                                strokeThickness = strokeThickness,
-                                onThicknessChange = { strokeThickness = it },
-                                onClearAll = {
-                                    pushHistory()
-                                    editItems.removeAll { it.pageIndex == currentPageIndex && (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER) }
-                                    Toast.makeText(context, "Page drawings cleared", Toast.LENGTH_SHORT).show()
-                                }
-                            )
-                        }
-
                         EditorTopTab.MORE -> {
                             MoreOptionsSection(
                                 onCompress = {
-                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
-                                    Toast.makeText(context, "Compressing PDF...", Toast.LENGTH_SHORT).show()
+                                    viewModel.openModal(ActiveModal.COMPRESS, currentFile)
                                 },
                                 onConvertToImages = {
                                     handleConvertToImages()
@@ -964,10 +903,16 @@ fun PdfEditorMainView(
             } else {
                 val currentBmp = pages.getOrNull(currentPageIndex) ?: pages.firstOrNull()
                 if (currentBmp != null) {
-                    Box(
-                        modifier = Modifier
+                    val isDrawingOrAnnotating = activeAnnotationTool in listOf(
+                        AnnotationTool.DRAW,
+                        AnnotationTool.HIGHLIGHT,
+                        AnnotationTool.SHAPES,
+                        AnnotationTool.ERASER
+                    )
+                    val viewportModifier = if (!isDrawingOrAnnotating) {
+                        Modifier
                             .fillMaxSize()
-                            .pointerInput(Unit) {
+                            .pointerInput(activeAnnotationTool) {
                                 detectTransformGestures { centroid, pan, zoom, _ ->
                                     val oldScale = zoomScale
                                     val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
@@ -979,7 +924,7 @@ fun PdfEditorMainView(
                                     }
                                 }
                             }
-                            .pointerInput(Unit) {
+                            .pointerInput(activeAnnotationTool) {
                                 detectTapGestures(
                                     onDoubleTap = { tapOffset ->
                                         if (zoomScale > 1.2f) {
@@ -992,7 +937,13 @@ fun PdfEditorMainView(
                                         }
                                     }
                                 )
-                            },
+                            }
+                    } else {
+                        Modifier.fillMaxSize()
+                    }
+
+                    Box(
+                        modifier = viewportModifier,
                         contentAlignment = Alignment.Center
                     ) {
                         // Floating Zoom & Fit Controls Overlay on top of preview container
@@ -1124,7 +1075,7 @@ fun PdfEditorMainView(
 
                                             overlay.onLayerSelected = { id ->
                                                 selectedAnnotationId = id
-                                                if (id != null) activeTab = EditorTopTab.TEXT
+                                                if (id != null) activeAnnotationTool = AnnotationTool.TEXT
                                             }
                                             overlay.onLayerUpdated = { updatedItem ->
                                                 val idx = editItems.indexOfFirst { it.id == updatedItem.id }
@@ -1163,60 +1114,281 @@ fun PdfEditorMainView(
                                     Canvas(
                                         modifier = Modifier
                                             .fillMaxSize()
-                                            .pointerInput(activeTab, drawMode, drawColor, strokeThickness) {
-                                                if (activeTab != EditorTopTab.DRAW) return@pointerInput
-                                                awaitEachGesture {
-                                                    val down = awaitFirstDown()
-                                                    val points = mutableListOf(Pair(down.position.x, down.position.y))
-                                                    activeStroke.clear()
-                                                    activeStroke.add(Pair(down.position.x, down.position.y))
-                                                    do {
-                                                        val event = awaitPointerEvent()
-                                                        val change = event.changes.firstOrNull() ?: break
-                                                        if (change.pressed) {
-                                                            change.consume()
-                                                            points.add(Pair(change.position.x, change.position.y))
-                                                            activeStroke.add(Pair(change.position.x, change.position.y))
-                                                        }
-                                                    } while (event.changes.any { it.pressed })
+                                            .pointerInput(
+                                                activeAnnotationTool,
+                                                drawBrushSize,
+                                                drawOpacity,
+                                                drawColorHex,
+                                                highlightThickness,
+                                                highlightOpacity,
+                                                highlightColorHex,
+                                                selectedShapeChoice,
+                                                shapeStrokeWidth,
+                                                shapeOpacity,
+                                                shapeStrokeColorHex,
+                                                shapeFillColorHex,
+                                                shapeHasFill,
+                                                eraserRadius,
+                                                selectedAnnotationId,
+                                                currentPageIndex
+                                            ) {
+                                                when (activeAnnotationTool) {
+                                                    AnnotationTool.DRAW -> {
+                                                        awaitEachGesture {
+                                                            val down = awaitFirstDown()
+                                                            down.consume()
+                                                            inProgressStroke.clear()
+                                                            inProgressStroke.add(Pair(down.position.x, down.position.y))
+                                                            do {
+                                                                val event = awaitPointerEvent()
+                                                                val change = event.changes.firstOrNull() ?: break
+                                                                if (change.pressed) {
+                                                                    change.consume()
+                                                                    inProgressStroke.add(Pair(change.position.x, change.position.y))
+                                                                }
+                                                            } while (event.changes.any { it.pressed })
 
-                                                    if (points.size > 1) {
-                                                        val annotType = if (drawMode == "HIGHLIGHTER") {
-                                                            PdfEngine.AnnotationType.HIGHLIGHTER
-                                                        } else {
-                                                            PdfEngine.AnnotationType.PEN
+                                                            if (inProgressStroke.size > 1) {
+                                                                pushHistory()
+                                                                editItems.add(
+                                                                    PdfEngine.EditItem(
+                                                                        pageIndex = currentPageIndex,
+                                                                        type = PdfEngine.AnnotationType.DRAW,
+                                                                        colorHex = drawColorHex,
+                                                                        strokeWidth = drawBrushSize,
+                                                                        opacity = drawOpacity,
+                                                                        points = inProgressStroke.toList(),
+                                                                        baseWidth = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f,
+                                                                        baseHeight = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                                                    )
+                                                                )
+                                                            } else if (inProgressStroke.size == 1) {
+                                                                val pt = inProgressStroke[0]
+                                                                pushHistory()
+                                                                editItems.add(
+                                                                    PdfEngine.EditItem(
+                                                                        pageIndex = currentPageIndex,
+                                                                        type = PdfEngine.AnnotationType.DRAW,
+                                                                        colorHex = drawColorHex,
+                                                                        strokeWidth = drawBrushSize,
+                                                                        opacity = drawOpacity,
+                                                                        points = listOf(pt, Pair(pt.first + 0.1f, pt.second + 0.1f)),
+                                                                        baseWidth = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f,
+                                                                        baseHeight = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                                                    )
+                                                                )
+                                                            }
+                                                            inProgressStroke.clear()
                                                         }
-                                                        pushHistory()
-                                                        editItems.add(
-                                                            PdfEngine.EditItem(
+                                                    }
+                                                    AnnotationTool.HIGHLIGHT -> {
+                                                        awaitEachGesture {
+                                                            val down = awaitFirstDown()
+                                                            down.consume()
+                                                            inProgressStroke.clear()
+                                                            inProgressStroke.add(Pair(down.position.x, down.position.y))
+                                                            do {
+                                                                val event = awaitPointerEvent()
+                                                                val change = event.changes.firstOrNull() ?: break
+                                                                if (change.pressed) {
+                                                                    change.consume()
+                                                                    inProgressStroke.add(Pair(change.position.x, change.position.y))
+                                                                }
+                                                            } while (event.changes.any { it.pressed })
+
+                                                            if (inProgressStroke.size > 1) {
+                                                                pushHistory()
+                                                                editItems.add(
+                                                                    PdfEngine.EditItem(
+                                                                        pageIndex = currentPageIndex,
+                                                                        type = PdfEngine.AnnotationType.HIGHLIGHTER,
+                                                                        colorHex = highlightColorHex,
+                                                                        strokeWidth = highlightThickness,
+                                                                        opacity = highlightOpacity,
+                                                                        points = inProgressStroke.toList(),
+                                                                        baseWidth = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f,
+                                                                        baseHeight = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                                                    )
+                                                                )
+                                                            }
+                                                            inProgressStroke.clear()
+                                                        }
+                                                    }
+                                                    AnnotationTool.SHAPES -> {
+                                                        awaitEachGesture {
+                                                            val down = awaitFirstDown()
+                                                            down.consume()
+                                                            shapeStartPoint = Pair(down.position.x, down.position.y)
+                                                            shapeCurrentPoint = Pair(down.position.x, down.position.y)
+                                                            do {
+                                                                val event = awaitPointerEvent()
+                                                                val change = event.changes.firstOrNull() ?: break
+                                                                if (change.pressed) {
+                                                                    change.consume()
+                                                                    shapeCurrentPoint = Pair(change.position.x, change.position.y)
+                                                                }
+                                                            } while (event.changes.any { it.pressed })
+
+                                                            val start = shapeStartPoint
+                                                            val end = shapeCurrentPoint
+                                                            if (start != null && end != null) {
+                                                                val dx = abs(end.first - start.first)
+                                                                val dy = abs(end.second - start.second)
+                                                                if (dx > 4f || dy > 4f) {
+                                                                    pushHistory()
+                                                                    val shapeType = when (selectedShapeChoice) {
+                                                                        ShapeKind.RECTANGLE -> PdfEngine.AnnotationType.RECTANGLE
+                                                                        ShapeKind.CIRCLE -> PdfEngine.AnnotationType.CIRCLE
+                                                                        ShapeKind.LINE -> PdfEngine.AnnotationType.LINE
+                                                                        ShapeKind.ARROW -> PdfEngine.AnnotationType.ARROW
+                                                                    }
+                                                                    val newItem = if (selectedShapeChoice == ShapeKind.LINE || selectedShapeChoice == ShapeKind.ARROW) {
+                                                                        PdfEngine.EditItem(
+                                                                            pageIndex = currentPageIndex,
+                                                                            type = shapeType,
+                                                                            posX = start.first,
+                                                                            posY = start.second,
+                                                                            endX = end.first,
+                                                                            endY = end.second,
+                                                                            imageWidth = end.first - start.first,
+                                                                            imageHeight = end.second - start.second,
+                                                                            strokeWidth = shapeStrokeWidth,
+                                                                            colorHex = shapeStrokeColorHex,
+                                                                            opacity = shapeOpacity,
+                                                                            baseWidth = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f,
+                                                                            baseHeight = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                                                        )
+                                                                    } else {
+                                                                        val left = min(start.first, end.first)
+                                                                        val top = min(start.second, end.second)
+                                                                        val right = max(start.first, end.first)
+                                                                        val bottom = max(start.second, end.second)
+                                                                        PdfEngine.EditItem(
+                                                                            pageIndex = currentPageIndex,
+                                                                            type = shapeType,
+                                                                            posX = left,
+                                                                            posY = top,
+                                                                            endX = right,
+                                                                            endY = bottom,
+                                                                            imageWidth = right - left,
+                                                                            imageHeight = bottom - top,
+                                                                            strokeWidth = shapeStrokeWidth,
+                                                                            colorHex = shapeStrokeColorHex,
+                                                                            fillColorHex = if (shapeHasFill) shapeFillColorHex else null,
+                                                                            opacity = shapeOpacity,
+                                                                            baseWidth = if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f,
+                                                                            baseHeight = if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                                                        )
+                                                                    }
+                                                                    editItems.add(newItem)
+                                                                    selectedAnnotationId = newItem.id
+                                                                } else {
+                                                                    // Tap on canvas in shapes mode: select any shape touched
+                                                                    val hitShape = editItems.filter {
+                                                                        it.pageIndex == currentPageIndex &&
+                                                                        it.type in listOf(
+                                                                            PdfEngine.AnnotationType.RECTANGLE,
+                                                                            PdfEngine.AnnotationType.CIRCLE,
+                                                                            PdfEngine.AnnotationType.LINE,
+                                                                            PdfEngine.AnnotationType.ARROW
+                                                                        )
+                                                                    }.lastOrNull { item ->
+                                                                        isAnnotationHit(item, start.first, start.second, 20f)
+                                                                    }
+                                                                    selectedAnnotationId = hitShape?.id
+                                                                }
+                                                            }
+                                                            shapeStartPoint = null
+                                                            shapeCurrentPoint = null
+                                                        }
+                                                    }
+                                                    AnnotationTool.ERASER -> {
+                                                        awaitEachGesture {
+                                                            val down = awaitFirstDown()
+                                                            down.consume()
+                                                            pushHistory()
+                                                            var currentErasePoint = Pair(down.position.x, down.position.y)
+                                                            eraserTouchPoint = currentErasePoint
+                                                            eraseAnnotationsAt(
+                                                                editItems = editItems,
                                                                 pageIndex = currentPageIndex,
-                                                                type = annotType,
-                                                                colorHex = drawColor,
-                                                                strokeWidth = strokeThickness,
-                                                                opacity = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f,
-                                                                points = points.toList()
+                                                                eraseX = currentErasePoint.first,
+                                                                eraseY = currentErasePoint.second,
+                                                                radius = eraserRadius
                                                             )
+
+                                                            do {
+                                                                val event = awaitPointerEvent()
+                                                                val change = event.changes.firstOrNull() ?: break
+                                                                if (change.pressed) {
+                                                                    change.consume()
+                                                                    currentErasePoint = Pair(change.position.x, change.position.y)
+                                                                    eraserTouchPoint = currentErasePoint
+                                                                    eraseAnnotationsAt(
+                                                                        editItems = editItems,
+                                                                        pageIndex = currentPageIndex,
+                                                                        eraseX = currentErasePoint.first,
+                                                                        eraseY = currentErasePoint.second,
+                                                                        radius = eraserRadius
+                                                                    )
+                                                                }
+                                                            } while (event.changes.any { it.pressed })
+
+                                                            eraserTouchPoint = null
+                                                        }
+                                                    }
+                                                    else -> {
+                                                        // Selection and tap handling
+                                                        detectTapGestures(
+                                                            onTap = { offset ->
+                                                                val clicked = editItems.filter {
+                                                                    it.pageIndex == currentPageIndex &&
+                                                                    it.type != PdfEngine.AnnotationType.IMAGE &&
+                                                                    it.type != PdfEngine.AnnotationType.TEXT
+                                                                }.lastOrNull { item ->
+                                                                    isAnnotationHit(item, offset.x, offset.y, 16f)
+                                                                }
+                                                                selectedAnnotationId = clicked?.id
+                                                            }
                                                         )
-                                                        activeStroke.clear()
                                                     }
                                                 }
                                             }
                                     ) {
-                                        // Draw existing drawing edit items on this page
-                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.IMAGE && it.type != PdfEngine.AnnotationType.TEXT }
+                                        // Draw existing annotation edit items on this page
+                                        val pageItems = editItems.filter {
+                                            it.pageIndex == currentPageIndex &&
+                                            it.type != PdfEngine.AnnotationType.IMAGE &&
+                                            it.type != PdfEngine.AnnotationType.TEXT
+                                        }
+
                                         for (item in pageItems) {
+                                            val isSel = item.id == selectedAnnotationId
+                                            val c = Color(item.colorHex).copy(alpha = item.opacity)
+
                                             when (item.type) {
-                                                PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                                                PdfEngine.AnnotationType.DRAW, PdfEngine.AnnotationType.PEN -> {
                                                     val pts = item.points
-                                                    if (pts.size >= 2) {
+                                                    if (pts.size == 1) {
+                                                        drawCircle(
+                                                            color = c,
+                                                            radius = (item.strokeWidth.dp.toPx() / 2f).coerceAtLeast(1.5f),
+                                                            center = Offset(pts[0].first, pts[0].second)
+                                                        )
+                                                    } else if (pts.size >= 2) {
                                                         val path = androidx.compose.ui.graphics.Path()
                                                         path.moveTo(pts[0].first, pts[0].second)
                                                         for (i in 1 until pts.size) {
-                                                            path.lineTo(pts[i].first, pts[i].second)
+                                                            val prev = pts[i - 1]
+                                                            val curr = pts[i]
+                                                            val midX = (prev.first + curr.first) / 2f
+                                                            val midY = (prev.second + curr.second) / 2f
+                                                            path.quadraticTo(prev.first, prev.second, midX, midY)
                                                         }
+                                                        path.lineTo(pts.last().first, pts.last().second)
                                                         drawPath(
                                                             path = path,
-                                                            color = Color(item.colorHex).copy(alpha = item.opacity),
+                                                            color = c,
                                                             style = androidx.compose.ui.graphics.drawscope.Stroke(
                                                                 width = item.strokeWidth.dp.toPx(),
                                                                 cap = androidx.compose.ui.graphics.StrokeCap.Round,
@@ -1225,25 +1397,301 @@ fun PdfEditorMainView(
                                                         )
                                                     }
                                                 }
+                                                PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                                                    val pts = item.points
+                                                    if (pts.size >= 2) {
+                                                        val path = androidx.compose.ui.graphics.Path()
+                                                        path.moveTo(pts[0].first, pts[0].second)
+                                                        for (i in 1 until pts.size) {
+                                                            val prev = pts[i - 1]
+                                                            val curr = pts[i]
+                                                            val midX = (prev.first + curr.first) / 2f
+                                                            val midY = (prev.second + curr.second) / 2f
+                                                            path.quadraticTo(prev.first, prev.second, midX, midY)
+                                                        }
+                                                        path.lineTo(pts.last().first, pts.last().second)
+                                                        drawPath(
+                                                            path = path,
+                                                            color = c,
+                                                            blendMode = androidx.compose.ui.graphics.BlendMode.Multiply,
+                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                width = item.strokeWidth.dp.toPx(),
+                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                                                                join = androidx.compose.ui.graphics.StrokeJoin.Round
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                                PdfEngine.AnnotationType.LINE -> {
+                                                    drawLine(
+                                                        color = c,
+                                                        start = Offset(item.posX, item.posY),
+                                                        end = Offset(item.endX, item.endY),
+                                                        strokeWidth = item.strokeWidth.dp.toPx(),
+                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                    )
+                                                }
+                                                PdfEngine.AnnotationType.ARROW -> {
+                                                    val x1 = item.posX
+                                                    val y1 = item.posY
+                                                    val x2 = item.endX
+                                                    val y2 = item.endY
+                                                    val swPx = item.strokeWidth.dp.toPx()
+                                                    drawLine(
+                                                        color = c,
+                                                        start = Offset(x1, y1),
+                                                        end = Offset(x2, y2),
+                                                        strokeWidth = swPx,
+                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                    )
+                                                    val angle = kotlin.math.atan2(y2 - y1, x2 - x1)
+                                                    val arrowLength = max(18f, swPx * 3.5f)
+                                                    val arrowAngle = Math.PI / 6.0
+                                                    val ax1 = (x2 - arrowLength * kotlin.math.cos(angle - arrowAngle)).toFloat()
+                                                    val ay1 = (y2 - arrowLength * kotlin.math.sin(angle - arrowAngle)).toFloat()
+                                                    val ax2 = (x2 - arrowLength * kotlin.math.cos(angle + arrowAngle)).toFloat()
+                                                    val ay2 = (y2 - arrowLength * kotlin.math.sin(angle + arrowAngle)).toFloat()
+                                                    val arrowHeadPath = androidx.compose.ui.graphics.Path().apply {
+                                                        moveTo(x2, y2)
+                                                        lineTo(ax1, ay1)
+                                                        lineTo(ax2, ay2)
+                                                        close()
+                                                    }
+                                                    drawPath(arrowHeadPath, color = c)
+                                                }
+                                                PdfEngine.AnnotationType.RECTANGLE -> {
+                                                    val left = min(item.posX, item.endX)
+                                                    val top = min(item.posY, item.endY)
+                                                    val width = max(abs(item.endX - item.posX), 1f)
+                                                    val height = max(abs(item.endY - item.posY), 1f)
+
+                                                    if (item.fillColorHex != null) {
+                                                        drawRect(
+                                                            color = Color(item.fillColorHex).copy(alpha = item.opacity),
+                                                            topLeft = Offset(left, top),
+                                                            size = Size(width, height)
+                                                        )
+                                                    }
+                                                    drawRect(
+                                                        color = c,
+                                                        topLeft = Offset(left, top),
+                                                        size = Size(width, height),
+                                                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                            width = item.strokeWidth.dp.toPx()
+                                                        )
+                                                    )
+                                                }
+                                                PdfEngine.AnnotationType.CIRCLE -> {
+                                                    val left = min(item.posX, item.endX)
+                                                    val top = min(item.posY, item.endY)
+                                                    val width = max(abs(item.endX - item.posX), 1f)
+                                                    val height = max(abs(item.endY - item.posY), 1f)
+
+                                                    if (item.fillColorHex != null) {
+                                                        drawOval(
+                                                            color = Color(item.fillColorHex).copy(alpha = item.opacity),
+                                                            topLeft = Offset(left, top),
+                                                            size = Size(width, height)
+                                                        )
+                                                    }
+                                                    drawOval(
+                                                        color = c,
+                                                        topLeft = Offset(left, top),
+                                                        size = Size(width, height),
+                                                        style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                            width = item.strokeWidth.dp.toPx()
+                                                        )
+                                                    )
+                                                }
                                                 else -> {}
+                                            }
+
+                                            // Draw selection outline if selected
+                                            if (isSel) {
+                                                when (item.type) {
+                                                    PdfEngine.AnnotationType.RECTANGLE, PdfEngine.AnnotationType.CIRCLE -> {
+                                                        val left = min(item.posX, item.endX) - 4.dp.toPx()
+                                                        val top = min(item.posY, item.endY) - 4.dp.toPx()
+                                                        val width = max(abs(item.endX - item.posX), 1f) + 8.dp.toPx()
+                                                        val height = max(abs(item.endY - item.posY), 1f) + 8.dp.toPx()
+                                                        drawRect(
+                                                            color = ToolBlue,
+                                                            topLeft = Offset(left, top),
+                                                            size = Size(width, height),
+                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                width = 2.dp.toPx(),
+                                                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f), 0f)
+                                                            )
+                                                        )
+                                                    }
+                                                    PdfEngine.AnnotationType.LINE, PdfEngine.AnnotationType.ARROW -> {
+                                                        val left = min(item.posX, item.endX) - 6.dp.toPx()
+                                                        val top = min(item.posY, item.endY) - 6.dp.toPx()
+                                                        val width = max(abs(item.endX - item.posX), 1f) + 12.dp.toPx()
+                                                        val height = max(abs(item.endY - item.posY), 1f) + 12.dp.toPx()
+                                                        drawRect(
+                                                            color = ToolBlue,
+                                                            topLeft = Offset(left, top),
+                                                            size = Size(width, height),
+                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                width = 1.5.dp.toPx(),
+                                                                pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+                                                            )
+                                                        )
+                                                    }
+                                                    else -> {
+                                                        if (item.points.isNotEmpty()) {
+                                                            var minX = Float.MAX_VALUE
+                                                            var maxX = -Float.MAX_VALUE
+                                                            var minY = Float.MAX_VALUE
+                                                            var maxY = -Float.MAX_VALUE
+                                                            for (pt in item.points) {
+                                                                if (pt.first < minX) minX = pt.first
+                                                                if (pt.first > maxX) maxX = pt.first
+                                                                if (pt.second < minY) minY = pt.second
+                                                                if (pt.second > maxY) maxY = pt.second
+                                                            }
+                                                            val pad = 6.dp.toPx()
+                                                            drawRect(
+                                                                color = ToolBlue,
+                                                                topLeft = Offset(minX - pad, minY - pad),
+                                                                size = Size((maxX - minX) + 2 * pad, (maxY - minY) + 2 * pad),
+                                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
+                                                                    width = 1.5.dp.toPx(),
+                                                                    pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
+                                                                )
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                             }
                                         }
 
-                                        // Draw active in-progress stroke
-                                        if (activeStroke.size >= 2) {
+                                        // Draw active in-progress drawing / highlight stroke
+                                        if (inProgressStroke.size >= 2) {
+                                            val isHl = activeAnnotationTool == AnnotationTool.HIGHLIGHT
+                                            val strokeC = if (isHl) Color(highlightColorHex).copy(alpha = highlightOpacity) else Color(drawColorHex).copy(alpha = drawOpacity)
+                                            val strokeW = if (isHl) highlightThickness.dp.toPx() else drawBrushSize.dp.toPx()
                                             val path = androidx.compose.ui.graphics.Path()
-                                            path.moveTo(activeStroke[0].first, activeStroke[0].second)
-                                            for (i in 1 until activeStroke.size) {
-                                                path.lineTo(activeStroke[i].first, activeStroke[i].second)
+                                            path.moveTo(inProgressStroke[0].first, inProgressStroke[0].second)
+                                            for (i in 1 until inProgressStroke.size) {
+                                                val prev = inProgressStroke[i - 1]
+                                                val curr = inProgressStroke[i]
+                                                val midX = (prev.first + curr.first) / 2f
+                                                val midY = (prev.second + curr.second) / 2f
+                                                path.quadraticTo(prev.first, prev.second, midX, midY)
                                             }
+                                            path.lineTo(inProgressStroke.last().first, inProgressStroke.last().second)
                                             drawPath(
                                                 path = path,
-                                                color = Color(drawColor).copy(alpha = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f),
+                                                color = strokeC,
+                                                blendMode = if (isHl) androidx.compose.ui.graphics.BlendMode.Multiply else androidx.compose.ui.graphics.BlendMode.SrcOver,
                                                 style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                    width = strokeThickness.dp.toPx(),
+                                                    width = strokeW,
                                                     cap = androidx.compose.ui.graphics.StrokeCap.Round,
                                                     join = androidx.compose.ui.graphics.StrokeJoin.Round
                                                 )
+                                            )
+                                        }
+
+                                        // Draw active in-progress shape preview
+                                        val startP = shapeStartPoint
+                                        val currP = shapeCurrentPoint
+                                        if (startP != null && currP != null) {
+                                            val shapeC = Color(shapeStrokeColorHex).copy(alpha = shapeOpacity)
+                                            val sw = shapeStrokeWidth.dp.toPx()
+
+                                            when (selectedShapeChoice) {
+                                                ShapeKind.RECTANGLE -> {
+                                                    val left = min(startP.first, currP.first)
+                                                    val top = min(startP.second, currP.second)
+                                                    val width = max(abs(currP.first - startP.first), 1f)
+                                                    val height = max(abs(currP.second - startP.second), 1f)
+                                                    if (shapeHasFill) {
+                                                        drawRect(
+                                                            color = Color(shapeFillColorHex).copy(alpha = shapeOpacity),
+                                                            topLeft = Offset(left, top),
+                                                            size = Size(width, height)
+                                                        )
+                                                    }
+                                                    drawRect(
+                                                        color = shapeC,
+                                                        topLeft = Offset(left, top),
+                                                        size = Size(width, height),
+                                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = sw)
+                                                    )
+                                                }
+                                                ShapeKind.CIRCLE -> {
+                                                    val left = min(startP.first, currP.first)
+                                                    val top = min(startP.second, currP.second)
+                                                    val width = max(abs(currP.first - startP.first), 1f)
+                                                    val height = max(abs(currP.second - startP.second), 1f)
+                                                    if (shapeHasFill) {
+                                                        drawOval(
+                                                            color = Color(shapeFillColorHex).copy(alpha = shapeOpacity),
+                                                            topLeft = Offset(left, top),
+                                                            size = Size(width, height)
+                                                        )
+                                                    }
+                                                    drawOval(
+                                                        color = shapeC,
+                                                        topLeft = Offset(left, top),
+                                                        size = Size(width, height),
+                                                        style = androidx.compose.ui.graphics.drawscope.Stroke(width = sw)
+                                                    )
+                                                }
+                                                ShapeKind.LINE -> {
+                                                    drawLine(
+                                                        color = shapeC,
+                                                        start = Offset(startP.first, startP.second),
+                                                        end = Offset(currP.first, currP.second),
+                                                        strokeWidth = sw,
+                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                    )
+                                                }
+                                                ShapeKind.ARROW -> {
+                                                    val x1 = startP.first
+                                                    val y1 = startP.second
+                                                    val x2 = currP.first
+                                                    val y2 = currP.second
+                                                    drawLine(
+                                                        color = shapeC,
+                                                        start = Offset(x1, y1),
+                                                        end = Offset(x2, y2),
+                                                        strokeWidth = sw,
+                                                        cap = androidx.compose.ui.graphics.StrokeCap.Round
+                                                    )
+                                                    val angle = kotlin.math.atan2(y2 - y1, x2 - x1)
+                                                    val arrowLength = max(18f, sw * 3.5f)
+                                                    val arrowAngle = Math.PI / 6.0
+                                                    val ax1 = (x2 - arrowLength * kotlin.math.cos(angle - arrowAngle)).toFloat()
+                                                    val ay1 = (y2 - arrowLength * kotlin.math.sin(angle - arrowAngle)).toFloat()
+                                                    val ax2 = (x2 - arrowLength * kotlin.math.cos(angle + arrowAngle)).toFloat()
+                                                    val ay2 = (y2 - arrowLength * kotlin.math.sin(angle + arrowAngle)).toFloat()
+                                                    val arrowHeadPath = androidx.compose.ui.graphics.Path().apply {
+                                                        moveTo(x2, y2)
+                                                        lineTo(ax1, ay1)
+                                                        lineTo(ax2, ay2)
+                                                        close()
+                                                    }
+                                                    drawPath(arrowHeadPath, color = shapeC)
+                                                }
+                                            }
+                                        }
+
+                                        // Draw in-progress eraser cursor
+                                        val eraseP = eraserTouchPoint
+                                        if (eraseP != null) {
+                                            drawCircle(
+                                                color = Color.White.copy(alpha = 0.35f),
+                                                radius = eraserRadius,
+                                                center = Offset(eraseP.first, eraseP.second)
+                                            )
+                                            drawCircle(
+                                                color = CrimsonPrimary,
+                                                radius = eraserRadius,
+                                                center = Offset(eraseP.first, eraseP.second),
+                                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.dp.toPx())
                                             )
                                         }
                                     }
@@ -1271,22 +1719,23 @@ fun PdfEditorMainView(
                                                         detectTapGestures(
                                                             onTap = {
                                                                 selectedAnnotationId = imgItem.id
-                                                                activeTab = EditorTopTab.IMAGE
+                                                                activeAnnotationTool = AnnotationTool.IMAGE
+                                                                activeTab = EditorTopTab.NONE
                                                             }
                                                         )
                                                     }
-                                                    .pointerInput(imgItem.id) {
+                                                    .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                         detectDragGestures(
                                                             onDragStart = {
                                                                 pushHistory()
                                                                 selectedAnnotationId = imgItem.id
-                                                                activeTab = EditorTopTab.IMAGE
+                                                                activeAnnotationTool = AnnotationTool.IMAGE
+                                                                activeTab = EditorTopTab.NONE
                                                             },
                                                             onDrag = { change, dragAmount ->
                                                                 change.consume()
-                                                                val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                val dX = dragAmount.x / scale
-                                                                val dY = dragAmount.y / scale
+                                                                val dX = dragAmount.x
+                                                                val dY = dragAmount.y
                                                                 val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                 if (idx != -1) {
                                                                     val cur = editItems[idx]
@@ -1317,27 +1766,26 @@ fun PdfEditorMainView(
                                                             .border(1.5.dp, ToolBlue, RoundedCornerShape(2.dp))
                                                     )
 
-                                                    val cornerTouchSize = 36.dp
+                                                    val cornerTouchSize = 44.dp
                                                     val handleCircleSize = 13.dp
                                                     val handleColor = ToolBlue
                                                     val handleInner = Color.White
 
-                                                    // --- 4 CORNER HANDLES (Fluid 2D Scaling / Resizing) ---
+                                                    // --- 4 CORNER HANDLES (Independent W & H 2D Scaling / Resizing) ---
 
                                                     // TOP-LEFT CORNER HANDLE
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopStart)
-                                                            .offset(x = (-18).dp, y = (-18).dp)
+                                                            .offset(x = (-22).dp, y = (-22).dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
@@ -1366,16 +1814,15 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopEnd)
-                                                            .offset(x = 18.dp, y = (-18).dp)
+                                                            .offset(x = 22.dp, y = (-22).dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
@@ -1402,16 +1849,15 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomStart)
-                                                            .offset(x = (-18).dp, y = 18.dp)
+                                                            .offset(x = (-22).dp, y = 22.dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
@@ -1438,16 +1884,15 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomEnd)
-                                                            .offset(x = 18.dp, y = 18.dp)
+                                                            .offset(x = 22.dp, y = 22.dp)
                                                             .size(cornerTouchSize)
-                                                            .pointerInput(imgItem.id) {
+                                                            .pointerInput(imgItem.id, pageWidthPx, pageHeightPx) {
                                                                 detectDragGestures(
                                                                     onDragStart = { pushHistory() },
                                                                     onDrag = { change, dragAmount ->
                                                                         change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val dY = dragAmount.y / scale
+                                                                        val dX = dragAmount.x
+                                                                        val dY = dragAmount.y
                                                                         val idx = editItems.indexOfFirst { it.id == imgItem.id }
                                                                         if (idx != -1) {
                                                                             val cur = editItems[idx]
@@ -1471,7 +1916,33 @@ fun PdfEditorMainView(
                                             }
                                         }
 
-                                        // 4. Text overlays and bounding boxes are rendered directly on TextOverlayView (in pdf_editor_canvas)
+                                        // 4. Interactive Selected Shape / Drawing Handles (Move & Resize handles)
+                                        val selAnno = editItems.firstOrNull {
+                                            it.id == selectedAnnotationId &&
+                                            it.pageIndex == currentPageIndex &&
+                                            it.type != PdfEngine.AnnotationType.IMAGE &&
+                                            it.type != PdfEngine.AnnotationType.TEXT
+                                        }
+                                        if (selAnno != null) {
+                                            SelectedAnnotationOverlay(
+                                                item = selAnno,
+                                                density = density,
+                                                pageWidthPx = pageWidthPx,
+                                                pageHeightPx = pageHeightPx,
+                                                onHistoryPush = { pushHistory() },
+                                                onItemUpdated = { updated ->
+                                                    val idx = editItems.indexOfFirst { it.id == updated.id }
+                                                    if (idx != -1) editItems[idx] = updated
+                                                },
+                                                onDelete = {
+                                                    pushHistory()
+                                                    editItems.removeAll { it.id == selAnno.id }
+                                                    selectedAnnotationId = null
+                                                }
+                                            )
+                                        }
+
+                                        // 5. Text overlays and bounding boxes are rendered directly on TextOverlayView (in pdf_editor_canvas)
                                     }
                                 }
                             }
@@ -1503,6 +1974,419 @@ fun PdfEditorMainView(
                         }
                     }
                 }
+            }
+        }
+
+        // ====================================================
+        // 5. SECONDARY OPTIONS PANEL FOR ACTIVE ANNOTATION TOOL / SELECTED ITEM
+        // ====================================================
+        AnimatedVisibility(
+            visible = activeAnnotationTool != AnnotationTool.NONE || (selectedAnnotationId != null && activeAnnotationTool == AnnotationTool.NONE)
+        ) {
+            Surface(
+                color = Color(0xFF1B2333),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 260.dp),
+                shadowElevation = 8.dp
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 6.dp)
+                        .verticalScroll(rememberScrollState())
+                ) {
+                    if (selectedAnnotationId != null && (activeAnnotationTool == AnnotationTool.NONE || activeAnnotationTool == AnnotationTool.SHAPES)) {
+                        val selItem = editItems.find { it.id == selectedAnnotationId && it.pageIndex == currentPageIndex }
+                        if (selItem != null) {
+                            SelectedAnnotationBar(
+                                item = selItem,
+                                onColorChange = { newC ->
+                                    pushHistory()
+                                    val idx = editItems.indexOfFirst { it.id == selItem.id }
+                                    if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = newC)
+                                },
+                                onOpenColorPicker = {
+                                    colorPickerInitialColor = selItem.colorHex
+                                    onCustomColorSelected = { newC ->
+                                        pushHistory()
+                                        val idx = editItems.indexOfFirst { it.id == selItem.id }
+                                        if (idx != -1) editItems[idx] = editItems[idx].copy(colorHex = newC)
+                                    }
+                                    showCustomColorPicker = true
+                                },
+                                onStrokeWidthChange = { nw ->
+                                    pushHistory()
+                                    val idx = editItems.indexOfFirst { it.id == selItem.id }
+                                    if (idx != -1) editItems[idx] = editItems[idx].copy(strokeWidth = nw)
+                                },
+                                onOpacityChange = { no ->
+                                    pushHistory()
+                                    val idx = editItems.indexOfFirst { it.id == selItem.id }
+                                    if (idx != -1) editItems[idx] = editItems[idx].copy(opacity = no)
+                                },
+                                onToggleFill = {
+                                    pushHistory()
+                                    val idx = editItems.indexOfFirst { it.id == selItem.id }
+                                    if (idx != -1) {
+                                        val curFill = editItems[idx].fillColorHex
+                                        editItems[idx] = editItems[idx].copy(fillColorHex = if (curFill != null) null else editItems[idx].colorHex)
+                                    }
+                                },
+                                onDelete = {
+                                    pushHistory()
+                                    editItems.removeAll { it.id == selItem.id }
+                                    selectedAnnotationId = null
+                                    Toast.makeText(context, "Annotation removed", Toast.LENGTH_SHORT).show()
+                                },
+                                onDeselect = { selectedAnnotationId = null }
+                            )
+                        }
+                    } else {
+                        when (activeAnnotationTool) {
+                            AnnotationTool.TEXT -> {
+                                val currentSelectedTextItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.TEXT }
+                                    ?: editItems.firstOrNull { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT }
+
+                                AdvancedTextToolPanel(
+                                    selectedItem = currentSelectedTextItem,
+                                    pageWidthPx = pdfCanvasWidthPx,
+                                    pageHeightPx = pdfCanvasHeightPx,
+                                    onAddNewText = {
+                                        textInputContent = ""
+                                        selectedAnnotationId = null
+                                        showAddTextDialog = true
+                                    },
+                                    onOpenEditDialog = {
+                                        textInputContent = currentSelectedTextItem?.text ?: ""
+                                        showAddTextDialog = true
+                                    },
+                                    onDeleteSelected = {
+                                        currentSelectedTextItem?.let { item ->
+                                            pushHistory()
+                                            editItems.removeAll { it.id == item.id }
+                                            selectedAnnotationId = null
+                                            Toast.makeText(context, "Text deleted", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onCopySelected = {
+                                        currentSelectedTextItem?.let { item ->
+                                            pushHistory()
+                                            val copy = item.copy(
+                                                id = java.util.UUID.randomUUID().toString(),
+                                                posX = item.posX + 20f,
+                                                posY = item.posY + 20f
+                                            )
+                                            editItems.add(copy)
+                                            selectedAnnotationId = copy.id
+                                            textLayerUpdateTrigger++
+                                            Toast.makeText(context, "Text duplicated", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onBringToFront = {
+                                        currentSelectedTextItem?.let { item ->
+                                            pushHistory()
+                                            editItems.remove(item)
+                                            editItems.add(item)
+                                            textLayerUpdateTrigger++
+                                            Toast.makeText(context, "Brought to front", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onSendToBack = {
+                                        currentSelectedTextItem?.let { item ->
+                                            pushHistory()
+                                            editItems.remove(item)
+                                            editItems.add(0, item)
+                                            textLayerUpdateTrigger++
+                                            Toast.makeText(context, "Sent to back", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onUpdateItem = { updated ->
+                                        val idx = editItems.indexOfFirst { it.id == updated.id }
+                                        if (idx != -1) {
+                                            editItems[idx] = updated
+                                        }
+                                        textLayerUpdateTrigger++
+                                    },
+                                    onHistoryPush = { pushHistory() },
+                                    onOpenLayers = { showLayerManagerDialog = true }
+                                )
+                            }
+
+                            AnnotationTool.IMAGE -> {
+                                ImageOptionsSection(
+                                    onAddImage = {
+                                        isReplacingImage = false
+                                        imagePickerLauncher.launch(
+                                            androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                        )
+                                    },
+                                    onReplaceImage = {
+                                        if (selectedAnnotationId != null) {
+                                            isReplacingImage = true
+                                            imagePickerLauncher.launch(
+                                                androidx.activity.result.PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                                            )
+                                        } else {
+                                            Toast.makeText(context, "Tap an image to select it first", Toast.LENGTH_SHORT).show()
+                                        }
+                                    },
+                                    onRotateSelectedImage = {
+                                        selectedAnnotationId?.let { id ->
+                                            val idx = editItems.indexOfFirst { it.id == id }
+                                            if (idx != -1) {
+                                                pushHistory()
+                                                val old = editItems[idx]
+                                                editItems[idx] = old.copy(imageRotation = (old.imageRotation + 90f) % 360f)
+                                                Toast.makeText(context, "Image rotated +90°", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
+                                    },
+                                    onResizeImage = { factor ->
+                                        selectedAnnotationId?.let { id ->
+                                            val idx = editItems.indexOfFirst { it.id == id }
+                                            if (idx != -1) {
+                                                pushHistory()
+                                                val old = editItems[idx]
+                                                val newW = (old.imageWidth * factor).coerceIn(40f, 800f)
+                                                val newH = (old.imageHeight * factor).coerceIn(40f, 800f)
+                                                editItems[idx] = old.copy(imageWidth = newW, imageHeight = newH)
+                                            }
+                                        }
+                                    },
+                                    onDeleteSelectedImage = {
+                                        selectedAnnotationId?.let { id ->
+                                            pushHistory()
+                                            editItems.removeAll { it.id == id }
+                                            selectedAnnotationId = null
+                                            Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
+                                        } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
+                                    }
+                                )
+                            }
+
+                            AnnotationTool.DRAW -> {
+                                DrawAnnotationSection(
+                                    brushSize = drawBrushSize,
+                                    onBrushSizeChange = { drawBrushSize = it },
+                                    opacity = drawOpacity,
+                                    onOpacityChange = { drawOpacity = it },
+                                    colorHex = drawColorHex,
+                                    onColorChange = { drawColorHex = it },
+                                    onOpenColorPicker = {
+                                        colorPickerInitialColor = drawColorHex
+                                        onCustomColorSelected = { drawColorHex = it }
+                                        showCustomColorPicker = true
+                                    },
+                                    onUndo = { handleUndo() },
+                                    canUndo = undoStack.isNotEmpty(),
+                                    onRedo = { handleRedo() },
+                                    canRedo = redoStack.isNotEmpty(),
+                                    onClearPage = {
+                                        clearConfirmTitle = "Clear Drawings"
+                                        clearConfirmMessage = "Remove all freehand drawings from page ${currentPageIndex + 1}?"
+                                        onConfirmClearAction = {
+                                            pushHistory()
+                                            editItems.removeAll { it.pageIndex == currentPageIndex && (it.type == PdfEngine.AnnotationType.DRAW || it.type == PdfEngine.AnnotationType.PEN) }
+                                            Toast.makeText(context, "Drawings cleared", Toast.LENGTH_SHORT).show()
+                                        }
+                                        showClearConfirmDialog = true
+                                    },
+                                    onDone = { activeAnnotationTool = AnnotationTool.NONE },
+                                    onCancel = { activeAnnotationTool = AnnotationTool.NONE }
+                                )
+                            }
+
+                            AnnotationTool.HIGHLIGHT -> {
+                                HighlightAnnotationSection(
+                                    thickness = highlightThickness,
+                                    onThicknessChange = { highlightThickness = it },
+                                    opacity = highlightOpacity,
+                                    onOpacityChange = { highlightOpacity = it },
+                                    colorHex = highlightColorHex,
+                                    onColorChange = { highlightColorHex = it },
+                                    onOpenColorPicker = {
+                                        colorPickerInitialColor = highlightColorHex
+                                        onCustomColorSelected = { highlightColorHex = it }
+                                        showCustomColorPicker = true
+                                    },
+                                    onUndo = { handleUndo() },
+                                    canUndo = undoStack.isNotEmpty(),
+                                    onRedo = { handleRedo() },
+                                    canRedo = redoStack.isNotEmpty(),
+                                    onClearPage = {
+                                        clearConfirmTitle = "Clear Highlights"
+                                        clearConfirmMessage = "Remove all highlights from page ${currentPageIndex + 1}?"
+                                        onConfirmClearAction = {
+                                            pushHistory()
+                                            editItems.removeAll { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.HIGHLIGHTER }
+                                            Toast.makeText(context, "Highlights cleared", Toast.LENGTH_SHORT).show()
+                                        }
+                                        showClearConfirmDialog = true
+                                    },
+                                    onDone = { activeAnnotationTool = AnnotationTool.NONE },
+                                    onCancel = { activeAnnotationTool = AnnotationTool.NONE }
+                                )
+                            }
+
+                            AnnotationTool.SHAPES -> {
+                                ShapesAnnotationSection(
+                                    selectedKind = selectedShapeChoice,
+                                    onKindSelected = { selectedShapeChoice = it },
+                                    strokeColorHex = shapeStrokeColorHex,
+                                    onStrokeColorChange = { shapeStrokeColorHex = it },
+                                    hasFill = shapeHasFill,
+                                    onToggleFill = { shapeHasFill = !shapeHasFill },
+                                    strokeWidth = shapeStrokeWidth,
+                                    onStrokeWidthChange = { shapeStrokeWidth = it },
+                                    opacity = shapeOpacity,
+                                    onOpacityChange = { shapeOpacity = it },
+                                    onOpenColorPicker = {
+                                        colorPickerInitialColor = shapeStrokeColorHex
+                                        onCustomColorSelected = {
+                                            shapeStrokeColorHex = it
+                                            shapeFillColorHex = it
+                                        }
+                                        showCustomColorPicker = true
+                                    },
+                                    onUndo = { handleUndo() },
+                                    canUndo = undoStack.isNotEmpty(),
+                                    onRedo = { handleRedo() },
+                                    canRedo = redoStack.isNotEmpty(),
+                                    onClearPage = {
+                                        clearConfirmTitle = "Clear Shapes"
+                                        clearConfirmMessage = "Remove all shapes from page ${currentPageIndex + 1}?"
+                                        onConfirmClearAction = {
+                                            pushHistory()
+                                            editItems.removeAll {
+                                                it.pageIndex == currentPageIndex &&
+                                                it.type in listOf(
+                                                    PdfEngine.AnnotationType.RECTANGLE,
+                                                    PdfEngine.AnnotationType.CIRCLE,
+                                                    PdfEngine.AnnotationType.LINE,
+                                                    PdfEngine.AnnotationType.ARROW
+                                                )
+                                            }
+                                            Toast.makeText(context, "Shapes cleared", Toast.LENGTH_SHORT).show()
+                                        }
+                                        showClearConfirmDialog = true
+                                    },
+                                    onDone = { activeAnnotationTool = AnnotationTool.NONE },
+                                    onCancel = { activeAnnotationTool = AnnotationTool.NONE }
+                                )
+                            }
+
+                            AnnotationTool.ERASER -> {
+                                EraserAnnotationSection(
+                                    eraserRadius = eraserRadius,
+                                    onRadiusChange = { eraserRadius = it },
+                                    onUndo = { handleUndo() },
+                                    canUndo = undoStack.isNotEmpty(),
+                                    onRedo = { handleRedo() },
+                                    canRedo = redoStack.isNotEmpty(),
+                                    onClearAll = {
+                                        clearConfirmTitle = "Clear All Page Annotations"
+                                        clearConfirmMessage = "Remove ALL drawings, highlights, and shapes from page ${currentPageIndex + 1}? Original PDF document content will not be modified."
+                                        onConfirmClearAction = {
+                                            pushHistory()
+                                            editItems.removeAll {
+                                                it.pageIndex == currentPageIndex &&
+                                                it.type != PdfEngine.AnnotationType.IMAGE &&
+                                                it.type != PdfEngine.AnnotationType.TEXT
+                                            }
+                                            selectedAnnotationId = null
+                                            Toast.makeText(context, "Page annotations cleared", Toast.LENGTH_SHORT).show()
+                                        }
+                                        showClearConfirmDialog = true
+                                    },
+                                    onDone = { activeAnnotationTool = AnnotationTool.NONE },
+                                    onCancel = { activeAnnotationTool = AnnotationTool.NONE }
+                                )
+                            }
+
+                            AnnotationTool.NONE -> {}
+                        }
+                    }
+                }
+            }
+        }
+
+        // ====================================================
+        // 6. FINAL ANNOTATION TOOLBAR (Strictly: Text | Image | Draw | Highlight | Shapes | Eraser)
+        // ====================================================
+        Surface(
+            color = Color(0xFF1E293B),
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding(),
+            shadowElevation = 8.dp
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 6.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.SpaceAround,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                AnnotationToolbarTabItem(
+                    label = "Text",
+                    icon = Icons.Default.TextFields,
+                    isSelected = activeAnnotationTool == AnnotationTool.TEXT,
+                    onClick = {
+                        activeTab = EditorTopTab.NONE
+                        activeAnnotationTool = if (activeAnnotationTool == AnnotationTool.TEXT) AnnotationTool.NONE else AnnotationTool.TEXT
+                    }
+                )
+                AnnotationToolbarTabItem(
+                    label = "Image",
+                    icon = Icons.Default.Image,
+                    isSelected = activeAnnotationTool == AnnotationTool.IMAGE,
+                    onClick = {
+                        activeTab = EditorTopTab.NONE
+                        activeAnnotationTool = if (activeAnnotationTool == AnnotationTool.IMAGE) AnnotationTool.NONE else AnnotationTool.IMAGE
+                    }
+                )
+                AnnotationToolbarTabItem(
+                    label = "Draw",
+                    drawableRes = R.drawable.ic_annotation_pencil,
+                    isSelected = activeAnnotationTool == AnnotationTool.DRAW,
+                    onClick = {
+                        activeTab = EditorTopTab.NONE
+                        selectedAnnotationId = null
+                        activeAnnotationTool = if (activeAnnotationTool == AnnotationTool.DRAW) AnnotationTool.NONE else AnnotationTool.DRAW
+                    }
+                )
+                AnnotationToolbarTabItem(
+                    label = "Highlight",
+                    drawableRes = R.drawable.ic_annotation_highlighter,
+                    isSelected = activeAnnotationTool == AnnotationTool.HIGHLIGHT,
+                    onClick = {
+                        activeTab = EditorTopTab.NONE
+                        selectedAnnotationId = null
+                        activeAnnotationTool = if (activeAnnotationTool == AnnotationTool.HIGHLIGHT) AnnotationTool.NONE else AnnotationTool.HIGHLIGHT
+                    }
+                )
+                AnnotationToolbarTabItem(
+                    label = "Shapes",
+                    drawableRes = R.drawable.ic_annotation_shapes,
+                    isSelected = activeAnnotationTool == AnnotationTool.SHAPES,
+                    onClick = {
+                        activeTab = EditorTopTab.NONE
+                        selectedAnnotationId = null
+                        activeAnnotationTool = if (activeAnnotationTool == AnnotationTool.SHAPES) AnnotationTool.NONE else AnnotationTool.SHAPES
+                    }
+                )
+                AnnotationToolbarTabItem(
+                    label = "Eraser",
+                    drawableRes = R.drawable.ic_annotation_eraser,
+                    isSelected = activeAnnotationTool == AnnotationTool.ERASER,
+                    onClick = {
+                        activeTab = EditorTopTab.NONE
+                        selectedAnnotationId = null
+                        activeAnnotationTool = if (activeAnnotationTool == AnnotationTool.ERASER) AnnotationTool.NONE else AnnotationTool.ERASER
+                    }
+                )
             }
         }
 
@@ -1558,8 +2442,51 @@ fun PdfEditorMainView(
     }
 
     // ====================================================
-    // FULL DIALOGS: Pages Sheet, Crop, Watermark, Numbers, etc.
+    // FULL DIALOGS: Custom Color Picker, Clear Confirm, Pages Sheet, etc.
     // ====================================================
+    if (showCustomColorPicker) {
+        AnnotationColorPickerDialog(
+            initialColor = colorPickerInitialColor,
+            onDismiss = { showCustomColorPicker = false },
+            onColorPicked = { picked ->
+                showCustomColorPicker = false
+                onCustomColorSelected?.invoke(picked)
+            }
+        )
+    }
+
+    if (showClearConfirmDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmDialog = false },
+            title = {
+                Text(
+                    text = clearConfirmTitle.ifBlank { "Clear Annotations" },
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Text(
+                    text = clearConfirmMessage.ifBlank { "Are you sure you want to clear annotations? This can be undone." }
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showClearConfirmDialog = false
+                        onConfirmClearAction?.invoke()
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
+                ) {
+                    Text("Clear")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
     if (showPagesSheet) {
         WorkspacePagesSheet(
             file = currentFile,
@@ -1977,7 +2904,7 @@ fun PdfEditorMainView(
                                 )
                                 editItems.add(newItem)
                                 selectedAnnotationId = newItem.id
-                                activeTab = EditorTopTab.TEXT
+                                activeAnnotationTool = AnnotationTool.TEXT
                                 textLayerUpdateTrigger++
 
                                 // Force View Attachment & Visibility: programmatically ensure overlayView.visibility = View.VISIBLE and invoke overlayView.bringToFront()
@@ -2570,83 +3497,1269 @@ private fun ImageOptionsSection(
 }
 
 @Composable
-private fun DrawOptionsSection(
-    drawMode: String,
-    onDrawModeChange: (String) -> Unit,
-    drawColor: Int,
+private fun DrawAnnotationSection(
+    brushSize: Float,
+    onBrushSizeChange: (Float) -> Unit,
+    opacity: Float,
+    onOpacityChange: (Float) -> Unit,
+    colorHex: Int,
     onColorChange: (Int) -> Unit,
-    strokeThickness: Float,
-    onThicknessChange: (Float) -> Unit,
-    onClearAll: () -> Unit
+    onOpenColorPicker: () -> Unit,
+    onUndo: () -> Unit,
+    canUndo: Boolean,
+    onRedo: () -> Unit,
+    canRedo: Boolean,
+    onClearPage: () -> Unit,
+    onDone: () -> Unit,
+    onCancel: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    val colorPresets = listOf("#000000", "#2563EB", "#DC2626", "#16A34A", "#EAB308", "#9333EA", "#FFFFFF")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Draw & Annotate", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            TextButton(
-                onClick = onClearAll,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Text("Clear Page", color = CrimsonPrimary, fontSize = 11.sp)
+                Icon(painter = androidx.compose.ui.res.painterResource(R.drawable.ic_annotation_pencil), contentDescription = null, tint = ToolBlue, modifier = Modifier.size(18.dp))
+                Text("Draw", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(
+                    onClick = onUndo,
+                    enabled = canUndo,
+                    modifier = Modifier.size(28.dp).testTag("btn_draw_undo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "Undo",
+                        tint = if (canUndo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onRedo,
+                    enabled = canRedo,
+                    modifier = Modifier.size(28.dp).testTag("btn_draw_redo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = "Redo",
+                        tint = if (canRedo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                TextButton(
+                    onClick = onClearPage,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_draw_clear_page")
+                ) {
+                    Text("Clear", color = CrimsonPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onDone,
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_draw_done")
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("Done", fontSize = 11.sp)
+                }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+
         Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            FilterChip(
-                selected = drawMode == "PEN",
-                onClick = { onDrawModeChange("PEN") },
-                label = { Text("Pen") },
-                leadingIcon = { Icon(Icons.Default.Draw, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
-            )
-            FilterChip(
-                selected = drawMode == "HIGHLIGHTER",
-                onClick = { onDrawModeChange("HIGHLIGHTER") },
-                label = { Text("Highlighter") },
-                leadingIcon = { Icon(Icons.Default.Highlight, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
-            )
-            FilterChip(
-                selected = drawMode == "ERASER",
-                onClick = { onDrawModeChange("ERASER") },
-                label = { Text("Eraser") },
-                leadingIcon = { Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
-            )
+            Text("Size:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(2f, 4f, 8f, 14f, 20f).forEach { size ->
+                FilterChip(
+                    selected = brushSize == size,
+                    onClick = { onBrushSizeChange(size) },
+                    label = { Text("${size.toInt()}px", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Opacity:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(0.25f, 0.5f, 0.75f, 1.0f).forEach { op ->
+                FilterChip(
+                    selected = abs(opacity - op) < 0.05f,
+                    onClick = { onOpacityChange(op) },
+                    label = { Text("${(op * 100).toInt()}%", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+
         Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            listOf(
-                AndroidColor.rgb(37, 99, 235), // Blue
-                AndroidColor.rgb(220, 38, 38), // Red
-                AndroidColor.rgb(16, 185, 129), // Green
-                AndroidColor.rgb(245, 158, 11), // Orange
-                AndroidColor.BLACK
-            ).forEach { c ->
+            Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            colorPresets.forEach { hex ->
+                val colorInt = try { AndroidColor.parseColor(hex) } catch (e: Exception) { AndroidColor.BLACK }
+                val isSel = colorHex == colorInt
                 Box(
                     modifier = Modifier
                         .size(24.dp)
                         .clip(CircleShape)
-                        .background(Color(c))
+                        .background(Color(colorInt))
                         .border(
-                            width = if (drawColor == c) 2.dp else 1.dp,
-                            color = if (drawColor == c) Color.White else Color.Gray,
+                            width = if (isSel) 2.5.dp else 1.dp,
+                            color = if (isSel) Color.White else Color.Gray,
                             shape = CircleShape
                         )
-                        .clickable { onColorChange(c) }
+                        .clickable { onColorChange(colorInt) }
+                )
+            }
+            IconButton(
+                onClick = onOpenColorPicker,
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF334155))
+                    .testTag("btn_draw_color_picker")
+            ) {
+                Icon(Icons.Default.Palette, contentDescription = "Custom Color", tint = Color.White, modifier = Modifier.size(15.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun HighlightAnnotationSection(
+    thickness: Float,
+    onThicknessChange: (Float) -> Unit,
+    opacity: Float,
+    onOpacityChange: (Float) -> Unit,
+    colorHex: Int,
+    onColorChange: (Int) -> Unit,
+    onOpenColorPicker: () -> Unit,
+    onUndo: () -> Unit,
+    canUndo: Boolean,
+    onRedo: () -> Unit,
+    canRedo: Boolean,
+    onClearPage: () -> Unit,
+    onDone: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val highlightPresets = listOf("#FEF08A", "#BBF7D0", "#BAE6FD", "#FBCFE8", "#FED7AA", "#DDD6FE", "#FDE047")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(painter = androidx.compose.ui.res.painterResource(R.drawable.ic_annotation_highlighter), contentDescription = null, tint = ToolOrange, modifier = Modifier.size(18.dp))
+                Text("Highlight", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(
+                    onClick = onUndo,
+                    enabled = canUndo,
+                    modifier = Modifier.size(28.dp).testTag("btn_highlight_undo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "Undo",
+                        tint = if (canUndo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onRedo,
+                    enabled = canRedo,
+                    modifier = Modifier.size(28.dp).testTag("btn_highlight_redo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = "Redo",
+                        tint = if (canRedo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                TextButton(
+                    onClick = onClearPage,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_highlight_clear_page")
+                ) {
+                    Text("Clear", color = CrimsonPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onDone,
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolOrange),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_highlight_done")
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("Done", fontSize = 11.sp)
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Thickness:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(14f, 22f, 32f, 44f).forEach { th ->
+                FilterChip(
+                    selected = thickness == th,
+                    onClick = { onThicknessChange(th) },
+                    label = { Text("${th.toInt()}px", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Opacity:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(0.25f, 0.40f, 0.55f, 0.70f).forEach { op ->
+                FilterChip(
+                    selected = abs(opacity - op) < 0.05f,
+                    onClick = { onOpacityChange(op) },
+                    label = { Text("${(op * 100).toInt()}%", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            highlightPresets.forEach { hex ->
+                val colorInt = try { AndroidColor.parseColor(hex) } catch (e: Exception) { AndroidColor.YELLOW }
+                val isSel = colorHex == colorInt
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(colorInt))
+                        .border(
+                            width = if (isSel) 2.5.dp else 1.dp,
+                            color = if (isSel) Color.White else Color.Gray,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorChange(colorInt) }
+                )
+            }
+            IconButton(
+                onClick = onOpenColorPicker,
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF334155))
+                    .testTag("btn_highlight_color_picker")
+            ) {
+                Icon(Icons.Default.Palette, contentDescription = "Custom Color", tint = Color.White, modifier = Modifier.size(15.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShapesAnnotationSection(
+    selectedKind: ShapeKind,
+    onKindSelected: (ShapeKind) -> Unit,
+    strokeColorHex: Int,
+    onStrokeColorChange: (Int) -> Unit,
+    hasFill: Boolean,
+    onToggleFill: () -> Unit,
+    strokeWidth: Float,
+    onStrokeWidthChange: (Float) -> Unit,
+    opacity: Float,
+    onOpacityChange: (Float) -> Unit,
+    onOpenColorPicker: () -> Unit,
+    onUndo: () -> Unit,
+    canUndo: Boolean,
+    onRedo: () -> Unit,
+    canRedo: Boolean,
+    onClearPage: () -> Unit,
+    onDone: () -> Unit,
+    onCancel: () -> Unit
+) {
+    val colorPresets = listOf("#000000", "#2563EB", "#DC2626", "#16A34A", "#EAB308", "#9333EA", "#FFFFFF")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(painter = androidx.compose.ui.res.painterResource(R.drawable.ic_annotation_shapes), contentDescription = null, tint = ToolPurple, modifier = Modifier.size(18.dp))
+                Text("Shapes", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(
+                    onClick = onUndo,
+                    enabled = canUndo,
+                    modifier = Modifier.size(28.dp).testTag("btn_shape_undo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "Undo",
+                        tint = if (canUndo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onRedo,
+                    enabled = canRedo,
+                    modifier = Modifier.size(28.dp).testTag("btn_shape_redo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = "Redo",
+                        tint = if (canRedo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                TextButton(
+                    onClick = onClearPage,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_shape_clear_page")
+                ) {
+                    Text("Clear", color = CrimsonPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Button(
+                    onClick = onDone,
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolPurple),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_shape_done")
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("Done", fontSize = 11.sp)
+                }
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            FilterChip(
+                selected = selectedKind == ShapeKind.RECTANGLE,
+                onClick = { onKindSelected(ShapeKind.RECTANGLE) },
+                label = { Text("Rectangle", fontSize = 10.sp) },
+                leadingIcon = { Icon(Icons.Default.CropSquare, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(28.dp)
+            )
+            FilterChip(
+                selected = selectedKind == ShapeKind.CIRCLE,
+                onClick = { onKindSelected(ShapeKind.CIRCLE) },
+                label = { Text("Circle", fontSize = 10.sp) },
+                leadingIcon = { Icon(Icons.Default.RadioButtonUnchecked, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(28.dp)
+            )
+            FilterChip(
+                selected = selectedKind == ShapeKind.LINE,
+                onClick = { onKindSelected(ShapeKind.LINE) },
+                label = { Text("Line", fontSize = 10.sp) },
+                leadingIcon = { Icon(Icons.Default.HorizontalRule, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(28.dp)
+            )
+            FilterChip(
+                selected = selectedKind == ShapeKind.ARROW,
+                onClick = { onKindSelected(ShapeKind.ARROW) },
+                label = { Text("Arrow", fontSize = 10.sp) },
+                leadingIcon = { Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(28.dp)
+            )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text("Width:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(2f, 4f, 8f, 14f).forEach { sw ->
+                FilterChip(
+                    selected = strokeWidth == sw,
+                    onClick = { onStrokeWidthChange(sw) },
+                    label = { Text("${sw.toInt()}px", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+
+            if (selectedKind == ShapeKind.RECTANGLE || selectedKind == ShapeKind.CIRCLE) {
+                Spacer(modifier = Modifier.width(4.dp))
+                FilterChip(
+                    selected = hasFill,
+                    onClick = onToggleFill,
+                    label = { Text(if (hasFill) "Fill: ON" else "No Fill", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(4.dp))
+            Text("Opacity:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(0.25f, 0.50f, 0.75f, 1.0f).forEach { op ->
+                FilterChip(
+                    selected = abs(opacity - op) < 0.05f,
+                    onClick = { onOpacityChange(op) },
+                    label = { Text("${(op * 100).toInt()}%", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            colorPresets.forEach { hex ->
+                val colorInt = try { AndroidColor.parseColor(hex) } catch (e: Exception) { AndroidColor.BLACK }
+                val isSel = strokeColorHex == colorInt
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(colorInt))
+                        .border(
+                            width = if (isSel) 2.5.dp else 1.dp,
+                            color = if (isSel) Color.White else Color.Gray,
+                            shape = CircleShape
+                        )
+                        .clickable { onStrokeColorChange(colorInt) }
+                )
+            }
+            IconButton(
+                onClick = onOpenColorPicker,
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF334155))
+                    .testTag("btn_shape_color_picker")
+            ) {
+                Icon(Icons.Default.Palette, contentDescription = "Custom Color", tint = Color.White, modifier = Modifier.size(15.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun EraserAnnotationSection(
+    eraserRadius: Float,
+    onRadiusChange: (Float) -> Unit,
+    onUndo: () -> Unit,
+    canUndo: Boolean,
+    onRedo: () -> Unit,
+    canRedo: Boolean,
+    onClearAll: () -> Unit,
+    onDone: () -> Unit,
+    onCancel: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 4.dp, vertical = 2.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Icon(painter = androidx.compose.ui.res.painterResource(R.drawable.ic_annotation_eraser), contentDescription = null, tint = CrimsonPrimary, modifier = Modifier.size(18.dp))
+                Text("Eraser", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                IconButton(
+                    onClick = onUndo,
+                    enabled = canUndo,
+                    modifier = Modifier.size(28.dp).testTag("btn_eraser_undo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "Undo",
+                        tint = if (canUndo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                IconButton(
+                    onClick = onRedo,
+                    enabled = canRedo,
+                    modifier = Modifier.size(28.dp).testTag("btn_eraser_redo")
+                ) {
+                    Icon(
+                        Icons.AutoMirrored.Filled.Redo,
+                        contentDescription = "Redo",
+                        tint = if (canRedo) Color.White else Color.Gray,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+                TextButton(
+                    onClick = onCancel,
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_eraser_cancel")
+                ) {
+                    Text("Cancel", color = Color.LightGray, fontSize = 11.sp)
+                }
+                Button(
+                    onClick = onDone,
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_eraser_done")
+                ) {
+                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Spacer(modifier = Modifier.width(3.dp))
+                    Text("Done", fontSize = 11.sp)
+                }
+            }
+        }
+
+        Text(
+            text = "Drag across annotations to erase them. Original PDF content is never erased.",
+            fontSize = 11.sp,
+            color = Color(0xFF94A3B8)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text("Size:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                listOf(16f, 28f, 44f).forEach { r ->
+                    val label = when (r) {
+                        16f -> "Small"
+                        28f -> "Medium"
+                        else -> "Large"
+                    }
+                    FilterChip(
+                        selected = eraserRadius == r,
+                        onClick = { onRadiusChange(r) },
+                        label = { Text(label, fontSize = 10.sp) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
+            }
+
+            OutlinedButton(
+                onClick = onClearAll,
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = CrimsonPrimary),
+                border = BorderStroke(1.dp, CrimsonPrimary.copy(alpha = 0.5f)),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                modifier = Modifier.height(28.dp).testTag("btn_clear_all_page_annotations")
+            ) {
+                Icon(Icons.Default.DeleteSweep, contentDescription = null, modifier = Modifier.size(14.dp))
+                Spacer(modifier = Modifier.width(3.dp))
+                Text("Clear Page", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectedAnnotationOverlay(
+    item: PdfEngine.EditItem,
+    density: androidx.compose.ui.unit.Density,
+    pageWidthPx: Float,
+    pageHeightPx: Float,
+    onHistoryPush: () -> Unit,
+    onItemUpdated: (PdfEngine.EditItem) -> Unit,
+    onDelete: () -> Unit
+) {
+    val cornerTouchSize = 36.dp
+    val handleCircleSize = 12.dp
+    val handleColor = ToolBlue
+    val handleInner = Color.White
+
+    when (item.type) {
+        PdfEngine.AnnotationType.RECTANGLE, PdfEngine.AnnotationType.CIRCLE -> {
+            val left = min(item.posX, item.endX)
+            val top = min(item.posY, item.endY)
+            val right = max(item.posX, item.endX)
+            val bottom = max(item.posY, item.endY)
+            val width = max(right - left, 24f)
+            val height = max(bottom - top, 24f)
+
+            val widthDp = with(density) { width.toDp() }
+            val heightDp = with(density) { height.toDp() }
+
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                    .size(widthDp, heightDp)
+                    .border(
+                        1.5.dp,
+                        ToolBlue,
+                        if (item.type == PdfEngine.AnnotationType.CIRCLE) RoundedCornerShape(percent = 50) else RoundedCornerShape(2.dp)
+                    )
+                    .pointerInput(item.id, pageWidthPx, pageHeightPx) {
+                        detectDragGestures(
+                            onDragStart = { onHistoryPush() },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val dX = dragAmount.x
+                                val dY = dragAmount.y
+                                val curW = item.endX - item.posX
+                                val curH = item.endY - item.posY
+                                val newPosX = (item.posX + dX).coerceIn(0f, (pageWidthPx - abs(curW)).coerceAtLeast(0f))
+                                val newPosY = (item.posY + dY).coerceIn(0f, (pageHeightPx - abs(curH)).coerceAtLeast(0f))
+                                onItemUpdated(
+                                    item.copy(
+                                        posX = newPosX,
+                                        posY = newPosY,
+                                        endX = newPosX + curW,
+                                        endY = newPosY + curH,
+                                        imageWidth = abs(curW),
+                                        imageHeight = abs(curH)
+                                    )
+                                )
+                            }
+                        )
+                    }
+            ) {
+                // Bottom-right resize handle
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .offset(x = 16.dp, y = 16.dp)
+                        .size(cornerTouchSize)
+                        .pointerInput(item.id, pageWidthPx, pageHeightPx) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val newEndX = (item.endX + dragAmount.x).coerceIn(item.posX + 20f, pageWidthPx)
+                                    val newEndY = (item.endY + dragAmount.y).coerceIn(item.posY + 20f, pageHeightPx)
+                                    onItemUpdated(
+                                        item.copy(
+                                            endX = newEndX,
+                                            endY = newEndY,
+                                            imageWidth = abs(newEndX - item.posX),
+                                            imageHeight = abs(newEndY - item.posY)
+                                        )
+                                    )
+                                }
+                            )
+                        },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(handleCircleSize)
+                            .background(handleInner, CircleShape)
+                            .border(2.dp, handleColor, CircleShape)
+                    )
+                }
+
+                // Delete button at top-right
+                Surface(
+                    shape = CircleShape,
+                    color = CrimsonPrimary,
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(x = 10.dp, y = (-10).dp)
+                        .size(22.dp)
+                        .clickable { onDelete() },
+                    shadowElevation = 2.dp
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Delete",
+                            tint = Color.White,
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
+                }
+            }
+        }
+        PdfEngine.AnnotationType.LINE, PdfEngine.AnnotationType.ARROW -> {
+            // Start endpoint handle
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((item.posX - 18f).roundToInt(), (item.posY - 18f).roundToInt()) }
+                    .size(cornerTouchSize)
+                    .pointerInput(item.id, pageWidthPx, pageHeightPx) {
+                        detectDragGestures(
+                            onDragStart = { onHistoryPush() },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val newX = (item.posX + dragAmount.x).coerceIn(0f, pageWidthPx)
+                                val newY = (item.posY + dragAmount.y).coerceIn(0f, pageHeightPx)
+                                onItemUpdated(
+                                    item.copy(
+                                        posX = newX,
+                                        posY = newY,
+                                        imageWidth = item.endX - newX,
+                                        imageHeight = item.endY - newY
+                                    )
+                                )
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(handleCircleSize)
+                        .background(handleInner, CircleShape)
+                        .border(2.dp, handleColor, CircleShape)
+                )
+            }
+
+            // End endpoint handle
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset((item.endX - 18f).roundToInt(), (item.endY - 18f).roundToInt()) }
+                    .size(cornerTouchSize)
+                    .pointerInput(item.id, pageWidthPx, pageHeightPx) {
+                        detectDragGestures(
+                            onDragStart = { onHistoryPush() },
+                            onDrag = { change, dragAmount ->
+                                change.consume()
+                                val newX = (item.endX + dragAmount.x).coerceIn(0f, pageWidthPx)
+                                val newY = (item.endY + dragAmount.y).coerceIn(0f, pageHeightPx)
+                                onItemUpdated(
+                                    item.copy(
+                                        endX = newX,
+                                        endY = newY,
+                                        imageWidth = newX - item.posX,
+                                        imageHeight = newY - item.posY
+                                    )
+                                )
+                            }
+                        )
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(handleCircleSize)
+                        .background(handleInner, CircleShape)
+                        .border(2.dp, ToolOrange, CircleShape)
+                )
+            }
+        }
+        PdfEngine.AnnotationType.DRAW, PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
+            if (item.points.isNotEmpty()) {
+                var minX = Float.MAX_VALUE
+                var maxX = -Float.MAX_VALUE
+                var minY = Float.MAX_VALUE
+                var maxY = -Float.MAX_VALUE
+                for (pt in item.points) {
+                    if (pt.first < minX) minX = pt.first
+                    if (pt.first > maxX) maxX = pt.first
+                    if (pt.second < minY) minY = pt.second
+                    if (pt.second > maxY) maxY = pt.second
+                }
+                val pad = 8f
+                val left = minX - pad
+                val top = minY - pad
+                val width = max((maxX - minX) + 2 * pad, 30f)
+                val height = max((maxY - minY) + 2 * pad, 30f)
+
+                val widthDp = with(density) { width.toDp() }
+                val heightDp = with(density) { height.toDp() }
+
+                Box(
+                    modifier = Modifier
+                        .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                        .size(widthDp, heightDp)
+                        .border(1.dp, ToolBlue.copy(alpha = 0.6f), RoundedCornerShape(2.dp))
+                        .pointerInput(item.id, pageWidthPx, pageHeightPx) {
+                            detectDragGestures(
+                                onDragStart = { onHistoryPush() },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    val dX = dragAmount.x
+                                    val dY = dragAmount.y
+                                    val movedPoints = item.points.map { pt ->
+                                        Pair(
+                                            (pt.first + dX).coerceIn(0f, pageWidthPx),
+                                            (pt.second + dY).coerceIn(0f, pageHeightPx)
+                                        )
+                                    }
+                                    onItemUpdated(item.copy(points = movedPoints))
+                                }
+                            )
+                        }
+                ) {
+                    // Delete button at top-right
+                    Surface(
+                        shape = CircleShape,
+                        color = CrimsonPrimary,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .offset(x = 8.dp, y = (-8).dp)
+                            .size(20.dp)
+                            .clickable { onDelete() },
+                        shadowElevation = 2.dp
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Delete",
+                                tint = Color.White,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        else -> {}
+    }
+}
+
+@Composable
+private fun SelectedAnnotationBar(
+    item: PdfEngine.EditItem,
+    onColorChange: (Int) -> Unit,
+    onOpenColorPicker: () -> Unit,
+    onStrokeWidthChange: (Float) -> Unit,
+    onOpacityChange: (Float) -> Unit,
+    onToggleFill: () -> Unit,
+    onDelete: () -> Unit,
+    onDeselect: () -> Unit
+) {
+    val isShape = item.type in listOf(PdfEngine.AnnotationType.RECTANGLE, PdfEngine.AnnotationType.CIRCLE)
+    val colorPresets = listOf("#000000", "#2563EB", "#DC2626", "#16A34A", "#EAB308", "#9333EA", "#FFFFFF")
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFF1E293B), RoundedCornerShape(10.dp))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    color = ToolBlue.copy(alpha = 0.2f),
+                    shape = RoundedCornerShape(6.dp)
+                ) {
+                    Text(
+                        text = item.type.name,
+                        color = ToolBlue,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+                Text("Selected Object", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+            }
+
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                IconButton(
+                    onClick = onDelete,
+                    modifier = Modifier
+                        .size(32.dp)
+                        .testTag("btn_delete_selected_annotation")
+                ) {
+                    Icon(Icons.Default.Delete, contentDescription = "Delete", tint = CrimsonPrimary, modifier = Modifier.size(18.dp))
+                }
+                IconButton(
+                    onClick = onDeselect,
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Icon(Icons.Default.Close, contentDescription = "Deselect", tint = Color.LightGray, modifier = Modifier.size(18.dp))
+                }
+            }
+        }
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.horizontalScroll(rememberScrollState())
+        ) {
+            Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            colorPresets.forEach { hex ->
+                val colorInt = try { AndroidColor.parseColor(hex) } catch (e: Exception) { AndroidColor.BLACK }
+                val isSel = item.colorHex == colorInt
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .clip(CircleShape)
+                        .background(Color(colorInt))
+                        .border(
+                            width = if (isSel) 2.5.dp else 1.dp,
+                            color = if (isSel) Color.White else Color.Gray,
+                            shape = CircleShape
+                        )
+                        .clickable { onColorChange(colorInt) }
+                )
+            }
+            IconButton(
+                onClick = onOpenColorPicker,
+                modifier = Modifier
+                    .size(26.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF334155))
+            ) {
+                Icon(Icons.Default.Palette, contentDescription = "Custom Color", tint = Color.White, modifier = Modifier.size(15.dp))
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Width:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(2f, 4f, 8f, 14f).forEach { w ->
+                val isSel = (item.strokeWidth ?: 4f) == w
+                FilterChip(
+                    selected = isSel,
+                    onClick = { onStrokeWidthChange(w) },
+                    label = { Text("${w.toInt()}px", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+            Text("Opacity:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+            listOf(0.25f, 0.50f, 0.75f, 1.0f).forEach { op ->
+                val isSel = abs(item.opacity - op) < 0.05f
+                FilterChip(
+                    selected = isSel,
+                    onClick = { onOpacityChange(op) },
+                    label = { Text("${(op * 100).toInt()}%", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
+                )
+            }
+
+            if (isShape) {
+                Spacer(modifier = Modifier.width(4.dp))
+                FilterChip(
+                    selected = item.fillColorHex != null,
+                    onClick = onToggleFill,
+                    label = { Text(if (item.fillColorHex != null) "Fill: ON" else "No Fill", fontSize = 10.sp) },
+                    modifier = Modifier.height(28.dp)
                 )
             }
         }
     }
+}
+
+@Composable
+private fun AnnotationToolbarTabItem(
+    label: String,
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    drawableRes: Int? = null,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = if (isSelected) ToolBlue.copy(alpha = 0.25f) else Color.Transparent,
+        shape = RoundedCornerShape(10.dp),
+        border = if (isSelected) BorderStroke(1.dp, ToolBlue) else null,
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .clickable(onClick = onClick)
+            .testTag("tab_annotation_$label")
+            .padding(horizontal = 4.dp, vertical = 2.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+        ) {
+            if (drawableRes != null) {
+                Icon(
+                    painter = androidx.compose.ui.res.painterResource(drawableRes),
+                    contentDescription = label,
+                    tint = if (isSelected) ToolBlue else Color(0xFF94A3B8),
+                    modifier = Modifier.size(20.dp)
+                )
+            } else if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = label,
+                    tint = if (isSelected) ToolBlue else Color(0xFF94A3B8),
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                color = if (isSelected) Color.White else Color(0xFF94A3B8),
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+            )
+        }
+    }
+}
+
+private fun distToSegmentSq(px: Float, py: Float, x1: Float, y1: Float, x2: Float, y2: Float): Float {
+    val l2 = (x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1)
+    if (l2 == 0f) return (px - x1) * (px - x1) + (py - y1) * (py - y1)
+    val t = ((px - x1) * (x2 - x1) + (py - y1) * (y2 - y1)) / l2
+    val clampedT = t.coerceIn(0f, 1f)
+    val projX = x1 + clampedT * (x2 - x1)
+    val projY = y1 + clampedT * (y2 - y1)
+    val dx = px - projX
+    val dy = py - projY
+    return dx * dx + dy * dy
+}
+
+private fun isAnnotationHit(
+    item: PdfEngine.EditItem,
+    touchX: Float,
+    touchY: Float,
+    hitTolerance: Float
+): Boolean {
+    val strokeTol = (item.strokeWidth ?: 4f) / 2f + hitTolerance
+    val strokeTolSq = strokeTol * strokeTol
+
+    return when (item.type) {
+        PdfEngine.AnnotationType.DRAW,
+        PdfEngine.AnnotationType.PEN,
+        PdfEngine.AnnotationType.HIGHLIGHTER -> {
+            val pts = item.points
+            if (pts.isEmpty()) {
+                val dx = touchX - item.posX
+                val dy = touchY - item.posY
+                dx * dx + dy * dy <= strokeTolSq
+            } else if (pts.size == 1) {
+                val dx = touchX - pts[0].first
+                val dy = touchY - pts[0].second
+                dx * dx + dy * dy <= strokeTolSq
+            } else {
+                var hit = false
+                for (i in 0 until pts.size - 1) {
+                    val p1 = pts[i]
+                    val p2 = pts[i + 1]
+                    if (distToSegmentSq(touchX, touchY, p1.first, p1.second, p2.first, p2.second) <= strokeTolSq) {
+                        hit = true
+                        break
+                    }
+                }
+                hit
+            }
+        }
+        PdfEngine.AnnotationType.LINE,
+        PdfEngine.AnnotationType.ARROW -> {
+            distToSegmentSq(touchX, touchY, item.posX, item.posY, item.endX, item.endY) <= strokeTolSq
+        }
+        PdfEngine.AnnotationType.RECTANGLE -> {
+            val left = min(item.posX, item.endX)
+            val right = max(item.posX, item.endX)
+            val top = min(item.posY, item.endY)
+            val bottom = max(item.posY, item.endY)
+
+            if (item.fillColorHex != null) {
+                touchX >= left - hitTolerance && touchX <= right + hitTolerance &&
+                touchY >= top - hitTolerance && touchY <= bottom + hitTolerance
+            } else {
+                val dTop = distToSegmentSq(touchX, touchY, left, top, right, top)
+                val dBottom = distToSegmentSq(touchX, touchY, left, bottom, right, bottom)
+                val dLeft = distToSegmentSq(touchX, touchY, left, top, left, bottom)
+                val dRight = distToSegmentSq(touchX, touchY, right, top, right, bottom)
+                min(min(dTop, dBottom), min(dLeft, dRight)) <= strokeTolSq
+            }
+        }
+        PdfEngine.AnnotationType.CIRCLE -> {
+            val left = min(item.posX, item.endX)
+            val right = max(item.posX, item.endX)
+            val top = min(item.posY, item.endY)
+            val bottom = max(item.posY, item.endY)
+            val cx = (left + right) / 2f
+            val cy = (top + bottom) / 2f
+            val rx = max(abs(right - left) / 2f, 1f)
+            val ry = max(abs(bottom - top) / 2f, 1f)
+
+            val nx = (touchX - cx) / rx
+            val ny = (touchY - cy) / ry
+            val normDist = nx * nx + ny * ny
+
+            if (item.fillColorHex != null) {
+                normDist <= 1.15f
+            } else {
+                val avgR = (rx + ry) / 2f
+                val perimeterDist = abs(sqrt(normDist) - 1.0f) * avgR
+                perimeterDist <= strokeTol
+            }
+        }
+        else -> {
+            val left = min(item.posX, item.endX)
+            val top = min(item.posY, item.endY)
+            val right = max(item.posX, item.endX)
+            val bottom = max(item.posY, item.endY)
+            touchX >= left - hitTolerance && touchX <= right + hitTolerance &&
+            touchY >= top - hitTolerance && touchY <= bottom + hitTolerance
+        }
+    }
+}
+
+private fun eraseAnnotationsAt(
+    editItems: MutableList<PdfEngine.EditItem>,
+    pageIndex: Int,
+    eraseX: Float,
+    eraseY: Float,
+    radius: Float
+) {
+    val radiusSq = radius * radius
+    val itemsToModify = mutableListOf<Pair<Int, PdfEngine.EditItem>>()
+    val itemsToRemove = mutableListOf<PdfEngine.EditItem>()
+    val itemsToAppend = mutableListOf<PdfEngine.EditItem>()
+
+    for (i in editItems.indices) {
+        val item = editItems[i]
+        if (item.pageIndex != pageIndex) continue
+        if (item.type == PdfEngine.AnnotationType.TEXT || item.type == PdfEngine.AnnotationType.IMAGE) continue
+
+        when (item.type) {
+            PdfEngine.AnnotationType.DRAW,
+            PdfEngine.AnnotationType.PEN,
+            PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                val pts = item.points
+                if (pts.isEmpty()) {
+                    val dx = eraseX - item.posX
+                    val dy = eraseY - item.posY
+                    if (dx * dx + dy * dy <= radiusSq) {
+                        itemsToRemove.add(item)
+                    }
+                } else {
+                    val hasHit = pts.any { pt ->
+                        val dx = eraseX - pt.first
+                        val dy = eraseY - pt.second
+                        dx * dx + dy * dy <= radiusSq
+                    }
+                    if (hasHit) {
+                        // Split stroke into contiguous sub-segments of points outside eraser radius
+                        val segments = mutableListOf<List<Pair<Float, Float>>>()
+                        var curSeg = mutableListOf<Pair<Float, Float>>()
+                        for (pt in pts) {
+                            val dx = eraseX - pt.first
+                            val dy = eraseY - pt.second
+                            if (dx * dx + dy * dy > radiusSq) {
+                                curSeg.add(pt)
+                            } else {
+                                if (curSeg.size >= 2) {
+                                    segments.add(curSeg)
+                                }
+                                curSeg = mutableListOf()
+                            }
+                        }
+                        if (curSeg.size >= 2) {
+                            segments.add(curSeg)
+                        }
+
+                        if (segments.isEmpty()) {
+                            itemsToRemove.add(item)
+                        } else {
+                            itemsToModify.add(i to item.copy(points = segments[0]))
+                            for (sIdx in 1 until segments.size) {
+                                itemsToAppend.add(
+                                    item.copy(
+                                        id = java.util.UUID.randomUUID().toString(),
+                                        points = segments[sIdx]
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            PdfEngine.AnnotationType.RECTANGLE,
+            PdfEngine.AnnotationType.CIRCLE,
+            PdfEngine.AnnotationType.LINE,
+            PdfEngine.AnnotationType.ARROW -> {
+                if (isAnnotationHit(item, eraseX, eraseY, radius)) {
+                    itemsToRemove.add(item)
+                }
+            }
+            else -> {
+                if (isAnnotationHit(item, eraseX, eraseY, radius)) {
+                    itemsToRemove.add(item)
+                }
+            }
+        }
+    }
+
+    for ((index, updated) in itemsToModify) {
+        if (index < editItems.size) {
+            editItems[index] = updated
+        }
+    }
+    editItems.removeAll(itemsToRemove)
+    editItems.addAll(itemsToAppend)
 }
 
 @Composable
