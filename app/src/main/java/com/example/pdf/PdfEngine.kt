@@ -980,13 +980,8 @@ object PdfEngine {
                         val path = Path()
                         path.moveTo(scaledPoints[0].first, scaledPoints[0].second)
                         for (pIdx in 1 until scaledPoints.size) {
-                            val prev = scaledPoints[pIdx - 1]
-                            val curr = scaledPoints[pIdx]
-                            val midX = (prev.first + curr.first) / 2f
-                            val midY = (prev.second + curr.second) / 2f
-                            path.quadTo(prev.first, prev.second, midX, midY)
+                            path.lineTo(scaledPoints[pIdx].first, scaledPoints[pIdx].second)
                         }
-                        path.lineTo(scaledPoints.last().first, scaledPoints.last().second)
                         canvas.drawPath(path, drawPaint)
                         canvas.restore()
                     }
@@ -1015,18 +1010,12 @@ object PdfEngine {
                             strokeCap = Paint.Cap.ROUND
                             strokeJoin = Paint.Join.ROUND
                             isAntiAlias = true
-                            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.MULTIPLY)
                         }
                         val path = Path()
                         path.moveTo(scaledPoints[0].first, scaledPoints[0].second)
                         for (pIdx in 1 until scaledPoints.size) {
-                            val prev = scaledPoints[pIdx - 1]
-                            val curr = scaledPoints[pIdx]
-                            val midX = (prev.first + curr.first) / 2f
-                            val midY = (prev.second + curr.second) / 2f
-                            path.quadTo(prev.first, prev.second, midX, midY)
+                            path.lineTo(scaledPoints[pIdx].first, scaledPoints[pIdx].second)
                         }
-                        path.lineTo(scaledPoints.last().first, scaledPoints.last().second)
                         canvas.drawPath(path, hlPaint)
                     } else {
                         if (itemRot != 0f) {
@@ -1039,7 +1028,6 @@ object PdfEngine {
                             strokeWidth = strokeW.coerceAtLeast(14f)
                             strokeCap = Paint.Cap.SQUARE
                             isAntiAlias = true
-                            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.MULTIPLY)
                         }
                         canvas.drawLine(posX, posY, endX, endY, hlPaint)
                     }
