@@ -431,8 +431,12 @@ fun ToolResultPreviewDialog(
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        onDismissRequest = { /* Prevent accidental exit on compress success */ },
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
     ) {
         AppScreen(isScrollable = true, paddingValues = PaddingValues(24.dp)) {
             Column(

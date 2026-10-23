@@ -78,6 +78,7 @@ import androidx.compose.material.icons.filled.FormatItalic
 import androidx.compose.material.icons.filled.FormatUnderlined
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.InvertColors
+import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.OpenInNew
@@ -213,6 +214,7 @@ fun PhotoEditingScreen(
     // Dialog States
     var showResetConfirmDialog by remember { mutableStateOf(false) }
     var showSavedDialog by remember { mutableStateOf(false) }
+    var showLayerManagerDialog by remember { mutableStateOf(false) }
     var lastSaveResult by remember { mutableStateOf<SaveResult?>(null) }
 
     // Tool Specific States
@@ -721,6 +723,18 @@ fun PhotoEditingScreen(
                             contentDescription = "Hold to view original photo",
                             tint = if (isHoldingEyeComparison) AccentPink else if (originalBitmap != null) Color.White else Color(0xFF64748B),
                             modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    // LAYERS BUTTON
+                    IconButton(
+                        onClick = { showLayerManagerDialog = true },
+                        modifier = Modifier.testTag("photo_editor_layers_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = "Layers",
+                            tint = if (textItems.isNotEmpty()) Color(0xFF60A5FA) else Color.White
                         )
                     }
 
@@ -1996,390 +2010,60 @@ fun PhotoEditingScreen(
                             PhotoEditTool.TEXT -> {
                                 val activeItem = textItems.find { it.id == selectedTextId }
 
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            pushUndoHistory()
-                                            val newItem = TextItem(
-                                                text = if (selectedFontCategory == "Bengali") "বাংলা লেখা" else "Sample Text",
-                                                fontId = if (selectedFontCategory == "Bengali") "bn_sans" else "sans_serif"
-                                            )
-                                            textItems.add(newItem)
-                                            selectedTextId = newItem.id
-                                            editingTextDraft = newItem.text
-                                            textSubTab = 0
-                                        },
-                                        shape = RoundedCornerShape(8.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                                        modifier = Modifier.height(34.dp)
-                                    ) {
-                                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text("Add Text", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                    }
-
-                                    if (activeItem != null) {
-                                        Row(horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = {
-                                                    val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                    if (idx >= 0) textItems[idx] = activeItem.copy(isBold = !activeItem.isBold)
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(Icons.Default.FormatBold, contentDescription = "Bold", tint = if (activeItem.isBold) CrimsonPrimary else Color.White, modifier = Modifier.size(18.dp))
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                    if (idx >= 0) textItems[idx] = activeItem.copy(isItalic = !activeItem.isItalic)
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(Icons.Default.FormatItalic, contentDescription = "Italic", tint = if (activeItem.isItalic) CrimsonPrimary else Color.White, modifier = Modifier.size(18.dp))
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                    if (idx >= 0) textItems[idx] = activeItem.copy(isUnderline = !activeItem.isUnderline)
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(Icons.Default.FormatUnderlined, contentDescription = "Underline", tint = if (activeItem.isUnderline) CrimsonPrimary else Color.White, modifier = Modifier.size(18.dp))
-                                            }
-                                            IconButton(
-                                                onClick = {
-                                                    pushUndoHistory()
-                                                    textItems.removeAll { it.id == activeItem.id }
-                                                    selectedTextId = null
-                                                },
-                                                modifier = Modifier.size(32.dp)
-                                            ) {
-                                                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color(0xFFEF4444), modifier = Modifier.size(18.dp))
-                                            }
-                                        }
-                                    }
-                                }
-
-                                if (activeItem != null) {
-                                    Spacer(modifier = Modifier.height(6.dp))
-
-                                    // Compact Sub-Tabs row: Text, Font, Color, Transform
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        val tabs = listOf(
-                                            Pair(0, "Edit Text"),
-                                            Pair(1, "Font Family"),
-                                            Pair(2, "Color & Opacity"),
-                                            Pair(3, "Size & Position")
+                                PhotoAdvancedTextToolPanel(
+                                    selectedItem = activeItem,
+                                    onAddText = {
+                                        pushUndoHistory()
+                                        val newItem = TextItem(
+                                            text = if (selectedFontCategory == "Bengali") "বাংলা লেখা" else "Sample Text",
+                                            fontId = if (selectedFontCategory == "Bengali") "bn_sans" else "sans_serif"
                                         )
-                                        tabs.forEach { (index, title) ->
-                                            FilterChip(
-                                                selected = textSubTab == index,
-                                                onClick = { textSubTab = index },
-                                                label = { Text(title, fontSize = 11.sp) },
-                                                colors = FilterChipDefaults.filterChipColors(
-                                                    selectedContainerColor = CrimsonPrimary,
-                                                    selectedLabelColor = Color.White,
-                                                    containerColor = Color(0xFF1E293B),
-                                                    labelColor = Color(0xFFCBD5E1)
-                                                ),
-                                                border = FilterChipDefaults.filterChipBorder(
-                                                    enabled = true,
-                                                    selected = textSubTab == index,
-                                                    borderColor = if (textSubTab == index) CrimsonPrimary else Color(0xFF334155)
-                                                )
-                                            )
+                                        textItems.add(newItem)
+                                        selectedTextId = newItem.id
+                                        editingTextDraft = newItem.text
+                                    },
+                                    onUpdateItem = { updated ->
+                                        val idx = textItems.indexOfFirst { it.id == updated.id }
+                                        if (idx >= 0) {
+                                            textItems[idx] = updated
                                         }
-                                    }
-
-                                    Spacer(modifier = Modifier.height(6.dp))
-
-                                    when (textSubTab) {
-                                        0 -> {
-                                            // Tab 0: Edit Text Content & Layer Selector
-                                            OutlinedTextField(
-                                                value = editingTextDraft,
-                                                onValueChange = { newText ->
-                                                    editingTextDraft = newText
-                                                    val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                    if (idx >= 0) textItems[idx] = activeItem.copy(text = newText)
-                                                },
-                                                placeholder = { Text("Type text here...", color = Color(0xFF94A3B8), fontSize = 12.sp) },
-                                                singleLine = true,
-                                                textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = Color.White),
-                                                colors = OutlinedTextFieldDefaults.colors(
-                                                    focusedTextColor = Color.White,
-                                                    unfocusedTextColor = Color.White,
-                                                    focusedBorderColor = CrimsonPrimary,
-                                                    unfocusedBorderColor = DarkBorder,
-                                                    cursorColor = CrimsonPrimary
-                                                ),
-                                                modifier = Modifier.fillMaxWidth()
-                                            )
-
-                                            if (textItems.size > 1) {
-                                                Spacer(modifier = Modifier.height(4.dp))
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .horizontalScroll(rememberScrollState()),
-                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text("Layers:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                                    textItems.forEachIndexed { i, t ->
-                                                        FilterChip(
-                                                            selected = t.id == activeItem.id,
-                                                            onClick = {
-                                                                selectedTextId = t.id
-                                                                editingTextDraft = t.text
-                                                            },
-                                                            label = { Text("${i + 1}. ${t.text.take(10)}", fontSize = 10.sp) },
-                                                            colors = FilterChipDefaults.filterChipColors(
-                                                                selectedContainerColor = CrimsonPrimary,
-                                                                containerColor = Color(0xFF1E293B)
-                                                            )
-                                                        )
-                                                    }
-                                                }
-                                            }
+                                    },
+                                    onDeleteItem = { id ->
+                                        pushUndoHistory()
+                                        textItems.removeAll { it.id == id }
+                                        if (selectedTextId == id) selectedTextId = null
+                                    },
+                                    onCopyItem = { itemToCopy ->
+                                        pushUndoHistory()
+                                        val copied = itemToCopy.copy(
+                                            id = java.util.UUID.randomUUID().toString(),
+                                            normX = (itemToCopy.normX + 0.04f).coerceIn(0f, 0.95f),
+                                            normY = (itemToCopy.normY + 0.04f).coerceIn(0f, 0.95f)
+                                        )
+                                        textItems.add(copied)
+                                        selectedTextId = copied.id
+                                        editingTextDraft = copied.text
+                                    },
+                                    onBringToFront = { itemToFront ->
+                                        pushUndoHistory()
+                                        val idx = textItems.indexOfFirst { it.id == itemToFront.id }
+                                        if (idx >= 0 && idx < textItems.size - 1) {
+                                            val itm = textItems.removeAt(idx)
+                                            textItems.add(itm)
+                                            selectedTextId = itm.id
                                         }
-
-                                        1 -> {
-                                            // Tab 1: Font Family (English & Bengali)
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Text("Category:", color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    FilterChip(
-                                                        selected = selectedFontCategory == "English",
-                                                        onClick = { selectedFontCategory = "English" },
-                                                        label = { Text("English", fontSize = 11.sp) },
-                                                        colors = FilterChipDefaults.filterChipColors(
-                                                            selectedContainerColor = CrimsonPrimary,
-                                                            selectedLabelColor = Color.White
-                                                        )
-                                                    )
-                                                    FilterChip(
-                                                        selected = selectedFontCategory == "Bengali",
-                                                        onClick = { selectedFontCategory = "Bengali" },
-                                                        label = { Text("বাংলা (Bengali)", fontSize = 11.sp) },
-                                                        colors = FilterChipDefaults.filterChipColors(
-                                                            selectedContainerColor = CrimsonPrimary,
-                                                            selectedLabelColor = Color.White
-                                                        )
-                                                    )
-                                                }
-                                            }
-
-                                            Spacer(modifier = Modifier.height(4.dp))
-
-                                            val fontsToShow = PhotoFonts.ALL_FONTS.filter { it.category == selectedFontCategory }
-                                            Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .horizontalScroll(rememberScrollState()),
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                fontsToShow.forEach { fontOption ->
-                                                    val isFontSelected = activeItem.fontId == fontOption.id
-                                                    Surface(
-                                                        color = if (isFontSelected) CrimsonPrimary.copy(alpha = 0.2f) else Color(0xFF1E293B),
-                                                        shape = RoundedCornerShape(8.dp),
-                                                        border = BorderStroke(1.5.dp, if (isFontSelected) CrimsonPrimary else Color(0xFF334155)),
-                                                        modifier = Modifier.clickable {
-                                                            val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                            if (idx >= 0) textItems[idx] = activeItem.copy(fontId = fontOption.id)
-                                                        }
-                                                    ) {
-                                                        Column(
-                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                                                            horizontalAlignment = Alignment.CenterHorizontally
-                                                        ) {
-                                                            Text(
-                                                                text = fontOption.displayName,
-                                                                color = if (isFontSelected) CrimsonPrimary else Color.White,
-                                                                fontSize = 11.sp,
-                                                                fontWeight = FontWeight.Bold
-                                                            )
-                                                            Spacer(modifier = Modifier.height(2.dp))
-                                                            Text(
-                                                                text = if (fontOption.category == "Bengali") "বাংলা লেখা" else "Aa Bb",
-                                                                color = if (isFontSelected) Color.White else Color(0xFF94A3B8),
-                                                                fontSize = 12.sp,
-                                                                fontFamily = fontOption.fontFamily,
-                                                                fontWeight = if (fontOption.defaultBold) FontWeight.Bold else FontWeight.Normal,
-                                                                fontStyle = if (fontOption.defaultItalic) androidx.compose.ui.text.font.FontStyle.Italic else androidx.compose.ui.text.font.FontStyle.Normal
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
+                                    },
+                                    onSendToBack = { itemToBack ->
+                                        pushUndoHistory()
+                                        val idx = textItems.indexOfFirst { it.id == itemToBack.id }
+                                        if (idx > 0) {
+                                            val itm = textItems.removeAt(idx)
+                                            textItems.add(0, itm)
+                                            selectedTextId = itm.id
                                         }
-
-                                        2 -> {
-                                            // Tab 2: Color & Opacity
-                                            ColorPaletteRow(
-                                                selectedColor = activeItem.color,
-                                                onColorSelected = { col ->
-                                                    val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                    if (idx >= 0) textItems[idx] = activeItem.copy(color = col)
-                                                },
-                                                onOpenCustomPicker = { showCustomTextColorPicker = true }
-                                            )
-
-                                            Spacer(modifier = Modifier.height(4.dp))
-
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text("Opacity: ${(activeItem.opacity * 100).roundToInt()}%", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(76.dp))
-                                                Slider(
-                                                    value = activeItem.opacity,
-                                                    onValueChange = { newOp ->
-                                                        val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                        if (idx >= 0) textItems[idx] = activeItem.copy(opacity = newOp)
-                                                    },
-                                                    valueRange = 0.1f..1f,
-                                                    modifier = Modifier.weight(1f),
-                                                    colors = SliderDefaults.colors(thumbColor = CrimsonPrimary, activeTrackColor = CrimsonPrimary)
-                                                )
-                                            }
-                                        }
-
-                                        3 -> {
-                                            // Tab 3: Size, Alignment, Rotation & Centering
-                                            Row(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                horizontalArrangement = Arrangement.SpaceBetween,
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                    IconButton(
-                                                        onClick = {
-                                                            val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                            if (idx >= 0) textItems[idx] = activeItem.copy(alignment = TextAlignment.LEFT)
-                                                        },
-                                                        modifier = Modifier.size(32.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.FormatAlignLeft, contentDescription = "Align Left", tint = if (activeItem.alignment == TextAlignment.LEFT) CrimsonPrimary else Color.White, modifier = Modifier.size(18.dp))
-                                                    }
-                                                    IconButton(
-                                                        onClick = {
-                                                            val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                            if (idx >= 0) textItems[idx] = activeItem.copy(alignment = TextAlignment.CENTER)
-                                                        },
-                                                        modifier = Modifier.size(32.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.FormatAlignCenter, contentDescription = "Align Center", tint = if (activeItem.alignment == TextAlignment.CENTER) CrimsonPrimary else Color.White, modifier = Modifier.size(18.dp))
-                                                    }
-                                                    IconButton(
-                                                        onClick = {
-                                                            val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                            if (idx >= 0) textItems[idx] = activeItem.copy(alignment = TextAlignment.RIGHT)
-                                                        },
-                                                        modifier = Modifier.size(32.dp)
-                                                    ) {
-                                                        Icon(Icons.Default.FormatAlignRight, contentDescription = "Align Right", tint = if (activeItem.alignment == TextAlignment.RIGHT) CrimsonPrimary else Color.White, modifier = Modifier.size(18.dp))
-                                                    }
-                                                }
-
-                                                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                                    OutlinedButton(
-                                                        onClick = {
-                                                            val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                            if (idx >= 0) textItems[idx] = activeItem.copy(normX = 0.5f, normY = 0.5f)
-                                                        },
-                                                        shape = RoundedCornerShape(6.dp),
-                                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                                        modifier = Modifier.height(28.dp)
-                                                    ) {
-                                                        Text("Center", fontSize = 10.sp, color = Color.White)
-                                                    }
-
-                                                    if (activeItem.rotationDeg != 0f) {
-                                                        OutlinedButton(
-                                                            onClick = {
-                                                                val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                                if (idx >= 0) textItems[idx] = activeItem.copy(rotationDeg = 0f)
-                                                            },
-                                                            shape = RoundedCornerShape(6.dp),
-                                                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                                                            modifier = Modifier.height(28.dp)
-                                                        ) {
-                                                            Text("Reset 0°", fontSize = 10.sp, color = AccentPink)
-                                                        }
-                                                    }
-                                                }
-                                            }
-
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text("Size: ${activeItem.fontSizeSp.roundToInt()}sp", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(76.dp))
-                                                Slider(
-                                                    value = activeItem.fontSizeSp,
-                                                    onValueChange = { newSize ->
-                                                        val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                        if (idx >= 0) textItems[idx] = activeItem.copy(fontSizeSp = newSize)
-                                                    },
-                                                    valueRange = 12f..120f,
-                                                    modifier = Modifier.weight(1f),
-                                                    colors = SliderDefaults.colors(thumbColor = CrimsonPrimary, activeTrackColor = CrimsonPrimary)
-                                                )
-                                            }
-
-                                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                                Text("Rotate: ${activeItem.rotationDeg.roundToInt()}°", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(76.dp))
-                                                Slider(
-                                                    value = activeItem.rotationDeg,
-                                                    onValueChange = { newRot ->
-                                                        val idx = textItems.indexOfFirst { it.id == activeItem.id }
-                                                        if (idx >= 0) textItems[idx] = activeItem.copy(rotationDeg = newRot)
-                                                    },
-                                                    valueRange = -180f..180f,
-                                                    modifier = Modifier.weight(1f),
-                                                    colors = SliderDefaults.colors(thumbColor = CrimsonPrimary, activeTrackColor = CrimsonPrimary)
-                                                )
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    // No active item selected
-                                    if (textItems.isNotEmpty()) {
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Text("Select a text layer or tap on the photo to edit:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                                        Spacer(modifier = Modifier.height(4.dp))
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            textItems.forEachIndexed { i, t ->
-                                                FilterChip(
-                                                    selected = false,
-                                                    onClick = {
-                                                        selectedTextId = t.id
-                                                        editingTextDraft = t.text
-                                                        textSubTab = 0
-                                                    },
-                                                    label = { Text("${i + 1}. ${t.text.take(14)}", fontSize = 11.sp) },
-                                                    colors = FilterChipDefaults.filterChipColors(containerColor = Color(0xFF1E293B))
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
+                                    },
+                                    onOpenLayers = { showLayerManagerDialog = true }
+                                )
                             }
 
                             PhotoEditTool.DRAWING -> {
@@ -2845,6 +2529,75 @@ fun PhotoEditingScreen(
                 showCustomTextColorPicker = false
             },
             onDismiss = { showCustomTextColorPicker = false }
+        )
+    }
+
+    if (showLayerManagerDialog) {
+        val layers = textItems.reversed().map { item ->
+            LayerEntry(
+                id = item.id,
+                title = if (item.text.isNotBlank()) item.text else "Text Layer",
+                subtitle = "Text",
+                isText = true,
+                thumbnailBitmap = null,
+                isVisible = item.isVisible,
+                isLocked = item.isLocked,
+                opacity = item.opacity
+            )
+        }
+
+        FullLayerManagerDialog(
+            layers = layers,
+            selectedId = selectedTextId,
+            onSelect = { id ->
+                selectedTextId = id
+                activeTool = PhotoEditTool.TEXT
+            },
+            onToggleVisibility = { id ->
+                pushUndoHistory()
+                val idx = textItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = textItems[idx]
+                    textItems[idx] = itm.copy(isVisible = !itm.isVisible)
+                }
+            },
+            onToggleLock = { id ->
+                pushUndoHistory()
+                val idx = textItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = textItems[idx]
+                    textItems[idx] = itm.copy(isLocked = !itm.isLocked)
+                }
+            },
+            onChangeOpacity = { id, newOpacity ->
+                val idx = textItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = textItems[idx]
+                    textItems[idx] = itm.copy(opacity = newOpacity)
+                }
+            },
+            onMoveUp = { reversedIndex ->
+                pushUndoHistory()
+                val origIndex = (textItems.size - 1) - reversedIndex
+                if (origIndex < textItems.size - 1) {
+                    val itm = textItems.removeAt(origIndex)
+                    textItems.add(origIndex + 1, itm)
+                }
+            },
+            onMoveDown = { reversedIndex ->
+                pushUndoHistory()
+                val origIndex = (textItems.size - 1) - reversedIndex
+                if (origIndex > 0) {
+                    val itm = textItems.removeAt(origIndex)
+                    textItems.add(origIndex - 1, itm)
+                }
+            },
+            onDelete = { id ->
+                pushUndoHistory()
+                textItems.removeAll { it.id == id }
+                if (selectedTextId == id) selectedTextId = null
+            },
+            onDismiss = { showLayerManagerDialog = false }
         )
     }
 

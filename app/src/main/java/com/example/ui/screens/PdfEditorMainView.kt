@@ -12,6 +12,10 @@ import android.graphics.Paint as AndroidPaint
 import android.graphics.Rect as AndroidRect
 import android.graphics.Typeface as AndroidTypeface
 import android.net.Uri
+import android.view.LayoutInflater
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -68,6 +72,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import com.example.R
 import kotlin.math.roundToInt
 import com.example.model.PdfFileRecord
 import com.example.pdf.PdfEngine
@@ -158,11 +164,16 @@ fun PdfEditorMainView(
     // Text tool state
     var showAddTextDialog by remember { mutableStateOf(false) }
     var textInputContent by remember { mutableStateOf("") }
-    var textColor by remember { mutableIntStateOf(AndroidColor.BLACK) }
-    var textFontSize by remember { mutableFloatStateOf(18f) }
+    var textColor by remember { mutableIntStateOf(AndroidColor.RED) }
+    var textFontSize by remember { mutableFloatStateOf(28f) }
     var textIsBold by remember { mutableStateOf(false) }
     var textIsItalic by remember { mutableStateOf(false) }
     var textAlignment by remember { mutableStateOf("LEFT") }
+    var showLayerManagerDialog by remember { mutableStateOf(false) }
+    var pdfCanvasWidthPx by remember { mutableFloatStateOf(800f) }
+    var pdfCanvasHeightPx by remember { mutableFloatStateOf(1100f) }
+    var textLayerUpdateTrigger by remember { mutableIntStateOf(0) }
+    var textOverlayViewRef by remember { mutableStateOf<TextOverlayView?>(null) }
 
     // Draw tool state
     var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
@@ -364,7 +375,6 @@ fun PdfEditorMainView(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .statusBarsPadding()
                     .padding(horizontal = 4.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -425,25 +435,54 @@ fun PdfEditorMainView(
                     )
                 }
 
-                // Right side: Only 3-dots overflow menu button visible
-                Box {
+                // Right side: Layers button and 3-dots overflow menu
+                Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(
-                        onClick = { moreMenuExpanded = true },
-                        modifier = Modifier.testTag("editor_top_more_menu")
+                        onClick = { showLayerManagerDialog = true },
+                        modifier = Modifier.testTag("editor_top_layers_button")
                     ) {
                         Icon(
-                            imageVector = Icons.Default.MoreVert,
-                            contentDescription = "More options",
-                            tint = Color.White
+                            imageVector = Icons.Default.Layers,
+                            contentDescription = "Layers",
+                            tint = if (editItems.any { it.pageIndex == currentPageIndex }) Color(0xFF60A5FA) else Color.White
                         )
                     }
 
-                    DropdownMenu(
-                        expanded = moreMenuExpanded,
-                        onDismissRequest = { moreMenuExpanded = false }
-                    ) {
-                        // Save Option
-                        DropdownMenuItem(
+                    Box {
+                        IconButton(
+                            onClick = { moreMenuExpanded = true },
+                            modifier = Modifier.testTag("editor_top_more_menu")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More options",
+                                tint = Color.White
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = moreMenuExpanded,
+                            onDismissRequest = { moreMenuExpanded = false }
+                        ) {
+                            // Layers Option
+                            DropdownMenuItem(
+                                text = { Text("Layers") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.Default.Layers,
+                                        contentDescription = null,
+                                        tint = Color(0xFF60A5FA)
+                                    )
+                                },
+                                onClick = {
+                                    moreMenuExpanded = false
+                                    showLayerManagerDialog = true
+                                },
+                                modifier = Modifier.testTag("menu_item_layers")
+                            )
+
+                            // Save Option
+                            DropdownMenuItem(
                             text = { Text("Save") },
                             leadingIcon = {
                                 Icon(
@@ -588,6 +627,7 @@ fun PdfEditorMainView(
                 }
             }
         }
+    }
 
         // ====================================================
         // 3. SUB-OPTIONS PANEL (When a top tab is active)
@@ -603,7 +643,7 @@ fun PdfEditorMainView(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(10.dp)
+                        .padding(start = 8.dp, end = 8.dp, top = 4.dp, bottom = 6.dp)
                         .verticalScroll(rememberScrollState())
                 ) {
                     when (activeTab) {
@@ -676,29 +716,71 @@ fun PdfEditorMainView(
                         }
 
                         EditorTopTab.TEXT -> {
-                            TextOptionsSection(
-                                onAddText = {
+                            val currentSelectedTextItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.TEXT }
+                                ?: editItems.firstOrNull { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT }
+
+                            AdvancedTextToolPanel(
+                                selectedItem = currentSelectedTextItem,
+                                pageWidthPx = pdfCanvasWidthPx,
+                                pageHeightPx = pdfCanvasHeightPx,
+                                onAddNewText = {
                                     textInputContent = ""
+                                    selectedAnnotationId = null
                                     showAddTextDialog = true
                                 },
-                                textColor = textColor,
-                                onColorChange = { textColor = it },
-                                fontSize = textFontSize,
-                                onFontSizeChange = { textFontSize = it },
-                                isBold = textIsBold,
-                                onToggleBold = { textIsBold = !textIsBold },
-                                isItalic = textIsItalic,
-                                onToggleItalic = { textIsItalic = !textIsItalic },
-                                alignment = textAlignment,
-                                onAlignmentChange = { textAlignment = it },
-                                onDeleteSelectedText = {
-                                    selectedAnnotationId?.let { id ->
+                                onOpenEditDialog = {
+                                    textInputContent = currentSelectedTextItem?.text ?: ""
+                                    showAddTextDialog = true
+                                },
+                                onDeleteSelected = {
+                                    currentSelectedTextItem?.let { item ->
                                         pushHistory()
-                                        editItems.removeAll { it.id == id }
+                                        editItems.removeAll { it.id == item.id }
                                         selectedAnnotationId = null
                                         Toast.makeText(context, "Text deleted", Toast.LENGTH_SHORT).show()
                                     }
-                                }
+                                },
+                                onCopySelected = {
+                                    currentSelectedTextItem?.let { item ->
+                                        pushHistory()
+                                        val copy = item.copy(
+                                            id = java.util.UUID.randomUUID().toString(),
+                                            posX = item.posX + 20f,
+                                            posY = item.posY + 20f
+                                        )
+                                        editItems.add(copy)
+                                        selectedAnnotationId = copy.id
+                                        textLayerUpdateTrigger++
+                                        Toast.makeText(context, "Text duplicated", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onBringToFront = {
+                                    currentSelectedTextItem?.let { item ->
+                                        pushHistory()
+                                        editItems.remove(item)
+                                        editItems.add(item)
+                                        textLayerUpdateTrigger++
+                                        Toast.makeText(context, "Brought to front", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onSendToBack = {
+                                    currentSelectedTextItem?.let { item ->
+                                        pushHistory()
+                                        editItems.remove(item)
+                                        editItems.add(0, item)
+                                        textLayerUpdateTrigger++
+                                        Toast.makeText(context, "Sent to back", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onUpdateItem = { updated ->
+                                    val idx = editItems.indexOfFirst { it.id == updated.id }
+                                    if (idx != -1) {
+                                        editItems[idx] = updated
+                                    }
+                                    textLayerUpdateTrigger++
+                                },
+                                onHistoryPush = { pushHistory() },
+                                onOpenLayers = { showLayerManagerDialog = true }
                             )
                         }
 
@@ -1022,13 +1104,59 @@ fun PdfEditorMainView(
                                 val density = LocalDensity.current
                                 val pageWidthPx = constraints.maxWidth.toFloat()
                                 val pageHeightPx = constraints.maxHeight.toFloat()
+                                if (pageWidthPx > 0f && pageHeightPx > 0f) {
+                                    pdfCanvasWidthPx = pageWidthPx
+                                    pdfCanvasHeightPx = pageHeightPx
+                                }
 
-                                    // 1. Rendered PDF Page Image
-                                    Image(
-                                        bitmap = currentBmp.asImageBitmap(),
-                                        contentDescription = "PDF Page ${currentPageIndex + 1}",
-                                        contentScale = ContentScale.Fit,
-                                        modifier = Modifier.fillMaxSize()
+                                    // 1. PDF Renderer & TextOverlayView hosted inside FrameLayout via pdf_editor_canvas layout
+                                    AndroidView(
+                                        modifier = Modifier.fillMaxSize(),
+                                        factory = { ctx ->
+                                            val inflater = LayoutInflater.from(ctx)
+                                            val root = inflater.inflate(R.layout.pdf_editor_canvas, null, false) as FrameLayout
+                                            val imgView = root.findViewById<ImageView>(R.id.pdf_renderer_view)
+                                            val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
+
+                                            imgView.setImageBitmap(currentBmp)
+                                            overlay.visibility = View.VISIBLE
+                                            overlay.bringToFront()
+
+                                            overlay.onLayerSelected = { id ->
+                                                selectedAnnotationId = id
+                                                if (id != null) activeTab = EditorTopTab.TEXT
+                                            }
+                                            overlay.onLayerUpdated = { updatedItem ->
+                                                val idx = editItems.indexOfFirst { it.id == updatedItem.id }
+                                                if (idx != -1) {
+                                                    editItems[idx] = updatedItem
+                                                }
+                                                textLayerUpdateTrigger++
+                                            }
+                                            overlay.onLayerEditRequested = { item ->
+                                                selectedAnnotationId = item.id
+                                                textInputContent = item.text
+                                                showAddTextDialog = true
+                                            }
+                                            overlay.onHistoryPush = {
+                                                pushHistory()
+                                            }
+
+                                            textOverlayViewRef = overlay
+                                            root
+                                        },
+                                        update = { root ->
+                                            val imgView = root.findViewById<ImageView>(R.id.pdf_renderer_view)
+                                            imgView.setImageBitmap(currentBmp)
+                                            val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
+                                            textOverlayViewRef = overlay
+                                            overlay.visibility = View.VISIBLE
+                                            overlay.bringToFront()
+                                            overlay.updateLayers(
+                                                items = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT },
+                                                selectedId = selectedAnnotationId
+                                            )
+                                        }
                                     )
 
                                     // 2. Interactive Annotation & Drawing Canvas
@@ -1074,8 +1202,8 @@ fun PdfEditorMainView(
                                                 }
                                             }
                                     ) {
-                                        // Draw existing non-image edit items on this page (drawings, text)
-                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.IMAGE }
+                                        // Draw existing drawing edit items on this page
+                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.IMAGE && it.type != PdfEngine.AnnotationType.TEXT }
                                         for (item in pageItems) {
                                             when (item.type) {
                                                 PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
@@ -1095,17 +1223,6 @@ fun PdfEditorMainView(
                                                                 join = androidx.compose.ui.graphics.StrokeJoin.Round
                                                             )
                                                         )
-                                                    }
-                                                }
-                                                PdfEngine.AnnotationType.TEXT -> {
-                                                    drawContext.canvas.nativeCanvas.apply {
-                                                        val p = AndroidPaint().apply {
-                                                            color = item.colorHex
-                                                            textSize = item.fontSize * density.density
-                                                            isFakeBoldText = item.isBold
-                                                            isAntiAlias = true
-                                                        }
-                                                        drawText(item.text, item.posX, item.posY, p)
                                                     }
                                                 }
                                                 else -> {}
@@ -1191,56 +1308,27 @@ fun PdfEditorMainView(
                                                         .clip(RoundedCornerShape(2.dp))
                                                 )
 
-                                                // 2. Custom Image Adjustment Box (Crop Tool Frame Design & Functionality)
+                                                // 2. Custom Image Adjustment Box (Clean Standard Crop/Selection Frame)
                                                 if (isSelected) {
-                                                    // Blue boundary border matching crop tool
+                                                    // Clean rectangular bounding box
                                                     Box(
                                                         modifier = Modifier
                                                             .fillMaxSize()
-                                                            .border(2.dp, ToolBlue, RoundedCornerShape(2.dp))
+                                                            .border(1.5.dp, ToolBlue, RoundedCornerShape(2.dp))
                                                     )
 
-                                                    // Rule-of-thirds grid lines matching crop tool frame
-                                                    Canvas(modifier = Modifier.fillMaxSize()) {
-                                                        val w = size.width
-                                                        val h = size.height
-                                                        val gridColor = Color.White.copy(alpha = 0.25f)
-                                                        drawLine(gridColor, Offset(w / 3f, 0f), Offset(w / 3f, h), strokeWidth = 1.dp.toPx())
-                                                        drawLine(gridColor, Offset(w * 2f / 3f, 0f), Offset(w * 2f / 3f, h), strokeWidth = 1.dp.toPx())
-                                                        drawLine(gridColor, Offset(0f, h / 3f), Offset(w, h / 3f), strokeWidth = 1.dp.toPx())
-                                                        drawLine(gridColor, Offset(0f, h * 2f / 3f), Offset(w, h * 2f / 3f), strokeWidth = 1.dp.toPx())
-                                                    }
-
-                                                    // Dimension pill badge indicator
-                                                    Surface(
-                                                        color = Color(0xFF0F172A).copy(alpha = 0.88f),
-                                                        shape = RoundedCornerShape(10.dp),
-                                                        border = androidx.compose.foundation.BorderStroke(1.dp, ToolBlue.copy(alpha = 0.6f)),
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopCenter)
-                                                            .offset(y = (-24).dp)
-                                                    ) {
-                                                        Text(
-                                                            text = "${imgItem.imageWidth.roundToInt()} × ${imgItem.imageHeight.roundToInt()}",
-                                                            color = Color.White,
-                                                            fontSize = 10.sp,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                                        )
-                                                    }
-
-                                                    val cornerTouchSize = 38.dp
-                                                    val handleRadiusDp = 8.dp
+                                                    val cornerTouchSize = 36.dp
+                                                    val handleCircleSize = 13.dp
                                                     val handleColor = ToolBlue
                                                     val handleInner = Color.White
 
-                                                    // --- 4 CORNER HANDLES (Fluid 2D Stretch / Shrink / Widen) ---
+                                                    // --- 4 CORNER HANDLES (Fluid 2D Scaling / Resizing) ---
 
                                                     // TOP-LEFT CORNER HANDLE
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopStart)
-                                                            .offset(x = (-19).dp, y = (-19).dp)
+                                                            .offset(x = (-18).dp, y = (-18).dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1268,9 +1356,9 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1278,7 +1366,7 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.TopEnd)
-                                                            .offset(x = 19.dp, y = (-19).dp)
+                                                            .offset(x = 18.dp, y = (-18).dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1304,9 +1392,9 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1314,7 +1402,7 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomStart)
-                                                            .offset(x = (-19).dp, y = 19.dp)
+                                                            .offset(x = (-18).dp, y = 18.dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1340,9 +1428,9 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
 
@@ -1350,7 +1438,7 @@ fun PdfEditorMainView(
                                                     Box(
                                                         modifier = Modifier
                                                             .align(Alignment.BottomEnd)
-                                                            .offset(x = 19.dp, y = 19.dp)
+                                                            .offset(x = 18.dp, y = 18.dp)
                                                             .size(cornerTouchSize)
                                                             .pointerInput(imgItem.id) {
                                                                 detectDragGestures(
@@ -1374,201 +1462,16 @@ fun PdfEditorMainView(
                                                     ) {
                                                         Box(
                                                             modifier = Modifier
-                                                                .size(handleRadiusDp * 2)
-                                                                .background(handleColor, CircleShape)
-                                                                .border(2.dp, handleInner, CircleShape)
-                                                        )
-                                                    }
-
-                                                    // --- 4 EDGE MIDPOINT HANDLES (Independent Widen / Stretch / Shrink) ---
-
-                                                    // TOP EDGE HANDLE (Vertical Height Adjustment from Top)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopCenter)
-                                                            .offset(y = (-15).dp)
-                                                            .size(width = 44.dp, height = 30.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dY = dragAmount.y / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newH = (cur.imageHeight - dY).coerceIn(40f, cur.posY + cur.imageHeight)
-                                                                            val deltaH = cur.imageHeight - newH
-                                                                            val newY = cur.posY + deltaH
-                                                                            editItems[idx] = cur.copy(posY = newY, imageHeight = newH)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 24.dp, height = 7.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // BOTTOM EDGE HANDLE (Vertical Height Adjustment from Bottom)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.BottomCenter)
-                                                            .offset(y = 15.dp)
-                                                            .size(width = 44.dp, height = 30.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dY = dragAmount.y / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newH = (cur.imageHeight + dY).coerceIn(40f, pageHeightPx - cur.posY)
-                                                                            editItems[idx] = cur.copy(imageHeight = newH)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 24.dp, height = 7.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // LEFT EDGE HANDLE (Horizontal Width Adjustment from Left)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.CenterStart)
-                                                            .offset(x = (-15).dp)
-                                                            .size(width = 30.dp, height = 44.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth - dX).coerceIn(40f, cur.posX + cur.imageWidth)
-                                                                            val deltaW = cur.imageWidth - newW
-                                                                            val newX = cur.posX + deltaW
-                                                                            editItems[idx] = cur.copy(posX = newX, imageWidth = newW)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 7.dp, height = 24.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // RIGHT EDGE HANDLE (Horizontal Width Adjustment from Right)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.CenterEnd)
-                                                            .offset(x = 15.dp)
-                                                            .size(width = 30.dp, height = 44.dp)
-                                                            .pointerInput(imgItem.id) {
-                                                                detectDragGestures(
-                                                                    onDragStart = { pushHistory() },
-                                                                    onDrag = { change, dragAmount ->
-                                                                        change.consume()
-                                                                        val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                        val dX = dragAmount.x / scale
-                                                                        val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                        if (idx != -1) {
-                                                                            val cur = editItems[idx]
-                                                                            val newW = (cur.imageWidth + dX).coerceIn(40f, pageWidthPx - cur.posX)
-                                                                            editItems[idx] = cur.copy(imageWidth = newW)
-                                                                        }
-                                                                    }
-                                                                )
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Box(
-                                                            modifier = Modifier
-                                                                .size(width = 7.dp, height = 24.dp)
-                                                                .background(handleColor, RoundedCornerShape(4.dp))
-                                                                .border(1.dp, handleInner, RoundedCornerShape(4.dp))
-                                                        )
-                                                    }
-
-                                                    // --- QUICK ACTION BUTTONS ---
-
-                                                    // Quick Delete Button (Top-Right Offset)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopEnd)
-                                                            .size(24.dp)
-                                                            .offset(x = 24.dp, y = (-24).dp)
-                                                            .background(CrimsonPrimary, CircleShape)
-                                                            .border(1.5.dp, Color.White, CircleShape)
-                                                            .clickable {
-                                                                pushHistory()
-                                                                editItems.removeAll { it.id == imgItem.id }
-                                                                selectedAnnotationId = null
-                                                                Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                             imageVector = Icons.Default.Close,
-                                                             contentDescription = "Delete Image",
-                                                             tint = Color.White,
-                                                             modifier = Modifier.size(14.dp)
-                                                        )
-                                                    }
-
-                                                    // Quick Rotate Handle (Top-Left Offset)
-                                                    Box(
-                                                        modifier = Modifier
-                                                            .align(Alignment.TopStart)
-                                                            .size(24.dp)
-                                                            .offset(x = (-24).dp, y = (-24).dp)
-                                                            .background(ToolOrange, CircleShape)
-                                                            .border(1.5.dp, Color.White, CircleShape)
-                                                            .clickable {
-                                                                pushHistory()
-                                                                val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                if (idx != -1) {
-                                                                    val cur = editItems[idx]
-                                                                    editItems[idx] = cur.copy(imageRotation = (cur.imageRotation + 90f) % 360f)
-                                                                }
-                                                                Toast.makeText(context, "Image rotated +90°", Toast.LENGTH_SHORT).show()
-                                                            },
-                                                        contentAlignment = Alignment.Center
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.RotateRight,
-                                                            contentDescription = "Rotate Image",
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(14.dp)
+                                                                .size(handleCircleSize)
+                                                                .background(handleInner, CircleShape)
+                                                                .border(2.dp, handleColor, CircleShape)
                                                         )
                                                     }
                                                 }
                                             }
                                         }
+
+                                        // 4. Text overlays and bounding boxes are rendered directly on TextOverlayView (in pdf_editor_canvas)
                                     }
                                 }
                             }
@@ -1998,15 +1901,25 @@ fun PdfEditorMainView(
     }
 
     if (showAddTextDialog) {
+        val editingItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.TEXT }
         AlertDialog(
             onDismissRequest = { showAddTextDialog = false },
-            title = { Text("Insert Text") },
+            title = { Text(if (editingItem != null) "Edit Text" else "Insert Text") },
             text = {
                 OutlinedTextField(
                     value = textInputContent,
                     onValueChange = { textInputContent = it },
                     placeholder = { Text("Type text to place on page...") },
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 6,
+                    trailingIcon = {
+                        if (textInputContent.isNotEmpty()) {
+                            IconButton(onClick = { textInputContent = "" }) {
+                                Icon(Icons.Default.Clear, contentDescription = "Clear text", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
                 )
             },
             confirmButton = {
@@ -2014,27 +1927,75 @@ fun PdfEditorMainView(
                     onClick = {
                         if (textInputContent.isNotBlank()) {
                             pushHistory()
-                            editItems.add(
-                                PdfEngine.EditItem(
+                            if (editingItem != null) {
+                                val idx = editItems.indexOfFirst { it.id == editingItem.id }
+                                if (idx != -1) {
+                                    val updated = editingItem.copy(text = textInputContent)
+                                    editItems[idx] = updated
+                                    textOverlayViewRef?.apply {
+                                        visibility = View.VISIBLE
+                                        bringToFront()
+                                        addOrSelectLayer(updated)
+                                        postInvalidate()
+                                    }
+                                }
+                                textLayerUpdateTrigger++
+                                Toast.makeText(context, "Text updated", Toast.LENGTH_SHORT).show()
+                            } else {
+                                val overlay = textOverlayViewRef
+                                val canvasW = if (overlay != null && overlay.width > 0) overlay.width.toFloat() else if (pdfCanvasWidthPx > 0f) pdfCanvasWidthPx else 800f
+                                val canvasH = if (overlay != null && overlay.height > 0) overlay.height.toFloat() else if (pdfCanvasHeightPx > 0f) pdfCanvasHeightPx else 1100f
+                                val defaultW = 320f
+                                val defaultH = 110f
+                                // Initial Coordinates: strictly at center of visible PDF page viewport
+                                // startX = overlayView.width / 2f, startY = overlayView.height / 3f. Fallback to (200f, 200f)
+                                val startX = if (overlay != null && overlay.width > 0) overlay.width / 2f else (canvasW / 2f)
+                                val startY = if (overlay != null && overlay.height > 0) overlay.height / 3f else (canvasH / 3f)
+                                val initX = if (startX > 0f) (startX - defaultW / 2f).coerceAtLeast(20f) else 200f
+                                val initY = if (startY > 0f) (startY - defaultH / 2f).coerceAtLeast(30f) else 200f
+
+                                val defaultColor = if (textColor != 0) textColor else AndroidColor.RED
+                                val defaultFontSize = if (textFontSize >= 24f) textFontSize else 28f
+
+                                val newItem = PdfEngine.EditItem(
                                     pageIndex = currentPageIndex,
                                     type = PdfEngine.AnnotationType.TEXT,
                                     text = textInputContent,
-                                    colorHex = textColor,
-                                    fontSize = textFontSize,
+                                    colorHex = defaultColor,
+                                    fontSize = defaultFontSize,
                                     isBold = textIsBold,
                                     isItalic = textIsItalic,
                                     alignment = textAlignment,
-                                    posX = 100f,
-                                    posY = 200f
+                                    posX = initX,
+                                    posY = initY,
+                                    boxWidth = defaultW,
+                                    boxHeight = defaultH,
+                                    isVisible = true,
+                                    opacity = 1f,
+                                    baseWidth = canvasW,
+                                    baseHeight = canvasH
                                 )
-                            )
-                            Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
+                                editItems.add(newItem)
+                                selectedAnnotationId = newItem.id
+                                activeTab = EditorTopTab.TEXT
+                                textLayerUpdateTrigger++
+
+                                // Force View Attachment & Visibility: programmatically ensure overlayView.visibility = View.VISIBLE and invoke overlayView.bringToFront()
+                                // Invalidation: Immediately call overlayView.postInvalidate() right after appending the new text layer object
+                                overlay?.apply {
+                                    visibility = View.VISIBLE
+                                    bringToFront()
+                                    addOrSelectLayer(newItem)
+                                    postInvalidate()
+                                }
+                                Toast.makeText(context, "Text added to page", Toast.LENGTH_SHORT).show()
+                            }
                         }
                         showAddTextDialog = false
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
                 ) {
-                    Text("Add Text")
+                    Text(if (editingItem != null) "Apply" else "Add Text")
                 }
             },
             dismissButton = {
@@ -2052,6 +2013,85 @@ fun PdfEditorMainView(
         context = context,
         onDismiss = { showJpgExportDialog = false }
     )
+
+    if (showLayerManagerDialog) {
+        val pageLayers = editItems
+            .filter { it.pageIndex == currentPageIndex }
+            .reversed()
+            .map { item ->
+                LayerEntry(
+                    id = item.id,
+                    title = if (item.type == PdfEngine.AnnotationType.TEXT) {
+                        if (item.text.isNotBlank()) item.text else "Text Layer"
+                    } else "Image Layer",
+                    subtitle = if (item.type == PdfEngine.AnnotationType.TEXT) "Text" else "Image",
+                    isText = item.type == PdfEngine.AnnotationType.TEXT,
+                    thumbnailBitmap = item.imageBitmap,
+                    isVisible = item.isVisible,
+                    isLocked = item.isLocked,
+                    opacity = item.opacity
+                )
+            }
+
+        FullLayerManagerDialog(
+            layers = pageLayers,
+            selectedId = selectedAnnotationId,
+            onSelect = { id -> selectedAnnotationId = id },
+            onToggleVisibility = { id ->
+                pushHistory()
+                val idx = editItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = editItems[idx]
+                    editItems[idx] = itm.copy(isVisible = !itm.isVisible)
+                }
+            },
+            onToggleLock = { id ->
+                pushHistory()
+                val idx = editItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = editItems[idx]
+                    editItems[idx] = itm.copy(isLocked = !itm.isLocked)
+                }
+            },
+            onChangeOpacity = { id, newOpacity ->
+                val idx = editItems.indexOfFirst { it.id == id }
+                if (idx != -1) {
+                    val itm = editItems[idx]
+                    editItems[idx] = itm.copy(opacity = newOpacity)
+                }
+            },
+            onMoveUp = { reversedIndex ->
+                pushHistory()
+                val pageItemIndices = editItems.mapIndexedNotNull { i, item -> if (item.pageIndex == currentPageIndex) i else null }
+                val origIndexInPage = (pageItemIndices.size - 1) - reversedIndex
+                if (origIndexInPage < pageItemIndices.size - 1) {
+                    val actualIdx1 = pageItemIndices[origIndexInPage]
+                    val actualIdx2 = pageItemIndices[origIndexInPage + 1]
+                    val temp = editItems[actualIdx1]
+                    editItems[actualIdx1] = editItems[actualIdx2]
+                    editItems[actualIdx2] = temp
+                }
+            },
+            onMoveDown = { reversedIndex ->
+                pushHistory()
+                val pageItemIndices = editItems.mapIndexedNotNull { i, item -> if (item.pageIndex == currentPageIndex) i else null }
+                val origIndexInPage = (pageItemIndices.size - 1) - reversedIndex
+                if (origIndexInPage > 0) {
+                    val actualIdx1 = pageItemIndices[origIndexInPage]
+                    val actualIdx2 = pageItemIndices[origIndexInPage - 1]
+                    val temp = editItems[actualIdx1]
+                    editItems[actualIdx1] = editItems[actualIdx2]
+                    editItems[actualIdx2] = temp
+                }
+            },
+            onDelete = { id ->
+                pushHistory()
+                editItems.removeAll { it.id == id }
+                if (selectedAnnotationId == id) selectedAnnotationId = null
+            },
+            onDismiss = { showLayerManagerDialog = false }
+        )
+    }
 
     if (showSaveAsDialog) {
         AlertDialog(
@@ -2334,47 +2374,34 @@ private fun PageOptionsSection(
     onSplitPdf: () -> Unit,
     onMergePdf: () -> Unit,
     onSelectAll: () -> Unit,
-    onApplyChanges: () -> Unit
+    onApplyChanges: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Page Management", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Reorder", Icons.Default.SwapVert, ToolBlue, onReorderPages)
             ToolButtonCard(Modifier.weight(1f), "Rotate Page", Icons.Default.RotateRight, ToolBlue, onRotatePage)
             ToolButtonCard(Modifier.weight(1f), "Delete Page", Icons.Default.Delete, CrimsonPrimary, onDeletePage)
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Duplicate", Icons.Default.ContentCopy, ToolPurple, onDuplicatePage)
             ToolButtonCard(Modifier.weight(1f), "Insert Blank", Icons.Default.AddBox, ToolGreen, onInsertBlankPage)
             ToolButtonCard(Modifier.weight(1f), "Extract Page", Icons.Default.UploadFile, ToolOrange, onExtractPage)
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Split PDF", Icons.Default.CallSplit, ToolBlue, onSplitPdf)
             ToolButtonCard(Modifier.weight(1f), "Merge PDF", Icons.Default.MergeType, ToolGreen, onMergePdf)
             ToolButtonCard(Modifier.weight(1f), "Select All", Icons.Default.SelectAll, ToolPurple, onSelectAll)
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .testTag("btn_apply_page_changes")
-        ) {
-            Text("Apply Page Changes", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -2387,41 +2414,29 @@ private fun EditOptionsSection(
     onMargins: () -> Unit,
     onWatermark: () -> Unit,
     onBackground: () -> Unit,
-    onApplyChanges: () -> Unit
+    onApplyChanges: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Document Layout & Edit", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Crop Pages", Icons.Default.Crop, ToolOrange, onCrop)
             ToolButtonCard(Modifier.weight(1f), "Resize Pages", Icons.Default.ZoomOutMap, ToolBlue, onResize)
             ToolButtonCard(Modifier.weight(1f), "Page Size", Icons.Default.FormatSize, ToolPurple, onChangePageSize)
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Margins", Icons.Default.BorderOuter, ToolGreen, onMargins)
             ToolButtonCard(Modifier.weight(1f), "Watermark", Icons.Default.Layers, ToolPurple, onWatermark)
             ToolButtonCard(Modifier.weight(1f), "Background", Icons.Default.Palette, ToolOrange, onBackground)
         }
-        Spacer(modifier = Modifier.height(10.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .testTag("btn_apply_edit_changes")
-        ) {
-            Text("Apply Edits", fontWeight = FontWeight.Bold)
-        }
     }
 }
+
 
 @Composable
 private fun TextOptionsSection(
@@ -2531,28 +2546,25 @@ private fun ImageOptionsSection(
     onAddImage: () -> Unit,
     onReplaceImage: () -> Unit,
     onRotateSelectedImage: () -> Unit,
-    onResizeImage: (Float) -> Unit,
+    onResizeImage: (Float) -> Unit = {},
     onDeleteSelectedImage: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("Image Tools", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Add Image", Icons.Default.AddPhotoAlternate, ToolBlue, onAddImage)
             ToolButtonCard(Modifier.weight(1f), "Replace", Icons.Default.Sync, ToolPurple, onReplaceImage)
             ToolButtonCard(Modifier.weight(1f), "Rotate 90°", Icons.Default.RotateRight, ToolOrange, onRotateSelectedImage)
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            ToolButtonCard(Modifier.weight(1f), "Enlarge (+)", Icons.Default.ZoomIn, ToolGreen) { onResizeImage(1.2f) }
-            ToolButtonCard(Modifier.weight(1f), "Shrink (-)", Icons.Default.ZoomOut, ToolGreen) { onResizeImage(0.8f) }
             ToolButtonCard(Modifier.weight(1f), "Delete Image", Icons.Default.Delete, CrimsonPrimary, onDeleteSelectedImage)
+            Spacer(modifier = Modifier.weight(2f))
         }
     }
 }
@@ -2646,46 +2658,33 @@ private fun MoreOptionsSection(
     onAddPageNumbers: () -> Unit,
     onSaveExport: () -> Unit,
     onExportSAF: () -> Unit,
-    onApplyChanges: () -> Unit
+    onApplyChanges: () -> Unit = {}
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text("More Document Actions", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-        Spacer(modifier = Modifier.height(8.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Compress", Icons.Default.Compress, ToolGreen, onCompress)
             ToolButtonCard(Modifier.weight(1f), "To Images", Icons.Default.Image, ToolOrange, onConvertToImages)
             ToolButtonCard(Modifier.weight(1f), "Protect", Icons.Default.Lock, ToolPurple, onProtectPassword)
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Remove Pass", Icons.Default.LockOpen, ToolPurple, onRemovePassword)
             ToolButtonCard(Modifier.weight(1f), "Page Numbers", Icons.Default.FormatListNumbered, ToolBlue, onAddPageNumbers)
             ToolButtonCard(Modifier.weight(1f), "Save As", Icons.Default.SaveAs, ToolBlue, onSaveExport)
         }
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(5.dp))
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ToolButtonCard(Modifier.weight(1f), "Export to Device", Icons.Default.Download, ToolGreen, onExportSAF)
             Spacer(modifier = Modifier.weight(2f))
-        }
-        Spacer(modifier = Modifier.height(10.dp))
-        Button(
-            onClick = onApplyChanges,
-            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(38.dp)
-                .testTag("btn_apply_more_changes")
-        ) {
-            Text("Apply Changes", fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -2701,6 +2700,7 @@ private fun ToolButtonCard(
     Surface(
         color = Color(0xFF243046),
         shape = RoundedCornerShape(8.dp),
+        border = BorderStroke(0.5.dp, Color(0xFF334155)),
         modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
@@ -2708,21 +2708,22 @@ private fun ToolButtonCard(
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
-            modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp)
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 5.dp)
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = title,
                 tint = iconTint,
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(20.dp)
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = title,
                 color = Color.White,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 textAlign = TextAlign.Center
             )
         }
