@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- PDF Renderer / Canvas View -->
+    <!-- PDF Renderer / Canvas View (Lowest Z-order, displays original document page) -->
     <ImageView
         android:id="@+id/pdf_renderer_view"
         android:layout_width="match_parent"
@@ -12,7 +12,14 @@
         android:scaleType="fitCenter"
         android:adjustViewBounds="true" />
 
-    <!-- TextOverlayView placed LAST in the layout XML so it naturally draws above the PDF bitmap canvas -->
+    <!-- Custom Annotation Canvas Overlay View: handles Pen, Highlight, Shapes, and Geometry Eraser -->
+    <com.example.ui.screens.AnnotationCanvasOverlayView
+        android:id="@+id/annotation_canvas_overlay_view"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="8dp" />
+
+    <!-- TextOverlayView placed to naturally draw selectable/editable text boxes above canvas layers -->
     <com.example.ui.screens.TextOverlayView
         android:id="@+id/text_overlay_view"
         android:layout_width="match_parent"
