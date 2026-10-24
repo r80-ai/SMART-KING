@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pen_subtoolbar_root"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#1B2333"
+    android:padding="8dp">
+
+    <!-- Header & Sub-tool Mode Selector Bar -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingBottom="6dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Pen &amp; Annotations"
+            android:textColor="#FFFFFF"
+            android:textStyle="bold"
+            android:textSize="13sp" />
+
+        <!-- Undo Button -->
+        <ImageButton
+            android:id="@+id/btn_pen_undo"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_revert"
+            android:contentDescription="Undo" />
+
+        <!-- Redo Button -->
+        <ImageButton
+            android:id="@+id/btn_pen_redo"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_rotate"
+            android:contentDescription="Redo" />
+
+        <!-- Close / Done Button -->
+        <ImageButton
+            android:id="@+id/btn_pen_close"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            android:contentDescription="Close Pen Tools" />
+    </LinearLayout>
+
+    <!-- Sub-tool Selector Row: Pen, Highlight, Shapes, Dedicated Eraser -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/btn_subtool_pen"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Pen"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#2563EB"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_subtool_highlight"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Highlight"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#334155"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_subtool_shapes"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Shapes"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#334155"
+                android:layout_marginEnd="6dp" />
+
+            <Button
+                android:id="@+id/btn_subtool_eraser"
+                style="?android:attr/buttonStyleSmall"
+                android:layout_width="wrap_content"
+                android:layout_height="32dp"
+                android:text="Eraser"
+                android:textColor="#FFFFFF"
+                android:backgroundTint="#334155" />
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Dynamic Settings Container (Pen properties, shape types, eraser sizes) -->
+    <FrameLayout
+        android:id="@+id/pen_settings_container"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp" />
+
+</LinearLayout>
