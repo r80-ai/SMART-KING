@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/pdf_pen_subtoolbar_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:background="#1B2333"
+    android:paddingStart="12dp"
+    android:paddingEnd="12dp"
+    android:paddingTop="8dp"
+    android:paddingBottom="10dp"
+    android:elevation="6dp">
+
+    <!-- Header Row: Title, Clear Page, Done -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/tv_pen_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Pen &amp; Annotations"
+            android:textColor="#FFFFFF"
+            android:textSize="14sp"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/btn_pen_undo"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Undo"
+            android:textColor="#94A3B8"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btn_pen_clear_page"
+            style="?android:attr/borderlessButtonStyle"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:text="Clear"
+            android:textColor="#EF4444"
+            android:textSize="12sp" />
+
+    </LinearLayout>
+
+    <!-- Sub-Tools Selector Row: Freehand Pen, Highlight, Shapes, Eraser -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:layout_marginTop="6dp">
+
+        <LinearLayout
+            android:id="@+id/layout_pen_subtool_chips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal">
+
+            <Button
+                android:id="@+id/chip_tool_freehand"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:text="Pen"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/chip_tool_highlight"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:text="Highlight"
+                android:textColor="#CBD5E1"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/chip_tool_shapes"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:layout_marginEnd="6dp"
+                android:text="Shapes"
+                android:textColor="#CBD5E1"
+                android:textSize="12sp" />
+
+            <Button
+                android:id="@+id/chip_tool_eraser"
+                android:layout_width="wrap_content"
+                android:layout_height="36dp"
+                android:text="Eraser"
+                android:textColor="#CBD5E1"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+    </HorizontalScrollView>
+
+    <!-- Dynamic Options Row (Stroke Thickness, Colors, Shape Picker, or Eraser Sizes) -->
+    <LinearLayout
+        android:id="@+id/layout_pen_options_panel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginTop="8dp">
+
+        <!-- Shape Selector Row (Visible when Shapes sub-tool is selected) -->
+        <LinearLayout
+            android:id="@+id/layout_shapes_selector"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/btn_shape_rect"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Rectangle"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_shape_circle"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Circle"
+                android:textColor="#CBD5E1"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_shape_line"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Line"
+                android:textColor="#CBD5E1"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_shape_arrow"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:text="Arrow"
+                android:textColor="#CBD5E1"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+        <!-- Eraser Size Selector Row (Visible when Eraser sub-tool is selected) -->
+        <LinearLayout
+            android:id="@+id/layout_eraser_selector"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:visibility="gone">
+
+            <Button
+                android:id="@+id/btn_eraser_small"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Small"
+                android:textColor="#CBD5E1"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_eraser_medium"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="Medium"
+                android:textColor="#FFFFFF"
+                android:textSize="11sp" />
+
+            <Button
+                android:id="@+id/btn_eraser_large"
+                android:layout_width="0dp"
+                android:layout_height="34dp"
+                android:layout_weight="1"
+                android:text="Large"
+                android:textColor="#CBD5E1"
+                android:textSize="11sp" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+</LinearLayout>

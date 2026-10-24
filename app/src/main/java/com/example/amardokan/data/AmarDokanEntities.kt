@@ -1,165 +1,135 @@
 package com.example.amardokan.data
 
 import androidx.room.Entity
-import androidx.room.ForeignKey
-import androidx.room.Index
 import androidx.room.PrimaryKey
 import com.squareup.moshi.JsonClass
 
-/**
- * Customer entity for Amar Dokan.
- */
-@JsonClass(generateAdapter = true)
 @Entity(tableName = "ad_customers")
+@JsonClass(generateAdapter = true)
 data class Customer(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val name: String,
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val name: String = "",
     val phone: String = "",
     val address: String = "",
     val notes: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
 
-/**
- * Service/Product rate configuration.
- */
-@JsonClass(generateAdapter = true)
 @Entity(tableName = "ad_services")
+@JsonClass(generateAdapter = true)
 data class ServiceItem(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val nameBn: String,
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val nameBn: String = "",
     val nameEn: String = "",
-    val defaultRate: Double,
-    val unitBn: String = "পাতা", // পাতা, টি, পিস, সার্ভিস
-    val isDefault: Boolean = false
-)
+    val defaultRate: Double = 0.0,
+    val unitBn: String = "পাতা",
+    val isDefault: Boolean = false,
+    val category: String? = null,
+    val description: String? = null
+) {
+    val name: String get() = nameBn.ifBlank { nameEn }
+    val price: Double get() = defaultRate
+}
 
-/**
- * Master Bill record.
- */
+@Entity(tableName = "ad_bills")
 @JsonClass(generateAdapter = true)
-@Entity(
-    tableName = "ad_bills",
-    indices = [
-        Index(value = ["customerId"]),
-        Index(value = ["dateMillis"])
-    ]
-)
 data class Bill(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val billNumber: String, // e.g. "বিল-1001"
-    val dateMillis: Long, // timestamp normalized to day or actual timestamp
-    val dateFormatted: String, // e.g. "11/10/2026"
-    val customerId: Long? = null, // null = Cash Counter (নগদ কাউন্টার)
-    val customerName: String,
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val billNumber: String = "",
+    val dateMillis: Long = System.currentTimeMillis(),
+    val dateFormatted: String = "",
+    val customerId: Long? = null,
+    val customerName: String = "",
     val customerPhone: String = "",
-    val paymentType: String, // "CASH" (নগদ) or "CREDIT" (বাকি)
-    val subtotal: Double,
+    val paymentType: String = "CASH", // "CASH" or "CREDIT"
+    val subtotal: Double = 0.0,
     val discount: Double = 0.0,
-    val grandTotal: Double,
-    val cashReceived: Double = 0.0, // For CASH bills = grandTotal; for CREDIT bills = initial cash paid (usually 0)
+    val grandTotal: Double = 0.0,
+    val cashReceived: Double = 0.0,
     val notes: String = "",
-    val language: String = "BN", // "BN" or "EN"
-    val createdAt: Long = System.currentTimeMillis()
-)
+    val createdAt: Long = System.currentTimeMillis(),
+    val language: String = "BN"
+) {
+    val totalAmount: Double get() = grandTotal
+    val paidAmount: Double get() = cashReceived
+    val dueAmount: Double get() = (grandTotal - cashReceived).coerceAtLeast(0.0)
+}
 
-/**
- * Individual items inside a Bill.
- */
+@Entity(tableName = "ad_bill_items")
 @JsonClass(generateAdapter = true)
-@Entity(
-    tableName = "ad_bill_items",
-    foreignKeys = [
-        ForeignKey(
-            entity = Bill::class,
-            parentColumns = ["id"],
-            childColumns = ["billId"],
-            onDelete = ForeignKey.CASCADE
-        )
-    ],
-    indices = [Index(value = ["billId"])]
-)
 data class BillItem(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val billId: Long,
-    val serviceName: String,
-    val quantity: Double,
-    val unitRate: Double,
-    val lineTotal: Double
-)
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val billId: Long = 0,
+    val serviceName: String = "",
+    val quantity: Double = 1.0,
+    val unitRate: Double = 0.0,
+    val lineTotal: Double = 0.0
+) {
+    val unitPrice: Double get() = unitRate
+    val totalPrice: Double get() = lineTotal
+}
 
-/**
- * Payment received from a customer to clear outstanding dues.
- */
+@Entity(tableName = "ad_payments")
 @JsonClass(generateAdapter = true)
-@Entity(
-    tableName = "ad_payments",
-    indices = [
-        Index(value = ["customerId"]),
-        Index(value = ["dateMillis"])
-    ]
-)
 data class Payment(
-    @PrimaryKey(autoGenerate = true) val id: Long = 0,
-    val customerId: Long,
-    val customerName: String,
-    val dateMillis: Long,
-    val dateFormatted: String,
-    val amount: Double,
-    val paymentMode: String, // "CASH" (নগদ) or "UPI" (ইউপিআই)
+    @PrimaryKey(autoGenerate = true)
+    val id: Long = 0,
+    val customerId: Long = 0,
+    val customerName: String = "",
+    val billId: Long? = null,
+    val dateMillis: Long = System.currentTimeMillis(),
+    val dateFormatted: String = "",
+    val amount: Double = 0.0,
+    val paymentMode: String = "CASH", // "CASH" or "UPI"
     val notes: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
 
-/**
- * Helper model representing customer ledger line item (Bill or Payment).
- */
+data class CustomerBalanceSummary(
+    val customer: Customer,
+    val totalWorkAmount: Double = 0.0,
+    val totalPaidAmount: Double = 0.0,
+    val outstandingBalance: Double = 0.0
+)
+
+enum class LedgerEntryType {
+    BILL,
+    PAYMENT
+}
+
 data class LedgerEntry(
     val id: Long,
     val dateMillis: Long,
     val dateFormatted: String,
     val type: LedgerEntryType,
     val description: String,
-    val billAmount: Double = 0.0, // Debit (কাজ / বিল)
-    val paymentAmount: Double = 0.0, // Credit (জমা)
+    val billAmount: Double = 0.0,
+    val paymentAmount: Double = 0.0,
     val runningBalance: Double = 0.0,
-    val paymentMode: String = ""
+    val paymentMode: String = "",
+    val rawBillId: Long? = null
 )
 
-enum class LedgerEntryType {
-    BILL, PAYMENT
-}
-
-/**
- * Summary calculations for a Customer.
- */
-data class CustomerBalanceSummary(
-    val customer: Customer,
-    val totalWorkAmount: Double,
-    val totalPaidAmount: Double,
-    val outstandingBalance: Double
-)
-
-/**
- * Metadata for tracking sync status of entities.
- */
 @Entity(tableName = "ad_sync_metadata")
+@JsonClass(generateAdapter = true)
 data class SyncMetadata(
-    @PrimaryKey val id: String, // Combination of type and entityId or a UUID
-    val entityType: String, // e.g., "customer", "bill", "payment"
+    @PrimaryKey
+    val id: String,
+    val entityType: String,
     val entityId: Long,
-    val lastSyncedAt: Long = 0,
-    val isPending: Boolean = true
+    val lastSyncedAt: Long,
+    val isPending: Boolean
 )
 
-/**
- * Container for full database backup.
- */
 @JsonClass(generateAdapter = true)
 data class DatabaseBackup(
-    val customers: List<Customer>,
-    val services: List<ServiceItem>,
-    val bills: List<Bill>,
-    val billItems: List<BillItem>,
-    val payments: List<Payment>
+    val customers: List<Customer> = emptyList(),
+    val services: List<ServiceItem> = emptyList(),
+    val bills: List<Bill> = emptyList(),
+    val billItems: List<BillItem> = emptyList(),
+    val payments: List<Payment> = emptyList()
 )

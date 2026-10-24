@@ -38,51 +38,51 @@ class BackupWorker(
             return@withContext Result.success()
         }
 
-        BackupManager.setBackupRunning(true)
-        BackupManager.updateStatus(applicationContext, "ক্লাউড ব্যাকআপ শুরু হচ্ছে...")
-        com.example.util.NotificationHelper.showNotification(applicationContext, "ব্যাকআপ", "ক্লাউড ব্যাকআপ শুরু হচ্ছে...")
-
         try {
-            // 1. Check network connectivity upfront
+            // 1. Verify Google Sign-In first before starting or showing notifications
+            val account = GoogleSignIn.getLastSignedInAccount(applicationContext)
+            if (account == null) {
+                Log.i(tag, "Google account is not connected. Skipping background cloud backup.")
+                BackupManager.setBackupRunning(false)
+                BackupManager.releaseBackupLock()
+                return@withContext Result.success()
+            }
+
+            // 2. Check network connectivity upfront
             val cm = applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             val activeNetwork = cm?.activeNetwork
             val caps = if (activeNetwork != null) cm.getNetworkCapabilities(activeNetwork) else null
             val isConnected = caps != null && caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
             if (!isConnected) {
                 val errorMsg = "ইন্টারনেট সংযোগ নেই (No internet connection)"
-                Log.e(tag, errorMsg)
+                Log.w(tag, errorMsg)
                 BackupManager.updateStatus(applicationContext, "ব্যর্থ: $errorMsg")
                 BackupManager.setBackupRunning(false)
                 BackupManager.releaseBackupLock()
-                return@withContext Result.failure()
+                return@withContext Result.retry()
             }
 
-            // 2. Verify Google Sign-In and scopes
-            val account = GoogleSignIn.getLastSignedInAccount(applicationContext)
-            if (account == null) {
-                val errorMsg = "গুগল অ্যাকাউন্ট সংযুক্ত নেই (Google Account not connected)"
-                Log.e(tag, errorMsg)
-                BackupManager.updateStatus(applicationContext, "ব্যর্থ: $errorMsg")
-                BackupManager.setBackupRunning(false)
-                BackupManager.releaseBackupLock()
-                return@withContext Result.failure()
-            }
-
+            // 3. Verify Drive scopes
             val hasDriveScope = GoogleSignIn.hasPermissions(account, Scope(DriveScopes.DRIVE_FILE))
             if (!hasDriveScope) {
                 val errorMsg = "Drive অনুমতি নেই (Drive permissions missing)"
-                Log.e(tag, errorMsg)
+                Log.w(tag, errorMsg)
                 BackupManager.updateStatus(applicationContext, "ব্যর্থ: $errorMsg")
                 BackupManager.setBackupRunning(false)
                 BackupManager.releaseBackupLock()
-                return@withContext Result.failure()
+                return@withContext Result.success()
             }
+
+            // Valid account and permissions verified: start backup progress
+            BackupManager.setBackupRunning(true)
+            BackupManager.updateStatus(applicationContext, "ক্লাউড ব্যাকআপ শুরু হচ্ছে...")
+            com.example.util.NotificationHelper.showNotification(applicationContext, "ব্যাকআপ", "ক্লাউড ব্যাকআপ শুরু হচ্ছে...")
 
             val userKey = com.example.util.UserManager.computeUserKey(account)
             BackupManager.updateStatus(applicationContext, "ডাটাবেজ থেকে তথ্য নেওয়া হচ্ছে...", userKey)
             Log.d(tag, "Signed in successfully. Starting Drive and Sheets backup for user $userKey (${account.email?.take(3)}***)...")
 
-            // 3. Fetch Room data (all 5 tables for this user)
+            // 4. Fetch Room data (all 5 tables for this user)
             val db = AppDatabase.getDatabase(applicationContext, userKey)
             val dao = db.amarDokanDao()
 

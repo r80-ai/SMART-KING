@@ -97,7 +97,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 enum class EditorTopTab {
-    NONE, PAGE, EDIT, TEXT, IMAGE, DRAW, MORE
+    NONE, PAGE, EDIT, TEXT, IMAGE, PEN, MORE
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -175,11 +175,23 @@ fun PdfEditorMainView(
     var textLayerUpdateTrigger by remember { mutableIntStateOf(0) }
     var textOverlayViewRef by remember { mutableStateOf<TextOverlayView?>(null) }
 
-    // Draw tool state
-    var drawMode by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHTER", "ERASER"
-    var drawColor by remember { mutableIntStateOf(AndroidColor.rgb(37, 99, 235)) }
-    var strokeThickness by remember { mutableFloatStateOf(4f) }
-    val activeStroke = remember { mutableStateListOf<Pair<Float, Float>>() }
+    // Pen & Annotation tool state
+    var penSubTool by remember { mutableStateOf(AnnotationCanvasOverlayView.ToolMode.PEN) }
+    var penColor by remember { mutableIntStateOf(AndroidColor.rgb(37, 99, 235)) }
+    var penStrokeThickness by remember { mutableFloatStateOf(4f) }
+    var penOpacity by remember { mutableFloatStateOf(1.0f) }
+
+    var highlightColor by remember { mutableIntStateOf(AndroidColor.rgb(250, 204, 21)) }
+    var highlightWidth by remember { mutableFloatStateOf(20f) }
+    var highlightOpacity by remember { mutableFloatStateOf(0.40f) }
+
+    var shapeType by remember { mutableStateOf(AnnotationCanvasOverlayView.ShapeType.RECTANGLE) }
+    var shapeColor by remember { mutableIntStateOf(AndroidColor.rgb(220, 38, 38)) }
+    var shapeStrokeWidth by remember { mutableFloatStateOf(3.5f) }
+    var shapeFillColor by remember { mutableStateOf<Int?>(null) }
+
+    var eraserSize by remember { mutableStateOf(AnnotationCanvasOverlayView.EraserSize.MEDIUM) }
+    var annotationCanvasRef by remember { mutableStateOf<AnnotationCanvasOverlayView?>(null) }
 
     // Sub-dialogs state
     var showPagesSheet by remember { mutableStateOf(false) }
@@ -422,10 +434,10 @@ fun PdfEditorMainView(
                         onClick = { activeTab = if (activeTab == EditorTopTab.IMAGE) EditorTopTab.NONE else EditorTopTab.IMAGE }
                     )
                     EditorToolbarTabItem(
-                        label = "Draw",
-                        icon = Icons.Default.Draw,
-                        isSelected = activeTab == EditorTopTab.DRAW,
-                        onClick = { activeTab = if (activeTab == EditorTopTab.DRAW) EditorTopTab.NONE else EditorTopTab.DRAW }
+                        label = "Pen",
+                        icon = Icons.Default.Edit,
+                        isSelected = activeTab == EditorTopTab.PEN,
+                        onClick = { activeTab = if (activeTab == EditorTopTab.PEN) EditorTopTab.NONE else EditorTopTab.PEN }
                     )
                     EditorToolbarTabItem(
                         label = "More",
@@ -836,19 +848,57 @@ fun PdfEditorMainView(
                             )
                         }
 
-                        EditorTopTab.DRAW -> {
-                            DrawOptionsSection(
-                                drawMode = drawMode,
-                                onDrawModeChange = { drawMode = it },
-                                drawColor = drawColor,
-                                onColorChange = { drawColor = it },
-                                strokeThickness = strokeThickness,
-                                onThicknessChange = { strokeThickness = it },
+                        EditorTopTab.PEN -> {
+                            PenSubToolbarSection(
+                                activeSubTool = penSubTool,
+                                onSubToolChange = { penSubTool = it },
+                                penColor = penColor,
+                                onPenColorChange = { penColor = it },
+                                penStrokeThickness = penStrokeThickness,
+                                onPenStrokeThicknessChange = { penStrokeThickness = it },
+                                penOpacity = penOpacity,
+                                onPenOpacityChange = { penOpacity = it },
+                                highlightColor = highlightColor,
+                                onHighlightColorChange = { highlightColor = it },
+                                highlightWidth = highlightWidth,
+                                onHighlightWidthChange = { highlightWidth = it },
+                                highlightOpacity = highlightOpacity,
+                                onHighlightOpacityChange = { highlightOpacity = it },
+                                shapeType = shapeType,
+                                onShapeTypeChange = { shapeType = it },
+                                shapeColor = shapeColor,
+                                onShapeColorChange = { shapeColor = it },
+                                shapeStrokeWidth = shapeStrokeWidth,
+                                onShapeStrokeWidthChange = { shapeStrokeWidth = it },
+                                shapeFillColor = shapeFillColor,
+                                onShapeFillColorChange = { shapeFillColor = it },
+                                eraserSize = eraserSize,
+                                onEraserSizeChange = { eraserSize = it },
                                 onClearAll = {
-                                    pushHistory()
-                                    editItems.removeAll { it.pageIndex == currentPageIndex && (it.type == PdfEngine.AnnotationType.PEN || it.type == PdfEngine.AnnotationType.HIGHLIGHTER) }
-                                    Toast.makeText(context, "Page drawings cleared", Toast.LENGTH_SHORT).show()
-                                }
+                                    val toRemove = editItems.filter {
+                                        it.pageIndex == currentPageIndex && (
+                                            it.type == PdfEngine.AnnotationType.PEN ||
+                                            it.type == PdfEngine.AnnotationType.DRAW ||
+                                            it.type == PdfEngine.AnnotationType.HIGHLIGHTER ||
+                                            it.type == PdfEngine.AnnotationType.RECTANGLE ||
+                                            it.type == PdfEngine.AnnotationType.CIRCLE ||
+                                            it.type == PdfEngine.AnnotationType.LINE ||
+                                            it.type == PdfEngine.AnnotationType.ARROW
+                                        )
+                                    }
+                                    if (toRemove.isNotEmpty()) {
+                                        pushHistory()
+                                        editItems.removeAll(toRemove)
+                                        annotationCanvasRef?.setAnnotations(
+                                            editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.TEXT && it.type != PdfEngine.AnnotationType.IMAGE },
+                                            currentPageIndex
+                                        )
+                                        Toast.makeText(context, "Page annotations cleared", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                onUndo = { handleUndo() },
+                                canUndo = undoStack.isNotEmpty(),
+                                onDone = { activeTab = EditorTopTab.NONE }
                             )
                         }
 
@@ -1109,16 +1159,28 @@ fun PdfEditorMainView(
                                     pdfCanvasHeightPx = pageHeightPx
                                 }
 
-                                    // 1. PDF Renderer & TextOverlayView hosted inside FrameLayout via pdf_editor_canvas layout
+                                    // 1. PDF Renderer, AnnotationCanvasOverlayView & TextOverlayView hosted inside FrameLayout via pdf_editor_canvas layout
                                     AndroidView(
                                         modifier = Modifier.fillMaxSize(),
                                         factory = { ctx ->
                                             val inflater = LayoutInflater.from(ctx)
                                             val root = inflater.inflate(R.layout.pdf_editor_canvas, null, false) as FrameLayout
                                             val imgView = root.findViewById<ImageView>(R.id.pdf_renderer_view)
+                                            val annotOverlay = root.findViewById<AnnotationCanvasOverlayView>(R.id.annotation_canvas_overlay_view)
                                             val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
 
                                             imgView.setImageBitmap(currentBmp)
+
+                                            annotOverlay.visibility = View.VISIBLE
+                                            annotOverlay.onHistoryPush = { pushHistory() }
+                                            annotOverlay.onAnnotationAdded = { item ->
+                                                editItems.add(item)
+                                            }
+                                            annotOverlay.onAnnotationsRemoved = { removedItems ->
+                                                editItems.removeAll(removedItems)
+                                            }
+                                            annotationCanvasRef = annotOverlay
+
                                             overlay.visibility = View.VISIBLE
                                             overlay.bringToFront()
 
@@ -1148,105 +1210,45 @@ fun PdfEditorMainView(
                                         update = { root ->
                                             val imgView = root.findViewById<ImageView>(R.id.pdf_renderer_view)
                                             imgView.setImageBitmap(currentBmp)
+
+                                            val annotOverlay = root.findViewById<AnnotationCanvasOverlayView>(R.id.annotation_canvas_overlay_view)
+                                            annotationCanvasRef = annotOverlay
+                                            annotOverlay.setAnnotations(
+                                                editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.TEXT && it.type != PdfEngine.AnnotationType.IMAGE },
+                                                currentPageIndex
+                                            )
+                                            val isPenActive = activeTab == EditorTopTab.PEN
+                                            annotOverlay.isInteractionEnabled = isPenActive
+                                            if (isPenActive) {
+                                                when (penSubTool) {
+                                                    AnnotationCanvasOverlayView.ToolMode.PEN -> {
+                                                        annotOverlay.setPenMode(penColor, penStrokeThickness, penOpacity)
+                                                    }
+                                                    AnnotationCanvasOverlayView.ToolMode.HIGHLIGHT -> {
+                                                        annotOverlay.setHighlightMode(highlightColor, highlightWidth, highlightOpacity)
+                                                    }
+                                                    AnnotationCanvasOverlayView.ToolMode.SHAPE -> {
+                                                        annotOverlay.setShapeMode(shapeType, shapeColor, shapeStrokeWidth, penOpacity, shapeFillColor)
+                                                    }
+                                                    AnnotationCanvasOverlayView.ToolMode.ERASER -> {
+                                                        annotOverlay.setEraserMode(eraserSize)
+                                                    }
+                                                }
+                                                annotOverlay.bringToFront()
+                                            }
+
                                             val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
                                             textOverlayViewRef = overlay
                                             overlay.visibility = View.VISIBLE
-                                            overlay.bringToFront()
+                                            if (!isPenActive) {
+                                                overlay.bringToFront()
+                                            }
                                             overlay.updateLayers(
                                                 items = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT },
                                                 selectedId = selectedAnnotationId
                                             )
                                         }
                                     )
-
-                                    // 2. Interactive Annotation & Drawing Canvas
-                                    Canvas(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .pointerInput(activeTab, drawMode, drawColor, strokeThickness) {
-                                                if (activeTab != EditorTopTab.DRAW) return@pointerInput
-                                                awaitEachGesture {
-                                                    val down = awaitFirstDown()
-                                                    val points = mutableListOf(Pair(down.position.x, down.position.y))
-                                                    activeStroke.clear()
-                                                    activeStroke.add(Pair(down.position.x, down.position.y))
-                                                    do {
-                                                        val event = awaitPointerEvent()
-                                                        val change = event.changes.firstOrNull() ?: break
-                                                        if (change.pressed) {
-                                                            change.consume()
-                                                            points.add(Pair(change.position.x, change.position.y))
-                                                            activeStroke.add(Pair(change.position.x, change.position.y))
-                                                        }
-                                                    } while (event.changes.any { it.pressed })
-
-                                                    if (points.size > 1) {
-                                                        val annotType = if (drawMode == "HIGHLIGHTER") {
-                                                            PdfEngine.AnnotationType.HIGHLIGHTER
-                                                        } else {
-                                                            PdfEngine.AnnotationType.PEN
-                                                        }
-                                                        pushHistory()
-                                                        editItems.add(
-                                                            PdfEngine.EditItem(
-                                                                pageIndex = currentPageIndex,
-                                                                type = annotType,
-                                                                colorHex = drawColor,
-                                                                strokeWidth = strokeThickness,
-                                                                opacity = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f,
-                                                                points = points.toList()
-                                                            )
-                                                        )
-                                                        activeStroke.clear()
-                                                    }
-                                                }
-                                            }
-                                    ) {
-                                        // Draw existing drawing edit items on this page
-                                        val pageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.IMAGE && it.type != PdfEngine.AnnotationType.TEXT }
-                                        for (item in pageItems) {
-                                            when (item.type) {
-                                                PdfEngine.AnnotationType.PEN, PdfEngine.AnnotationType.HIGHLIGHTER -> {
-                                                    val pts = item.points
-                                                    if (pts.size >= 2) {
-                                                        val path = androidx.compose.ui.graphics.Path()
-                                                        path.moveTo(pts[0].first, pts[0].second)
-                                                        for (i in 1 until pts.size) {
-                                                            path.lineTo(pts[i].first, pts[i].second)
-                                                        }
-                                                        drawPath(
-                                                            path = path,
-                                                            color = Color(item.colorHex).copy(alpha = item.opacity),
-                                                            style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                                width = item.strokeWidth.dp.toPx(),
-                                                                cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                                                join = androidx.compose.ui.graphics.StrokeJoin.Round
-                                                            )
-                                                        )
-                                                    }
-                                                }
-                                                else -> {}
-                                            }
-                                        }
-
-                                        // Draw active in-progress stroke
-                                        if (activeStroke.size >= 2) {
-                                            val path = androidx.compose.ui.graphics.Path()
-                                            path.moveTo(activeStroke[0].first, activeStroke[0].second)
-                                            for (i in 1 until activeStroke.size) {
-                                                path.lineTo(activeStroke[i].first, activeStroke[i].second)
-                                            }
-                                            drawPath(
-                                                path = path,
-                                                color = Color(drawColor).copy(alpha = if (drawMode == "HIGHLIGHTER") 0.4f else 1.0f),
-                                                style = androidx.compose.ui.graphics.drawscope.Stroke(
-                                                    width = strokeThickness.dp.toPx(),
-                                                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
-                                                    join = androidx.compose.ui.graphics.StrokeJoin.Round
-                                                )
-                                            )
-                                        }
-                                    }
 
                                     // 3. Interactive Image Overlays: freely drag, reposition, and resize using touch gestures
                                     val pageImageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.IMAGE }
@@ -2570,80 +2572,385 @@ private fun ImageOptionsSection(
 }
 
 @Composable
-private fun DrawOptionsSection(
-    drawMode: String,
-    onDrawModeChange: (String) -> Unit,
-    drawColor: Int,
-    onColorChange: (Int) -> Unit,
-    strokeThickness: Float,
-    onThicknessChange: (Float) -> Unit,
-    onClearAll: () -> Unit
+private fun PenSubToolbarSection(
+    activeSubTool: AnnotationCanvasOverlayView.ToolMode,
+    onSubToolChange: (AnnotationCanvasOverlayView.ToolMode) -> Unit,
+    penColor: Int,
+    onPenColorChange: (Int) -> Unit,
+    penStrokeThickness: Float,
+    onPenStrokeThicknessChange: (Float) -> Unit,
+    penOpacity: Float,
+    onPenOpacityChange: (Float) -> Unit,
+    highlightColor: Int,
+    onHighlightColorChange: (Int) -> Unit,
+    highlightWidth: Float,
+    onHighlightWidthChange: (Float) -> Unit,
+    highlightOpacity: Float,
+    onHighlightOpacityChange: (Float) -> Unit,
+    shapeType: AnnotationCanvasOverlayView.ShapeType,
+    onShapeTypeChange: (AnnotationCanvasOverlayView.ShapeType) -> Unit,
+    shapeColor: Int,
+    onShapeColorChange: (Int) -> Unit,
+    shapeStrokeWidth: Float,
+    onShapeStrokeWidthChange: (Float) -> Unit,
+    shapeFillColor: Int?,
+    onShapeFillColorChange: (Int?) -> Unit,
+    eraserSize: AnnotationCanvasOverlayView.EraserSize,
+    onEraserSizeChange: (AnnotationCanvasOverlayView.EraserSize) -> Unit,
+    onClearAll: () -> Unit,
+    onUndo: () -> Unit,
+    canUndo: Boolean,
+    onDone: () -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("pen_subtoolbar_panel")
+    ) {
+        // Top Sub-tool Bar Header: Title, Undo, Clear, Done
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Text("Draw & Annotate", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold)
-            TextButton(
-                onClick = onClearAll,
-                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
-            ) {
-                Text("Clear Page", color = CrimsonPrimary, fontSize = 11.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    tint = CrimsonPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(
+                    text = "Pen & Annotations",
+                    color = Color.White,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(
+                    onClick = onUndo,
+                    enabled = canUndo,
+                    modifier = Modifier.size(28.dp).testTag("btn_pen_undo")
+                ) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.Undo,
+                        contentDescription = "Undo",
+                        tint = if (canUndo) Color.White else Color(0xFF64748B),
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                TextButton(
+                    onClick = onClearAll,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp).testTag("btn_pen_clear_page")
+                ) {
+                    Text("Clear Page", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                }
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                IconButton(
+                    onClick = onDone,
+                    modifier = Modifier.size(28.dp).testTag("btn_pen_done")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Done",
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
+
+        Spacer(modifier = Modifier.height(6.dp))
+
+        // Sub-tool switcher tabs: Freehand Pen, Highlight, Shapes, Eraser
         Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
             FilterChip(
-                selected = drawMode == "PEN",
-                onClick = { onDrawModeChange("PEN") },
-                label = { Text("Pen") },
-                leadingIcon = { Icon(Icons.Default.Draw, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
+                selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.PEN,
+                onClick = { onSubToolChange(AnnotationCanvasOverlayView.ToolMode.PEN) },
+                label = { Text("Pen", fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp).testTag("chip_tool_pen")
             )
             FilterChip(
-                selected = drawMode == "HIGHLIGHTER",
-                onClick = { onDrawModeChange("HIGHLIGHTER") },
-                label = { Text("Highlighter") },
+                selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.HIGHLIGHT,
+                onClick = { onSubToolChange(AnnotationCanvasOverlayView.ToolMode.HIGHLIGHT) },
+                label = { Text("Highlight", fontSize = 11.sp) },
                 leadingIcon = { Icon(Icons.Default.Highlight, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
+                modifier = Modifier.height(30.dp).testTag("chip_tool_highlight")
             )
             FilterChip(
-                selected = drawMode == "ERASER",
-                onClick = { onDrawModeChange("ERASER") },
-                label = { Text("Eraser") },
+                selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.SHAPE,
+                onClick = { onSubToolChange(AnnotationCanvasOverlayView.ToolMode.SHAPE) },
+                label = { Text("Shapes", fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Default.CropSquare, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp).testTag("chip_tool_shapes")
+            )
+            FilterChip(
+                selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.ERASER,
+                onClick = { onSubToolChange(AnnotationCanvasOverlayView.ToolMode.ERASER) },
+                label = { Text("Eraser", fontSize = 11.sp) },
                 leadingIcon = { Icon(Icons.Default.Clear, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                modifier = Modifier.height(30.dp)
+                modifier = Modifier.height(30.dp).testTag("chip_tool_eraser")
             )
         }
+
         Spacer(modifier = Modifier.height(8.dp))
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            listOf(
-                AndroidColor.rgb(37, 99, 235), // Blue
-                AndroidColor.rgb(220, 38, 38), // Red
-                AndroidColor.rgb(16, 185, 129), // Green
-                AndroidColor.rgb(245, 158, 11), // Orange
-                AndroidColor.BLACK
-            ).forEach { c ->
-                Box(
-                    modifier = Modifier
-                        .size(24.dp)
-                        .clip(CircleShape)
-                        .background(Color(c))
-                        .border(
-                            width = if (drawColor == c) 2.dp else 1.dp,
-                            color = if (drawColor == c) Color.White else Color.Gray,
-                            shape = CircleShape
+
+        // Tool-specific options row
+        when (activeSubTool) {
+            AnnotationCanvasOverlayView.ToolMode.PEN -> {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Size presets
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Size:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                        listOf(2f to "Fine", 4f to "Medium", 8f to "Thick", 14f to "Bold").forEach { (sz, lbl) ->
+                            FilterChip(
+                                selected = penStrokeThickness == sz,
+                                onClick = { onPenStrokeThicknessChange(sz) },
+                                label = { Text(lbl, fontSize = 10.sp) },
+                                modifier = Modifier.height(26.dp)
+                            )
+                        }
+                    }
+
+                    // Color palette & Opacity
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                        listOf(
+                            AndroidColor.rgb(37, 99, 235), // Royal Blue
+                            AndroidColor.rgb(220, 38, 38), // Crimson Red
+                            AndroidColor.rgb(16, 185, 129), // Emerald Green
+                            AndroidColor.rgb(245, 158, 11), // Amber Orange
+                            AndroidColor.rgb(147, 51, 234), // Purple
+                            AndroidColor.BLACK,
+                            AndroidColor.WHITE
+                        ).forEach { c ->
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(
+                                        width = if (penColor == c) 2.dp else 1.dp,
+                                        color = if (penColor == c) Color.White else Color(0xFF475569),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { onPenColorChange(c) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("${(penOpacity * 100).toInt()}%", color = Color(0xFFCBD5E1), fontSize = 11.sp)
+                        Slider(
+                            value = penOpacity,
+                            onValueChange = onPenOpacityChange,
+                            valueRange = 0.2f..1.0f,
+                            modifier = Modifier.weight(1f).height(24.dp)
                         )
-                        .clickable { onColorChange(c) }
-                )
+                    }
+                }
+            }
+
+            AnnotationCanvasOverlayView.ToolMode.HIGHLIGHT -> {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Width presets
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Width:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                        listOf(12f to "12dp", 18f to "18dp", 26f to "26dp", 36f to "36dp").forEach { (w, lbl) ->
+                            FilterChip(
+                                selected = highlightWidth == w,
+                                onClick = { onHighlightWidthChange(w) },
+                                label = { Text(lbl, fontSize = 10.sp) },
+                                modifier = Modifier.height(26.dp)
+                            )
+                        }
+                    }
+
+                    // Highlighter Colors
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                        listOf(
+                            AndroidColor.rgb(250, 204, 21), // Fluorescent Yellow
+                            AndroidColor.rgb(74, 222, 128), // Neon Green
+                            AndroidColor.rgb(56, 189, 248), // Sky Cyan
+                            AndroidColor.rgb(244, 114, 182), // Neon Pink
+                            AndroidColor.rgb(251, 146, 60), // Vibrant Orange
+                            AndroidColor.rgb(192, 132, 252) // Lavender
+                        ).forEach { c ->
+                            Box(
+                                modifier = Modifier
+                                    .size(22.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(
+                                        width = if (highlightColor == c) 2.dp else 1.dp,
+                                        color = if (highlightColor == c) Color.White else Color(0xFF475569),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { onHighlightColorChange(c) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("${(highlightOpacity * 100).toInt()}%", color = Color(0xFFCBD5E1), fontSize = 11.sp)
+                        Slider(
+                            value = highlightOpacity,
+                            onValueChange = onHighlightOpacityChange,
+                            valueRange = 0.15f..0.70f,
+                            modifier = Modifier.weight(1f).height(24.dp)
+                        )
+                    }
+                }
+            }
+
+            AnnotationCanvasOverlayView.ToolMode.SHAPE -> {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Shape Type Picker
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        FilterChip(
+                            selected = shapeType == AnnotationCanvasOverlayView.ShapeType.RECTANGLE,
+                            onClick = { onShapeTypeChange(AnnotationCanvasOverlayView.ShapeType.RECTANGLE) },
+                            label = { Text("Rectangle", fontSize = 10.sp) },
+                            leadingIcon = { Icon(Icons.Default.CropSquare, contentDescription = null, modifier = Modifier.size(12.dp)) },
+                            modifier = Modifier.height(26.dp)
+                        )
+                        FilterChip(
+                            selected = shapeType == AnnotationCanvasOverlayView.ShapeType.CIRCLE,
+                            onClick = { onShapeTypeChange(AnnotationCanvasOverlayView.ShapeType.CIRCLE) },
+                            label = { Text("Circle", fontSize = 10.sp) },
+                            leadingIcon = { Icon(Icons.Default.Circle, contentDescription = null, modifier = Modifier.size(12.dp)) },
+                            modifier = Modifier.height(26.dp)
+                        )
+                        FilterChip(
+                            selected = shapeType == AnnotationCanvasOverlayView.ShapeType.LINE,
+                            onClick = { onShapeTypeChange(AnnotationCanvasOverlayView.ShapeType.LINE) },
+                            label = { Text("Line", fontSize = 10.sp) },
+                            leadingIcon = { Icon(Icons.Default.HorizontalRule, contentDescription = null, modifier = Modifier.size(12.dp)) },
+                            modifier = Modifier.height(26.dp)
+                        )
+                        FilterChip(
+                            selected = shapeType == AnnotationCanvasOverlayView.ShapeType.ARROW,
+                            onClick = { onShapeTypeChange(AnnotationCanvasOverlayView.ShapeType.ARROW) },
+                            label = { Text("Arrow", fontSize = 10.sp) },
+                            leadingIcon = { Icon(Icons.Default.ArrowForward, contentDescription = null, modifier = Modifier.size(12.dp)) },
+                            modifier = Modifier.height(26.dp)
+                        )
+                    }
+
+                    // Stroke Colors & Fill toggle
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                        listOf(
+                            AndroidColor.rgb(220, 38, 38), // Crimson
+                            AndroidColor.rgb(37, 99, 235), // Blue
+                            AndroidColor.rgb(16, 185, 129), // Green
+                            AndroidColor.rgb(245, 158, 11), // Orange
+                            AndroidColor.BLACK,
+                            AndroidColor.WHITE
+                        ).forEach { c ->
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(
+                                        width = if (shapeColor == c) 2.dp else 1.dp,
+                                        color = if (shapeColor == c) Color.White else Color(0xFF475569),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { onShapeColorChange(c) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
+                        FilterChip(
+                            selected = shapeFillColor != null,
+                            onClick = { onShapeFillColorChange(if (shapeFillColor == null) shapeColor else null) },
+                            label = { Text(if (shapeFillColor != null) "Filled" else "Outline", fontSize = 10.sp) },
+                            modifier = Modifier.height(26.dp)
+                        )
+
+                        Text("Drag to draw", color = Color(0xFF64748B), fontSize = 10.sp)
+                    }
+                }
+            }
+
+            AnnotationCanvasOverlayView.ToolMode.ERASER -> {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("Eraser Size:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                            listOf(
+                                AnnotationCanvasOverlayView.EraserSize.SMALL to "Small",
+                                AnnotationCanvasOverlayView.EraserSize.MEDIUM to "Medium",
+                                AnnotationCanvasOverlayView.EraserSize.LARGE to "Large"
+                            ).forEach { (sz, lbl) ->
+                                FilterChip(
+                                    selected = eraserSize == sz,
+                                    onClick = { onEraserSizeChange(sz) },
+                                    label = { Text(lbl, fontSize = 10.sp) },
+                                    modifier = Modifier.height(26.dp)
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = "PDF Protected",
+                            color = Color(0xFF10B981),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+
+                    Text(
+                        text = "Touch and drag to erase annotation strokes & shapes. Original PDF background is never modified.",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 10.sp
+                    )
+                }
             }
         }
     }

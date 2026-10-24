@@ -36,6 +36,8 @@ import java.util.Locale
 fun Screen1HomeDashboard(
     viewModel: AmarDokanViewModel,
     onOpenPdfTools: (() -> Unit)? = null,
+    onOpenBackupRestore: (() -> Unit)? = null,
+    onOpenBillDetails: ((com.example.amardokan.data.Bill) -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val todayStats by viewModel.todayStats.collectAsState()
@@ -87,6 +89,21 @@ fun Screen1HomeDashboard(
                         }
 
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (onOpenBackupRestore != null) {
+                                IconButton(
+                                    onClick = onOpenBackupRestore,
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(Color.White.copy(alpha = 0.15f))
+                                        .testTag("btn_backup_restore")
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudSync,
+                                        contentDescription = "ব্যাকআপ ও রিস্টোর",
+                                        tint = Color.White
+                                    )
+                                }
+                            }
                             if (onOpenPdfTools != null) {
                                 IconButton(
                                     onClick = onOpenPdfTools,
@@ -252,6 +269,42 @@ fun Screen1HomeDashboard(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Primary Hero Button: New Bill / Quick Calculation
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .clickable { viewModel.navigateTo(AmarDokanScreenType.NEW_BILL) }
+                        .testTag("btn_new_bill"),
+                    color = AmarDokanColors.NavyDarkHeader,
+                    shadowElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(Color.White.copy(alpha = 0.2f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(Icons.Default.AddShoppingCart, contentDescription = null, tint = Color.White)
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("নতুন বিল / হিসাব করুন", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                Text("জেরক্স, প্রিন্ট, লেমিনেশন ইত্যাদির ক্যাশ মেমো", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                            }
+                        }
+                        Icon(Icons.Default.ArrowForward, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                    }
+                }
+
                 // Grid 2x2 of other main features
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -387,7 +440,12 @@ fun Screen1HomeDashboard(
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                        .padding(horizontal = 16.dp, vertical = 4.dp)
+                        .then(
+                            if (onOpenBillDetails != null) {
+                                Modifier.clickable { onOpenBillDetails(bill) }
+                            } else Modifier
+                        ),
                     color = Color.White,
                     shape = RoundedCornerShape(10.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, AmarDokanColors.BorderLight)
