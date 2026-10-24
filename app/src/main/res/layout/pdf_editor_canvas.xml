@@ -12,7 +12,14 @@
         android:scaleType="fitCenter"
         android:adjustViewBounds="true" />
 
-    <!-- TextOverlayView placed LAST in the layout XML so it naturally draws above the PDF bitmap canvas -->
+    <!-- Vector Annotation Canvas Overlay (Pen, Highlight, Shapes, Eraser) -->
+    <com.example.ui.screens.AnnotationCanvasOverlayView
+        android:id="@+id/annotation_canvas_overlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:elevation="8dp" />
+
+    <!-- TextOverlayView placed LAST so detected text / OCR boxes remain interactive -->
     <com.example.ui.screens.TextOverlayView
         android:id="@+id/text_overlay_view"
         android:layout_width="match_parent"
