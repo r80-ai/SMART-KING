@@ -153,7 +153,6 @@ fun PdfMasterApp(viewModel: PdfMasterViewModel) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .consumeWindowInsets(innerPadding)
         ) {
             Crossfade(
                 targetState = currentTab,

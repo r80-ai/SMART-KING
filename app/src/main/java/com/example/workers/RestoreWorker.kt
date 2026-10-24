@@ -21,8 +21,9 @@ class RestoreWorker(
     override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
         val account = GoogleSignIn.getLastSignedInAccount(applicationContext)
         if (account == null) {
-            Log.i(tag, "Restore skipped: Google Account not connected.")
-            return@withContext Result.success()
+            Log.w(tag, "Restore skipped: Google Account not connected.")
+            BackupManager.updateStatus(applicationContext, "ব্যর্থ: গুগল অ্যাকাউন্ট সংযুক্ত নেই")
+            return@withContext Result.failure()
         }
 
         val userKey = UserManager.computeUserKey(account)
