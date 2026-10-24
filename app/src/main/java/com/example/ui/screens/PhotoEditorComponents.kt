@@ -867,19 +867,10 @@ fun TextOverlayCanvas(
                                             val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
                                             val newW = (curW - dragAmount.x).coerceAtLeast(40f)
                                             val newH = (curH - dragAmount.y).coerceAtLeast(30f)
-                                            val scaleW = newW / curW.coerceAtLeast(1f)
-                                            val scaleH = newH / curH.coerceAtLeast(1f)
-                                            val isDiagonal = (scaleW - 1f) * (scaleH - 1f) > 0f && kotlin.math.abs(newW - curW) > 2f && kotlin.math.abs(newH - curH) > 2f
-                                            val newFontSp = if (isDiagonal) {
-                                                val avgScale = (scaleW + scaleH) / 2f
-                                                (item.fontSizeSp * avgScale).coerceIn(8f, 150f)
-                                            } else {
-                                                item.fontSizeSp
-                                            }
                                             val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
                                             val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
                                             currentOnUpdateState.value(
-                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH, fontSizeSp = newFontSp)
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
                                             )
                                         }
                                     )
@@ -909,19 +900,10 @@ fun TextOverlayCanvas(
                                             val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
                                             val newW = (curW + dragAmount.x).coerceAtLeast(40f)
                                             val newH = (curH - dragAmount.y).coerceAtLeast(30f)
-                                            val scaleW = newW / curW.coerceAtLeast(1f)
-                                            val scaleH = newH / curH.coerceAtLeast(1f)
-                                            val isDiagonal = (scaleW - 1f) * (scaleH - 1f) > 0f && kotlin.math.abs(newW - curW) > 2f && kotlin.math.abs(newH - curH) > 2f
-                                            val newFontSp = if (isDiagonal) {
-                                                val avgScale = (scaleW + scaleH) / 2f
-                                                (item.fontSizeSp * avgScale).coerceIn(8f, 150f)
-                                            } else {
-                                                item.fontSizeSp
-                                            }
                                             val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
                                             val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
                                             currentOnUpdateState.value(
-                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH, fontSizeSp = newFontSp)
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
                                             )
                                         }
                                     )
@@ -951,19 +933,10 @@ fun TextOverlayCanvas(
                                             val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
                                             val newW = (curW - dragAmount.x).coerceAtLeast(40f)
                                             val newH = (curH + dragAmount.y).coerceAtLeast(30f)
-                                            val scaleW = newW / curW.coerceAtLeast(1f)
-                                            val scaleH = newH / curH.coerceAtLeast(1f)
-                                            val isDiagonal = (scaleW - 1f) * (scaleH - 1f) > 0f && kotlin.math.abs(newW - curW) > 2f && kotlin.math.abs(newH - curH) > 2f
-                                            val newFontSp = if (isDiagonal) {
-                                                val avgScale = (scaleW + scaleH) / 2f
-                                                (item.fontSizeSp * avgScale).coerceIn(8f, 150f)
-                                            } else {
-                                                item.fontSizeSp
-                                            }
                                             val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
                                             val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
                                             currentOnUpdateState.value(
-                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH, fontSizeSp = newFontSp)
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
                                             )
                                         }
                                     )
@@ -993,19 +966,10 @@ fun TextOverlayCanvas(
                                             val curH = if (item.boxHeight > 0f) item.boxHeight else measuredHeight
                                             val newW = (curW + dragAmount.x).coerceAtLeast(40f)
                                             val newH = (curH + dragAmount.y).coerceAtLeast(30f)
-                                            val scaleW = newW / curW.coerceAtLeast(1f)
-                                            val scaleH = newH / curH.coerceAtLeast(1f)
-                                            val isDiagonal = (scaleW - 1f) * (scaleH - 1f) > 0f && kotlin.math.abs(newW - curW) > 2f && kotlin.math.abs(newH - curH) > 2f
-                                            val newFontSp = if (isDiagonal) {
-                                                val avgScale = (scaleW + scaleH) / 2f
-                                                (item.fontSizeSp * avgScale).coerceIn(8f, 150f)
-                                            } else {
-                                                item.fontSizeSp
-                                            }
                                             val newNormX = item.normX + (dragAmount.x / widthPx) / 2f
                                             val newNormY = item.normY + (dragAmount.y / heightPx) / 2f
                                             currentOnUpdateState.value(
-                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH, fontSizeSp = newFontSp)
+                                                item.copy(normX = newNormX, normY = newNormY, boxWidth = newW, boxHeight = newH)
                                             )
                                         }
                                     )
