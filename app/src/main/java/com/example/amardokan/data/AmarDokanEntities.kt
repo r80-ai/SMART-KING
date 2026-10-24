@@ -11,7 +11,8 @@ data class Customer(
     val id: Long = 0,
     val name: String = "",
     val phone: String = "",
-    val address: String? = null,
+    val address: String = "",
+    val notes: String = "",
     val createdAt: Long = System.currentTimeMillis()
 )
 
@@ -20,11 +21,17 @@ data class Customer(
 data class ServiceItem(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
-    val name: String = "",
-    val price: Double = 0.0,
+    val nameBn: String = "",
+    val nameEn: String = "",
+    val defaultRate: Double = 0.0,
+    val unitBn: String = "পাতা",
+    val isDefault: Boolean = false,
     val category: String? = null,
     val description: String? = null
-)
+) {
+    val name: String get() = nameBn.ifBlank { nameEn }
+    val price: Double get() = defaultRate
+}
 
 @Entity(tableName = "ad_bills")
 @JsonClass(generateAdapter = true)
@@ -32,15 +39,24 @@ data class Bill(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val billNumber: String = "",
-    val customerName: String = "",
-    val customerId: Long? = null,
-    val totalAmount: Double = 0.0,
-    val paidAmount: Double = 0.0,
-    val dueAmount: Double = 0.0,
     val dateMillis: Long = System.currentTimeMillis(),
+    val dateFormatted: String = "",
+    val customerId: Long? = null,
+    val customerName: String = "",
+    val customerPhone: String = "",
+    val paymentType: String = "CASH", // "CASH" or "CREDIT"
+    val subtotal: Double = 0.0,
+    val discount: Double = 0.0,
+    val grandTotal: Double = 0.0,
+    val cashReceived: Double = 0.0,
+    val notes: String = "",
     val createdAt: Long = System.currentTimeMillis(),
     val language: String = "BN"
-)
+) {
+    val totalAmount: Double get() = grandTotal
+    val paidAmount: Double get() = cashReceived
+    val dueAmount: Double get() = (grandTotal - cashReceived).coerceAtLeast(0.0)
+}
 
 @Entity(tableName = "ad_bill_items")
 @JsonClass(generateAdapter = true)
@@ -49,10 +65,13 @@ data class BillItem(
     val id: Long = 0,
     val billId: Long = 0,
     val serviceName: String = "",
-    val quantity: Int = 1,
-    val unitPrice: Double = 0.0,
-    val totalPrice: Double = 0.0
-)
+    val quantity: Double = 1.0,
+    val unitRate: Double = 0.0,
+    val lineTotal: Double = 0.0
+) {
+    val unitPrice: Double get() = unitRate
+    val totalPrice: Double get() = lineTotal
+}
 
 @Entity(tableName = "ad_payments")
 @JsonClass(generateAdapter = true)
@@ -60,11 +79,39 @@ data class Payment(
     @PrimaryKey(autoGenerate = true)
     val id: Long = 0,
     val customerId: Long = 0,
+    val customerName: String = "",
     val billId: Long? = null,
-    val amount: Double = 0.0,
     val dateMillis: Long = System.currentTimeMillis(),
-    val paymentMode: String = "CASH",
-    val note: String? = null
+    val dateFormatted: String = "",
+    val amount: Double = 0.0,
+    val paymentMode: String = "CASH", // "CASH" or "UPI"
+    val notes: String = "",
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+data class CustomerBalanceSummary(
+    val customer: Customer,
+    val totalWorkAmount: Double = 0.0,
+    val totalPaidAmount: Double = 0.0,
+    val outstandingBalance: Double = 0.0
+)
+
+enum class LedgerEntryType {
+    BILL,
+    PAYMENT
+}
+
+data class LedgerEntry(
+    val id: Long,
+    val dateMillis: Long,
+    val dateFormatted: String,
+    val type: LedgerEntryType,
+    val description: String,
+    val billAmount: Double = 0.0,
+    val paymentAmount: Double = 0.0,
+    val runningBalance: Double = 0.0,
+    val paymentMode: String = "",
+    val rawBillId: Long? = null
 )
 
 @Entity(tableName = "ad_sync_metadata")

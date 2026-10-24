@@ -32,8 +32,9 @@ import kotlin.math.roundToInt
 object BiRefNetLiteEngine {
     private const val TAG = "BiRefNetLiteEngine"
     const val MODEL_ASSET_NAME = "birefnet_lite_fp16.onnx"
-    const val EXPECTED_MODEL_SIZE = 98484532L
-    const val EXPECTED_SHA256 = "eff9216bb2f9d3f023d9c2b7196845a7485739ab1f231593633e4d2344ffc516"
+    const val EXPECTED_MODEL_SIZE = 114538221L
+    const val EXPECTED_SHA256 = "d39b897ceb16ae654c1731f3dba0cf9b368d9cae74b5a57459b455cc8bfec402"
+    const val MODEL_DOWNLOAD_URL = "https://huggingface.co/onnx-community/BiRefNet_lite-ONNX/resolve/main/onnx/model_fp16.onnx"
     private const val MODEL_INPUT_SIZE = 512
     private const val MIN_PLAUSIBLE_MODEL_SIZE = 1_000_000L // Accepts optimized FP16/INT8 ONNX models (e.g. 20MB)
 
@@ -114,6 +115,40 @@ object BiRefNetLiteEngine {
     }
 
     /**
+     * Downloads the binary BiRefNet model directly from official CDN if assets contains an LFS pointer.
+     */
+    private fun downloadModelFile(destination: File): Boolean {
+        return try {
+            Log.i(TAG, "[BiRefNetLite] Downloading binary model from $MODEL_DOWNLOAD_URL...")
+            val url = java.net.URL(MODEL_DOWNLOAD_URL)
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 15000
+            conn.readTimeout = 60000
+            conn.instanceFollowRedirects = true
+            conn.connect()
+            if (conn.responseCode in 200..299) {
+                conn.inputStream.use { input ->
+                    FileOutputStream(destination).use { output ->
+                        val buffer = ByteArray(1024 * 1024)
+                        var read: Int
+                        while (input.read(buffer).also { read = it } != -1) {
+                            output.write(buffer, 0, read)
+                        }
+                        output.flush()
+                    }
+                }
+                destination.exists() && destination.length() >= MIN_PLAUSIBLE_MODEL_SIZE && !isGitLfsPointer(destination)
+            } else {
+                Log.e(TAG, "[BiRefNetLite] Model download HTTP response: ${conn.responseCode}")
+                false
+            }
+        } catch (e: Throwable) {
+            Log.e(TAG, "[BiRefNetLite] Network download error: ${e.message}", e)
+            false
+        }
+    }
+
+    /**
      * Resolves or extracts the BiRefNet Lite model file from assets to local app storage.
      * Uses a chunked 1MB stream buffer to safely extract large ONNX models without memory exhaustion.
      * Caches the extracted model permanently in filesDir and reuses it on subsequent calls.
@@ -123,13 +158,10 @@ object BiRefNetLiteEngine {
         val targetDir = context.noBackupFilesDir ?: context.filesDir
         val targetFile = File(targetDir, MODEL_ASSET_NAME)
 
-        // Validate if existing target file is valid (not corrupt, exact size or > MIN_PLAUSIBLE_MODEL_SIZE, not Git LFS)
+        // Validate if existing target file is valid (not corrupt, plausible size, not Git LFS)
         if (targetFile.exists()) {
             val len = targetFile.length()
-            if (len == EXPECTED_MODEL_SIZE && !isGitLfsPointer(targetFile)) {
-                Log.i(TAG, "[BiRefNetLite] Model file verified from cache at: ${targetFile.absolutePath} ($len bytes)")
-                return targetFile
-            } else if (len > MIN_PLAUSIBLE_MODEL_SIZE && !isGitLfsPointer(targetFile)) {
+            if (len >= MIN_PLAUSIBLE_MODEL_SIZE && !isGitLfsPointer(targetFile)) {
                 Log.i(TAG, "[BiRefNetLite] Model file verified from cache at: ${targetFile.absolutePath} ($len bytes)")
                 return targetFile
             } else {
@@ -180,14 +212,20 @@ object BiRefNetLiteEngine {
 
             val extractedLen = tempFile.length()
             if (isGitLfsPointer(tempFile)) {
-                val header = try { tempFile.readText().take(120) } catch (_: Throwable) { "" }
-                tempFile.delete()
-                throw IllegalStateException("Model asset in APK is a Git LFS pointer text file ($extractedLen bytes: '$header'). Real binary ONNX weights must be packaged into the APK.")
+                Log.w(TAG, "[BiRefNetLite] Model asset in APK is a Git LFS pointer text file. Downloading binary model...")
+                val downloaded = downloadModelFile(tempFile)
+                if (!downloaded || isGitLfsPointer(tempFile) || tempFile.length() < MIN_PLAUSIBLE_MODEL_SIZE) {
+                    val header = try { tempFile.readText().take(120) } catch (_: Throwable) { "" }
+                    tempFile.delete()
+                    throw IllegalStateException("Model asset in APK is a Git LFS pointer text file ($extractedLen bytes: '$header') and automatic model download could not be completed. Please check your network connection.")
+                }
+                Log.i(TAG, "[BiRefNetLite] Real binary model acquired successfully (${tempFile.length()} bytes)")
             }
 
-            if (extractedLen < MIN_PLAUSIBLE_MODEL_SIZE) {
+            if (tempFile.length() < MIN_PLAUSIBLE_MODEL_SIZE) {
+                val len = tempFile.length()
                 tempFile.delete()
-                throw IllegalStateException("Extracted model file is incomplete ($extractedLen bytes, expected $EXPECTED_MODEL_SIZE bytes).")
+                throw IllegalStateException("Extracted model file is incomplete ($len bytes, expected at least $MIN_PLAUSIBLE_MODEL_SIZE bytes).")
             }
 
             if (targetFile.exists()) {

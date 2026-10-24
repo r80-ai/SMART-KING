@@ -1,10 +1,6 @@
 package com.example.amardokan.data
 
-import androidx.room.Dao
-import androidx.room.Insert
-import androidx.room.OnConflictStrategy
-import androidx.room.Query
-import androidx.room.Transaction
+import androidx.room.*
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -15,17 +11,26 @@ interface AmarDokanDao {
     @Query("SELECT * FROM ad_customers")
     fun getAllCustomersSync(): List<Customer>
 
-    @Query("SELECT * FROM ad_services ORDER BY name ASC")
+    @Query("SELECT * FROM ad_customers WHERE id = :customerId LIMIT 1")
+    suspend fun getCustomerById(customerId: Long): Customer?
+
+    @Query("SELECT * FROM ad_services ORDER BY id ASC")
     fun getAllServices(): Flow<List<ServiceItem>>
 
     @Query("SELECT * FROM ad_services")
     fun getAllServicesSync(): List<ServiceItem>
+
+    @Query("SELECT COUNT(*) FROM ad_services")
+    suspend fun countServices(): Int
 
     @Query("SELECT * FROM ad_bills ORDER BY dateMillis DESC")
     fun getAllBills(): Flow<List<Bill>>
 
     @Query("SELECT * FROM ad_bills")
     fun getAllBillsSync(): List<Bill>
+
+    @Query("SELECT * FROM ad_bills WHERE customerId = :customerId ORDER BY dateMillis ASC")
+    fun getBillsByCustomerId(customerId: Long): Flow<List<Bill>>
 
     @Query("SELECT * FROM ad_bill_items")
     fun getAllBillItemsSync(): List<BillItem>
@@ -42,20 +47,56 @@ interface AmarDokanDao {
     @Query("SELECT * FROM ad_payments")
     fun getAllPaymentsSync(): List<Payment>
 
+    @Query("SELECT * FROM ad_payments WHERE customerId = :customerId ORDER BY dateMillis ASC")
+    fun getPaymentsByCustomerId(customerId: Long): Flow<List<Payment>>
+
+    @Query("SELECT COALESCE(SUM(grandTotal), 0.0) FROM ad_bills WHERE customerId = :customerId AND paymentType = 'CREDIT'")
+    suspend fun getTotalCreditBillsForCustomer(customerId: Long): Double
+
+    @Query("SELECT COALESCE(SUM(amount), 0.0) FROM ad_payments WHERE customerId = :customerId")
+    suspend fun getTotalPaymentsForCustomer(customerId: Long): Double
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertCustomer(customer: Customer): Long
+
+    @Update
+    suspend fun updateCustomer(customer: Customer)
+
+    @Delete
+    suspend fun deleteCustomer(customer: Customer)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertService(service: ServiceItem): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertServices(services: List<ServiceItem>)
+
+    @Update
+    suspend fun updateService(service: ServiceItem)
+
+    @Delete
+    suspend fun deleteService(service: ServiceItem)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBill(bill: Bill): Long
+
+    @Delete
+    suspend fun deleteBill(bill: Bill)
+
+    @Query("DELETE FROM ad_bill_items WHERE billId = :billId")
+    suspend fun deleteBillItemsByBillId(billId: Long)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBillItem(billItem: BillItem): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAllBillItems(items: List<BillItem>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertPayment(payment: Payment): Long
+
+    @Delete
+    suspend fun deletePayment(payment: Payment)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAllCustomers(customers: List<Customer>)
@@ -65,9 +106,6 @@ interface AmarDokanDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAllBills(bills: List<Bill>)
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAllBillItems(items: List<BillItem>)
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAllPayments(payments: List<Payment>)
@@ -86,6 +124,20 @@ interface AmarDokanDao {
 
     @Query("DELETE FROM ad_payments")
     suspend fun clearPayments()
+
+    @Transaction
+    suspend fun saveBillWithItems(bill: Bill, items: List<BillItem>): Long {
+        val billId = insertBill(bill)
+        val itemsWithId = items.map { it.copy(billId = billId) }
+        insertAllBillItems(itemsWithId)
+        return billId
+    }
+
+    @Transaction
+    suspend fun deleteBillCompletely(bill: Bill) {
+        deleteBillItemsByBillId(bill.id)
+        deleteBill(bill)
+    }
 
     @Transaction
     suspend fun restoreAllData(
