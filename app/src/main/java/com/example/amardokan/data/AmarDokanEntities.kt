@@ -73,6 +73,16 @@ data class BillItem(
     val totalPrice: Double get() = lineTotal
 }
 
+@JsonClass(generateAdapter = true)
+data class DraftBillItem(
+    val serviceName: String = "",
+    val quantity: Double = 1.0,
+    val unitRate: Double = 0.0,
+    val unitName: String = "পাতা"
+) {
+    val lineTotal: Double get() = quantity * unitRate
+}
+
 @Entity(tableName = "ad_payments")
 @JsonClass(generateAdapter = true)
 data class Payment(

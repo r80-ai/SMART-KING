@@ -10,7 +10,7 @@ import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
 import com.example.amardokan.data.Bill
 import com.example.amardokan.data.BillItem
-import com.example.amardokan.ui.screens.DraftBillItem
+import com.example.amardokan.data.DraftBillItem
 import java.io.File
 import java.io.FileOutputStream
 

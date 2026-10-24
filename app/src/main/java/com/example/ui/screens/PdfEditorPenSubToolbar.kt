@@ -30,6 +30,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.theme.CrimsonPrimary
 
+enum class AnnotationTool {
+    FREEHAND,
+    HIGHLIGHT,
+    RECTANGLE,
+    CIRCLE,
+    LINE,
+    ARROW,
+    ERASER
+}
+
+enum class EraserSizePreset(val radiusDp: Float) {
+    SMALL(12f),
+    MEDIUM(24f),
+    LARGE(44f)
+}
+
 enum class PenSubCategory {
     PEN,
     HIGHLIGHT,
