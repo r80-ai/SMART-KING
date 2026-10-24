@@ -755,8 +755,8 @@ object PdfEngine {
         val maskRect: android.graphics.Rect? = null,
         val maskColor: Int = android.graphics.Color.WHITE,
         val isUnderline: Boolean = false,
-        val fontFamily: String = "DEFAULT", // "DEFAULT", "SERIF", "MONOSPACE", "BENGALI", "HANDWRITING"
-        val alignment: String = "LEFT", // "LEFT", "CENTER", "RIGHT", "JUSTIFY"
+        val fontFamily: String = "DEFAULT", // "DEFAULT", "SERIF", "MONOSPACE"
+        val alignment: String = "LEFT", // "LEFT", "CENTER", "RIGHT"
         val endX: Float = posX + 100f,
         val endY: Float = posY + 50f,
         val strokeWidth: Float = 3f,
@@ -773,51 +773,10 @@ object PdfEngine {
         val baseHeight: Float = 0f,
         val boxWidth: Float = 0f,
         val boxHeight: Float = 0f,
-        val isTiled: Boolean = false,
-        val isStrikethrough: Boolean = false,
-        val letterSpacing: Float = 0f,
-        val lineSpacingMultiplier: Float = 1.15f,
-        val strokeColorHex: Int = 0,
-        val textStrokeWidth: Float = 0f,
-        val shadowColorHex: Int = 0,
-        val shadowRadius: Float = 0f,
-        val shadowDx: Float = 0f,
-        val shadowDy: Float = 0f,
-        val innerShadowRadius: Float = 0f,
-        val innerShadowColorHex: Int = 0,
-        val backgroundColorHex: Int = 0,
-        val backgroundPadding: Float = 0f,
-        val backgroundCornerRadius: Float = 0f,
-        val curveRadius: Float = 0f,
-        val is3dText: Boolean = false,
-        val depth3d: Float = 0f,
-        val rotate3dX: Float = 0f,
-        val rotate3dY: Float = 0f,
-        val isReflection: Boolean = false,
-        val isEmboss: Boolean = false,
-        val textureBitmap: Bitmap? = null,
-        val customFontPath: String? = null,
-        val customFontName: String? = null,
-        val isVisible: Boolean = true,
-        val isLocked: Boolean = false,
-        val is3dShadow: Boolean = false,
-        val depth3dShadowDistance: Float = 12f,
-        val perspectiveDistort: Float = 0f
+        val isTiled: Boolean = false
     ) {
         fun getRotationAngle(): Float = if (rotation != 0f) rotation else imageRotation
     }
-
-    /**
-     * Alias for saveEditedPdf to support writeEditedPdf references
-     */
-    suspend fun writeEditedPdf(
-        context: Context,
-        sourceFile: File,
-        items: List<EditItem> = emptyList(),
-        deletedPages: Set<Int> = emptySet(),
-        pageRotations: Map<Int, Int> = emptyMap(),
-        outputFileName: String
-    ): File = saveEditedPdf(context, sourceFile, items, deletedPages, pageRotations, outputFileName)
 
     /**
      * Save edited PDF with custom text, stamps, drawings, shapes, images, and rotated/deleted pages
@@ -890,7 +849,6 @@ object PdfEngine {
             // Draw annotations for this page
             val pageItems = items.filter { it.pageIndex == i }
             for (item in pageItems) {
-                if (!item.isVisible) continue
                 val sx = if (item.baseWidth > 0f) finalW.toFloat() / item.baseWidth else 1f
                 val sy = if (item.baseHeight > 0f) finalH.toFloat() / item.baseHeight else 1f
                 val strokeScale = (sx + sy) / 2f
@@ -923,7 +881,6 @@ object PdfEngine {
                         isAntiAlias = true
                         isFilterBitmap = true
                         isDither = true
-                        alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
                     }
                     canvas.drawBitmap(item.imageBitmap, null, dstRect, imgPaint)
                     canvas.restore()
@@ -1368,14 +1325,63 @@ object PdfEngine {
                         canvas.restore()
                     }
                 } else if (item.type == AnnotationType.TEXT || item.text.isNotBlank()) {
-                    val scaledItem = item.copy(
-                        posX = posX,
-                        posY = posY,
-                        fontSize = item.fontSize * strokeScale,
-                        boxWidth = if (item.boxWidth > 0f) item.boxWidth * strokeScale else 0f,
-                        boxHeight = if (item.boxHeight > 0f) item.boxHeight * strokeScale else 0f
-                    )
-                    com.example.ui.screens.TextEffectRenderer.drawPdfEditItem(canvas, scaledItem, strokeScale)
+                    val fontSz = (item.fontSize * strokeScale).coerceAtLeast(8f)
+                    val textPaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
+                        color = item.colorHex
+                        textSize = fontSz
+                        isUnderlineText = item.isUnderline
+                        val baseTypeface = when (item.fontFamily) {
+                            "HANDWRITING", "Handwriting", "CURSIVE", "Cursive" -> try { Typeface.create("casual", Typeface.NORMAL) } catch (_: Exception) { Typeface.create("cursive", Typeface.NORMAL) }
+                            "SERIF", "Serif" -> Typeface.SERIF
+                            "MONOSPACE", "Monospace" -> Typeface.MONOSPACE
+                            "BENGALI", "Bengali" -> Typeface.SANS_SERIF
+                            else -> Typeface.DEFAULT
+                        }
+                        val style = when {
+                            item.isBold && item.isItalic -> Typeface.BOLD_ITALIC
+                            item.isBold -> Typeface.BOLD
+                            item.isItalic -> Typeface.ITALIC
+                            else -> Typeface.NORMAL
+                        }
+                        typeface = Typeface.create(baseTypeface, style)
+                    }
+
+                    val textToRender = if (item.text.isEmpty()) " " else item.text
+                    val lines = textToRender.split("\n")
+                    var maxLineW = 0f
+                    for (l in lines) {
+                        val lw = textPaint.measureText(l)
+                        if (lw > maxLineW) maxLineW = lw
+                    }
+                    val naturalW = (maxLineW + 16f * strokeScale).coerceAtLeast(40f * strokeScale)
+                    val targetW = if (item.boxWidth > 0f) (item.boxWidth * strokeScale).coerceAtLeast(30f) else naturalW
+                    val align = when (item.alignment) {
+                        "CENTER" -> Layout.Alignment.ALIGN_CENTER
+                        "RIGHT" -> Layout.Alignment.ALIGN_OPPOSITE
+                        else -> Layout.Alignment.ALIGN_NORMAL
+                    }
+
+                    val staticLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        StaticLayout.Builder.obtain(textToRender, 0, textToRender.length, textPaint, targetW.toInt().coerceAtLeast(10))
+                            .setAlignment(align)
+                            .setLineSpacing(0f, 1.15f)
+                            .setIncludePad(false)
+                            .build()
+                    } else {
+                        @Suppress("DEPRECATION")
+                        StaticLayout(textToRender, textPaint, targetW.toInt().coerceAtLeast(10), align, 1.15f, 0f, false)
+                    }
+
+                    val layoutW = targetW
+                    val layoutH = if (item.boxHeight > 0f) Math.max(staticLayout.height.toFloat(), item.boxHeight * strokeScale) else staticLayout.height.toFloat()
+
+                    canvas.save()
+                    if (itemRot != 0f) {
+                        canvas.rotate(itemRot, posX + layoutW / 2f, posY + layoutH / 2f)
+                    }
+                    canvas.translate(posX, posY)
+                    staticLayout.draw(canvas)
+                    canvas.restore()
                 }
             }
 

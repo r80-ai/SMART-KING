@@ -34,6 +34,7 @@ import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 
 enum class NavigationTab {
@@ -781,17 +782,100 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
     }
 
     /**
-     * Declares writeEditedPdf as an explicit method to resolve references
+     * Saves the modified PDF document directly to a user-selected SAF content URI (ACTION_CREATE_DOCUMENT).
+     * Writes all annotations, drawings, rotated and deleted pages, flushing the stream before reporting success.
      */
-    fun writeEditedPdf(
+    fun saveEditedPdfToUri(
         sourceRecord: PdfFileRecord,
-        items: List<PdfEngine.EditItem> = emptyList(),
-        deletedPages: Set<Int> = emptySet(),
-        pageRotations: Map<Int, Int> = emptyMap(),
-        outputName: String = "${sourceRecord.nameWithoutExtension()}_edited.pdf",
+        items: List<PdfEngine.EditItem>,
+        deletedPages: Set<Int>,
+        pageRotations: Map<Int, Int>,
+        destinationUri: Uri,
+        suggestedName: String = "edited.pdf",
         onSuccess: ((PdfFileRecord) -> Unit)? = null
     ) {
-        saveEditedPdf(sourceRecord, items, deletedPages, pageRotations, outputName, onSuccess)
+        viewModelScope.launch {
+            _isProcessing.value = true
+            _processingMessage.value = "Saving edited PDF to destination..."
+            try {
+                var srcFile = File(sourceRecord.filePath)
+                if (!srcFile.exists() || !srcFile.canRead()) {
+                    if (!sourceRecord.uriString.isNullOrBlank()) {
+                        try {
+                            val uri = Uri.parse(sourceRecord.uriString)
+                            val safeDir = File(getApplication<Application>().filesDir, "imported_pdfs").apply { if (!exists()) mkdirs() }
+                            val safeFile = File(safeDir, sourceRecord.name)
+                            getApplication<Application>().contentResolver.openInputStream(uri)?.use { inStream ->
+                                FileOutputStream(safeFile).use { outStream -> inStream.copyTo(outStream) }
+                            }
+                            if (safeFile.exists() && safeFile.length() > 0) {
+                                srcFile = safeFile
+                            }
+                        } catch (e: Exception) {
+                            e.printStackTrace()
+                        }
+                    }
+                }
+
+                // Render edits to a temporary working file in app cache
+                val tempFile = File(getApplication<Application>().cacheDir, "temp_edit_${System.currentTimeMillis()}.pdf")
+                try {
+                    PdfEngine.writeEditedPdf(
+                        context = getApplication(),
+                        sourceFile = srcFile,
+                        items = items,
+                        deletedPages = deletedPages,
+                        pageRotations = pageRotations,
+                        outputFile = tempFile
+                    )
+
+                    if (!tempFile.exists() || tempFile.length() == 0L) {
+                        throw IllegalStateException("Failed to generate edited PDF.")
+                    }
+
+                    // Stream to destinationUri
+                    val cr = getApplication<Application>().contentResolver
+                    cr.openOutputStream(destinationUri, "wt")?.use { outStream ->
+                        FileInputStream(tempFile).use { inStream ->
+                            inStream.copyTo(outStream)
+                        }
+                        outStream.flush()
+                    } ?: throw IllegalStateException("Could not open destination for writing.")
+
+                    // Also store local copy for app library
+                    val localDir = com.example.storage.GlobalSaveManager.getLocalActiveDirectory(getApplication())
+                    val cleanBase = suggestedName.substringBeforeLast(".")
+                    val finalFileName = com.example.storage.GlobalSaveManager.generateUniqueName(cleanBase, "pdf") { testName ->
+                        File(localDir, testName).exists()
+                    }
+                    val localFile = File(localDir, finalFileName)
+                    tempFile.copyTo(localFile, overwrite = true)
+
+                    val pageCount = PdfEngine.getPageCount(localFile)
+                    val newRecord = PdfFileRecord(
+                        name = finalFileName,
+                        filePath = localFile.absolutePath,
+                        fileSize = localFile.length(),
+                        pageCount = pageCount,
+                        category = "created",
+                        tag = "Edited",
+                        uriString = destinationUri.toString()
+                    )
+                    repository.insertFile(newRecord)
+                    _selectedFile.value = newRecord
+                    onSuccess?.invoke(newRecord)
+                    _notification.value = UiNotification("Saved to selected location successfully!")
+                } finally {
+                    if (tempFile.exists()) {
+                        tempFile.delete()
+                    }
+                }
+            } catch (e: Exception) {
+                _notification.value = UiNotification("Save failed: ${e.message}", false)
+            } finally {
+                _isProcessing.value = false
+            }
+        }
     }
 
     fun mergePdfs(

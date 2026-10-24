@@ -2267,7 +2267,7 @@ fun PdfWorkspaceDialog(
                                                                 drawCircle(color = Color(0xFF2563EB), radius = handleRadius, center = c)
                                                                 drawCircle(color = Color.White, radius = handleRadius - 2f, center = c)
                                                             }
-                                                            if (selItem.type == PdfEngine.AnnotationType.RECTANGLE || selItem.type == PdfEngine.AnnotationType.TEXT) {
+                                                            if (selItem.type == PdfEngine.AnnotationType.IMAGE || selItem.type == PdfEngine.AnnotationType.RECTANGLE || selItem.type == PdfEngine.AnnotationType.TEXT) {
                                                                 val edgeRadius = 5.5.dp.toPx()
                                                                 val midX = bLeft + bWidth / 2f
                                                                 val midY = bTop + bHeight / 2f
