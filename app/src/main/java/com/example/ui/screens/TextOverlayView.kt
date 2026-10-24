@@ -231,12 +231,7 @@ class TextOverlayView @JvmOverloads constructor(
         }
     }
 
-    var isInteractionsEnabled: Boolean = true
-
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!isInteractionsEnabled) {
-            return false
-        }
         gestureDetector.onTouchEvent(event)
 
         val x = event.x

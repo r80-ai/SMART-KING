@@ -156,3 +156,77 @@ dependencies {
   "ksp"("com.squareup.moshi:moshi-kotlin-codegen:1.15.2")
 }
 
+val verifyBiRefNetModel = tasks.register("verifyBiRefNetModel") {
+    val modelAsset = file("src/main/assets/birefnet_lite_fp16.onnx")
+    val expectedSize = 98484532L
+    val expectedSha256 = "eff9216bb2f9d3f023d9c2b7196845a7485739ab1f231593633e4d2344ffc516"
+
+    doLast {
+        if (!modelAsset.exists()) {
+            throw GradleException("ERROR: src/main/assets/birefnet_lite_fp16.onnx does not exist!")
+        }
+        val len = modelAsset.length()
+        if (len < 500L) {
+            val content = modelAsset.readText()
+            if (content.contains("git-lfs")) {
+                println("[verifyBiRefNetModel] Detected Git LFS pointer ($len bytes). Fetching canonical binary weights for build...")
+                var currentUrl = "https://huggingface.co/BRPOD123/birefnet-lite-512/resolve/main/onnx/model_fp16.onnx"
+                var redirectCount = 0
+                while (redirectCount < 6) {
+                    val url = URI(currentUrl).toURL()
+                    val connection = url.openConnection() as HttpURLConnection
+                    connection.instanceFollowRedirects = true
+                    connection.connectTimeout = 30000
+                    connection.readTimeout = 60000
+                    val status = connection.responseCode
+                    if (status in 300..399) {
+                        val newUrl = connection.getHeaderField("Location")
+                        if (newUrl != null) {
+                            currentUrl = newUrl
+                            redirectCount++
+                            continue
+                        }
+                    }
+                    val inStream: InputStream = connection.inputStream
+                    inStream.use { input ->
+                        val outStream = FileOutputStream(modelAsset)
+                        outStream.use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    break
+                }
+            }
+        }
+        val finalLen = modelAsset.length()
+        if (finalLen != expectedSize) {
+            throw GradleException("ERROR: app/src/main/assets/birefnet_lite_fp16.onnx size ($finalLen bytes) does not match expected size $expectedSize bytes!")
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        modelAsset.inputStream().use { stream ->
+            val buf = ByteArray(65536)
+            var read: Int
+            while (stream.read(buf).also { read = it } != -1) {
+                digest.update(buf, 0, read)
+            }
+        }
+        val bytes = digest.digest()
+        val hash = StringBuilder()
+        for (b in bytes) {
+            hash.append(String.format("%02x", b))
+        }
+        val hashStr = hash.toString()
+        if (!hashStr.equals(expectedSha256, ignoreCase = true)) {
+            throw GradleException("ERROR: SHA-256 mismatch for birefnet_lite_fp16.onnx! Actual: $hashStr, Expected: $expectedSha256")
+        }
+        println("[verifyBiRefNetModel] SUCCESS: birefnet_lite_fp16.onnx verified ($finalLen bytes, SHA-256: $hashStr)")
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(verifyBiRefNetModel)
+}
+tasks.matching { it.name.startsWith("merge") && it.name.endsWith("Assets") }.configureEach {
+    dependsOn(verifyBiRefNetModel)
+}
+

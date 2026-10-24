@@ -35,7 +35,7 @@ object BiRefNetLiteEngine {
     const val EXPECTED_MODEL_SIZE = 98484532L
     const val EXPECTED_SHA256 = "eff9216bb2f9d3f023d9c2b7196845a7485739ab1f231593633e4d2344ffc516"
     private const val MODEL_INPUT_SIZE = 512
-    private const val MIN_PLAUSIBLE_MODEL_SIZE = 1_000_000L // Accepts optimized FP16/INT8 ONNX models (e.g. 20MB)
+    private const val MIN_PLAUSIBLE_MODEL_SIZE = 90_000_000L // Expected ~98.5 MB
 
     // ImageNet normalization constants used by BiRefNet
     private val MEAN = floatArrayOf(0.485f, 0.456f, 0.406f)
