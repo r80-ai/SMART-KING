@@ -3,52 +3,81 @@ package com.example.amardokan.ui.memo
 import android.content.Context
 import android.content.Intent
 import android.graphics.*
+import android.graphics.pdf.PdfDocument
+import android.net.Uri
+import android.os.Bundle
+import android.os.CancellationSignal
+import android.os.ParcelFileDescriptor
+import android.print.PageRange
 import android.print.PrintAttributes
+import android.print.PrintDocumentAdapter
+import android.print.PrintDocumentInfo
 import android.print.PrintManager
-import android.webkit.WebView
-import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.core.content.FileProvider
+import com.example.AmarDokanApp
 import com.example.amardokan.data.Bill
 import com.example.amardokan.data.BillItem
+import com.example.amardokan.ui.BanglaNumberUtil
 import com.example.amardokan.ui.screens.DraftBillItem
+import com.example.util.QrCodeGenerator
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
+/**
+ * High-Resolution Authentic Bengali Cash Memo Generator.
+ * Reproduces the exact Xerox & Cyber Cafe Cash Memo template with:
+ * - Traditional Bengali Shop Banner & Graphics (টেলিকম সাইবার ক্যাফে ও জেরক্স)
+ * - Exact Table Layout with Ruled Lines & Columns
+ * - Automatic Field Placement (Bill No, Date, Customer, Items, Totals)
+ * - Dynamic Scannable UPI QR Code (Merchant ID: 7718489@ybl)
+ * - High-Quality PDF, PrintManager, and WhatsApp Sharing
+ */
 object AmarDokanCashMemoGenerator {
+
     const val MERCHANT_UPI_ID = "7718489@ybl"
-    const val SHOP_NAME_BN = "আমার দোকান"
-    const val SHOP_NAME_EN = "AMAR DOKAN"
-    const val SHOP_SUBTITLE_BN = "টেলিকম সাইবার ক্যাফে ও জেরক্স"
-    const val SHOP_SUBTITLE_EN = "Telecom Cyber Cafe & Xerox Center"
+    const val MERCHANT_SHOP_NAME = "Telecom Cyber Cafe"
     const val SHOP_PHONE = "7718489405"
 
-    data class MemoItem(
-        val serviceName: String,
-        val quantity: Double,
-        val unitRate: Double,
-        val lineTotal: Double,
-        val unitName: String = "পাতা"
-    )
+    // Memo Dimensions (Exact 1024x1536 resolution, 2:3 aspect ratio)
+    const val MEMO_WIDTH = 1024
+    const val MEMO_HEIGHT = 1536
 
+    /**
+     * Data wrapper for rendering a Cash Memo.
+     */
     data class MemoData(
         val billNumber: String,
+        val dateFormatted: String,
         val customerName: String,
         val customerPhone: String = "",
-        val dateStr: String,
+        val paymentType: String = "CASH", // "CASH" or "CREDIT"
         val items: List<MemoItem>,
         val subtotal: Double,
-        val discount: Double,
+        val discount: Double = 0.0,
         val grandTotal: Double,
-        val paymentType: String, // "CASH" or "CREDIT"
-        val language: String = "BN"
+        val notes: String = "",
+        val language: String = "BN" // "BN" or "EN"
     ) {
         companion object {
             fun fromBill(bill: Bill, items: List<BillItem>): MemoData {
+                val detectedLang = if (bill.language.isNotBlank()) {
+                    bill.language
+                } else if (bill.billNumber.startsWith("BILL-", ignoreCase = true)) {
+                    "EN"
+                } else {
+                    "BN"
+                }
                 return MemoData(
                     billNumber = bill.billNumber,
+                    dateFormatted = bill.dateFormatted,
                     customerName = bill.customerName,
                     customerPhone = bill.customerPhone,
-                    dateStr = bill.dateFormatted,
+                    paymentType = bill.paymentType,
                     items = items.map {
                         MemoItem(
                             serviceName = it.serviceName,
@@ -60,8 +89,8 @@ object AmarDokanCashMemoGenerator {
                     subtotal = bill.subtotal,
                     discount = bill.discount,
                     grandTotal = bill.grandTotal,
-                    paymentType = bill.paymentType,
-                    language = bill.language
+                    notes = bill.notes,
+                    language = detectedLang
                 )
             }
 
@@ -75,252 +104,581 @@ object AmarDokanCashMemoGenerator {
                 discount: Double,
                 grandTotal: Double,
                 paymentType: String,
-                language: String
+                language: String = "BN"
             ): MemoData {
                 return MemoData(
                     billNumber = billNumber,
+                    dateFormatted = dateStr,
                     customerName = customerName,
                     customerPhone = customerPhone,
-                    dateStr = dateStr,
+                    paymentType = paymentType,
                     items = items.map {
                         MemoItem(
                             serviceName = it.serviceName,
                             quantity = it.quantity,
                             unitRate = it.unitRate,
-                            lineTotal = it.lineTotal,
-                            unitName = it.unitName
+                            lineTotal = it.lineTotal
                         )
                     },
                     subtotal = subtotal,
                     discount = discount,
                     grandTotal = grandTotal,
-                    paymentType = paymentType,
                     language = language
                 )
             }
         }
     }
 
+    data class MemoItem(
+        val serviceName: String,
+        val quantity: Double,
+        val unitRate: Double,
+        val lineTotal: Double
+    )
+
     /**
-     * Renders a crisp receipt bitmap for preview and printing.
+     * Generates a high-resolution Bitmap of the cash memo using the selected template (Bengali or English).
      */
-    fun generateMemoBitmap(memoData: MemoData, context: Context): Bitmap {
-        val width = 720
-        val isEn = memoData.language.uppercase() == "EN"
-        val rowHeight = 44
-        val baseHeight = 560
-        val totalHeight = (baseHeight + (memoData.items.size * rowHeight)).coerceAtLeast(800)
-
-        val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(android.graphics.Color.WHITE)
-
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.BLACK
-            textSize = 28f
-        }
-        val boldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.BLACK
-            textSize = 34f
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#0F172A")
-            textSize = 42f
-            typeface = Typeface.DEFAULT_BOLD
-            textAlign = Paint.Align.CENTER
-        }
-        val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.DKGRAY
-            textSize = 22f
-            textAlign = Paint.Align.CENTER
-        }
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.LTGRAY
-            strokeWidth = 2f
-        }
-
-        var y = 60f
-        canvas.drawText(if (isEn) SHOP_NAME_EN else SHOP_NAME_BN, width / 2f, y, headerPaint)
-        y += 36f
-        canvas.drawText(if (isEn) SHOP_SUBTITLE_EN else SHOP_SUBTITLE_BN, width / 2f, y, subPaint)
-        y += 30f
-        canvas.drawText(if (isEn) "Phone: $SHOP_PHONE" else "ফোন: $SHOP_PHONE", width / 2f, y, subPaint)
-        y += 30f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
-
-        y += 40f
-        textPaint.textSize = 24f
-        canvas.drawText(if (isEn) "Bill No: ${memoData.billNumber}" else "বিল নং: ${memoData.billNumber}", 36f, y, textPaint)
-        val dateText = if (isEn) "Date: ${memoData.dateStr}" else "তারিখ: ${memoData.dateStr}"
-        val dateWidth = textPaint.measureText(dateText)
-        canvas.drawText(dateText, width - 36f - dateWidth, y, textPaint)
-
-        y += 34f
-        val custText = if (isEn) "Customer: ${memoData.customerName}" else "গ্রাহক: ${memoData.customerName}"
-        canvas.drawText(custText, 36f, y, textPaint)
-
-        val payText = if (isEn) {
-            if (memoData.paymentType == "CASH") "Status: Paid (Cash)" else "Status: Due (Credit)"
+    fun generateMemoBitmap(data: MemoData, context: Context? = null): Bitmap {
+        val appContext = context ?: try { AmarDokanApp.instance.applicationContext } catch (e: Exception) { null }
+        return if (data.language.uppercase() == "EN") {
+            generateEnglishMemoBitmap(data, appContext)
         } else {
-            if (memoData.paymentType == "CASH") "পেমেন্ট: নগদ (পরিশোধিত)" else "পেমেন্ট: বাকি (বকেয়া)"
+            generateBengaliMemoBitmap(data, appContext)
         }
-        val payWidth = textPaint.measureText(payText)
-        canvas.drawText(payText, width - 36f - payWidth, y, textPaint)
+    }
 
-        y += 30f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
+    /**
+     * Generates a high-resolution Bitmap of the complete Bengali Cash Memo using cash_memo_bengali.png.
+     */
+    fun generateBengaliMemoBitmap(data: MemoData, context: Context? = null): Bitmap {
+        val appContext = context ?: try { AmarDokanApp.instance.applicationContext } catch (e: Exception) { null }
+        return renderAuthenticCashMemo(data, isEn = false, context = appContext)
+    }
 
-        // Table Header
-        y += 36f
-        boldPaint.textSize = 22f
-        canvas.drawText(if (isEn) "Item Description" else "বিবরণ", 36f, y, boldPaint)
-        canvas.drawText(if (isEn) "Qty x Rate" else "পরিমাণ × দর", 400f, y, boldPaint)
-        val totalHeader = if (isEn) "Total" else "মোট"
-        val thWidth = boldPaint.measureText(totalHeader)
-        canvas.drawText(totalHeader, width - 36f - thWidth, y, boldPaint)
+    /**
+     * Generates a high-resolution Bitmap of the complete English Cash Memo using cash_memo_english.png.
+     */
+    fun generateEnglishMemoBitmap(data: MemoData, context: Context? = null): Bitmap {
+        val appContext = context ?: try { AmarDokanApp.instance.applicationContext } catch (e: Exception) { null }
+        return renderAuthenticCashMemo(data, isEn = true, context = appContext)
+    }
 
-        y += 18f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
+    /**
+     * Master authentic cash memo renderer using the real background templates:
+     * - app/src/main/assets/cash_memo_bengali.png
+     * - app/src/main/assets/cash_memo_english.png
+     *
+     * Preserves the full template design, logo, tables, borders, and colors untouched,
+     * only placing dynamic bill data into the designated blank fields.
+     */
+    private fun renderAuthenticCashMemo(data: MemoData, isEn: Boolean, context: Context?): Bitmap {
+        val bitmap = loadTemplateBitmap(context, isEn)
+        val canvas = Canvas(bitmap)
 
-        // Items
-        textPaint.textSize = 22f
-        for (item in memoData.items) {
-            y += 36f
-            canvas.drawText(item.serviceName, 36f, y, textPaint)
-            val qtyStr = "${item.quantity.toInt()} x ₹${item.unitRate.toInt()}"
-            canvas.drawText(qtyStr, 400f, y, textPaint)
-            val lineTotalStr = "₹${item.lineTotal.toInt()}"
-            val ltWidth = textPaint.measureText(lineTotalStr)
-            canvas.drawText(lineTotalStr, width - 36f - ltWidth, y, textPaint)
+        // 1. RECEIPT / BILL NUMBER (Solid black bold, centered inside white number box: x=[92..236], y=[563..597], center=(164, 580))
+        val billNoPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black
+            textSize = 24f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val billNumClean = if (data.billNumber.isNotBlank()) {
+            data.billNumber.replace("BILL-", "").replace("বিল-", "").trim()
+        } else {
+            "1001"
+        }
+        val billNumStr = if (isEn) billNumClean else BanglaNumberUtil.toBangla(billNumClean)
+        canvas.drawText(billNumStr, 164f, 588f, billNoPaint)
+
+        // 2. DATE (Solid black bold, centered inside white date box: x=[845..998], y=[564..596], center=(922, 580))
+        val datePaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black
+            textSize = 20f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+        val dateClean = if (data.dateFormatted.isNotBlank()) {
+            data.dateFormatted
+        } else {
+            val sdf = SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH)
+            sdf.format(Date())
+        }
+        val dateDisplay = if (isEn) dateClean else BanglaNumberUtil.toBangla(dateClean)
+        canvas.drawText(dateDisplay, 922f, 588f, datePaint)
+
+        // 3. CUSTOMER NAME & PHONE (Solid black bold directly on the baseline following labels at y=658f)
+        val customerNamePaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black
+            textSize = 22f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
+        }
+        val customerPhonePaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black
+            textSize = 22f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.LEFT
+        }
+        if (data.customerName.isNotBlank()) {
+            // Bengali label ends ~200f (dots start 205f..560f); English label ends ~260f (dots start 265f..560f)
+            val nameStartX = if (isEn) 265f else 205f
+            val maxNameW = if (isEn) 295f else 350f
+            val nameStr = truncateText(data.customerName, customerNamePaint, maxNameW)
+            canvas.drawText(nameStr, nameStartX, 658f, customerNamePaint)
+        }
+        if (data.customerPhone.isNotBlank()) {
+            // Bengali label ends ~752f (dots start 758f..998f); English label ends ~745f (dots start 752f..998f)
+            val phoneStartX = if (isEn) 752f else 758f
+            val maxPhoneW = if (isEn) 245f else 240f
+            val phoneClean = if (isEn) data.customerPhone else BanglaNumberUtil.toBangla(data.customerPhone)
+            val phoneStr = truncateText(phoneClean, customerPhonePaint, maxPhoneW)
+            canvas.drawText(phoneStr, phoneStartX, 658f, customerPhonePaint)
         }
 
-        y += 26f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
-
-        if (memoData.discount > 0.0) {
-            y += 34f
-            canvas.drawText(if (isEn) "Subtotal:" else "সাবটোটাল:", 400f, y, textPaint)
-            val subStr = "₹${memoData.subtotal.toInt()}"
-            canvas.drawText(subStr, width - 36f - textPaint.measureText(subStr), y, textPaint)
-
-            y += 30f
-            canvas.drawText(if (isEn) "Discount:" else "ছাড়:", 400f, y, textPaint)
-            val discStr = "-₹${memoData.discount.toInt()}"
-            canvas.drawText(discStr, width - 36f - textPaint.measureText(discStr), y, textPaint)
-            y += 18f
-            canvas.drawLine(400f, y, width - 30f, y, linePaint)
+        // 4. INVOICE TABLE ROWS (15 rows from y=747f to 1228f, rowHeight=32.05f) - All Solid Black & BOLD
+        val tableBoldTextPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black
+            textSize = 17f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        y += 42f
-        boldPaint.textSize = 26f
-        canvas.drawText(if (isEn) "Grand Total:" else "সর্বমোট প্রদেয়:", 340f, y, boldPaint)
-        val grandStr = "₹${memoData.grandTotal.toInt()}"
-        boldPaint.textSize = 30f
-        canvas.drawText(grandStr, width - 36f - boldPaint.measureText(grandStr), y, boldPaint)
+        val rowCount = 15
+        val rowHeight = 32.05f
+        val tableStartY = 747f
 
-        y += 40f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
-        y += 40f
-        subPaint.textSize = 20f
-        canvas.drawText(if (isEn) "Thank you for visiting! Please visit again." else "ধন্যবাদ! আবার আসবেন।", width / 2f, y, subPaint)
+        for (r in 0 until minOf(rowCount, data.items.size)) {
+            val item = data.items[r]
+            val rY = tableStartY + r * rowHeight
+            val textBaseY = rY + 22.5f
+
+            // Col 1: Sl. No is pre-printed in the template (১..১৫ / 1..15)
+
+            // Col 2: Description (x=[104..527], left-aligned at 114f, max width 405f)
+            tableBoldTextPaint.textAlign = Paint.Align.LEFT
+            val desc = truncateText(item.serviceName, tableBoldTextPaint, 405f)
+            canvas.drawText(desc, 114f, textBaseY, tableBoldTextPaint)
+
+            // Col 3: Quantity (x=[528..656], centered at 592f)
+            tableBoldTextPaint.textAlign = Paint.Align.CENTER
+            val qtyRaw = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString()
+            val qtyStr = if (isEn) qtyRaw else BanglaNumberUtil.toBangla(qtyRaw)
+            canvas.drawText(qtyStr, 592f, textBaseY, tableBoldTextPaint)
+
+            // Col 4: Rate (x=[657..826], right-aligned at 812f)
+            tableBoldTextPaint.textAlign = Paint.Align.RIGHT
+            val rateRaw = item.unitRate.toInt().toString()
+            val rateStr = if (isEn) rateRaw else BanglaNumberUtil.toBangla(rateRaw)
+            canvas.drawText(rateStr, 812f, textBaseY, tableBoldTextPaint)
+
+            // Col 5: Amount (x=[827..1004], right-aligned at 990f)
+            tableBoldTextPaint.textAlign = Paint.Align.RIGHT
+            val amtRaw = item.lineTotal.toInt().toString()
+            val amtStr = if (isEn) amtRaw else BanglaNumberUtil.toBangla(amtRaw)
+            canvas.drawText(amtStr, 990f, textBaseY, tableBoldTextPaint)
+        }
+
+        // 5. SCANNABLE DYNAMIC UPI QR CODE (Box-fit snugly inside white square: x=[30..244], y=[1242..1448])
+        val qrAmount = String.format(Locale.ENGLISH, "%.2f", data.grandTotal)
+        val billEncoded = Uri.encode(data.billNumber)
+        val upiUri = "upi://pay?pa=$MERCHANT_UPI_ID&pn=Telecom%20Cyber%20Cafe&am=$qrAmount&cu=INR&tn=Bill%20$billEncoded"
+        val qrBoxSize = 208
+        val qrBmp = QrCodeGenerator.generateUpiQr(upiUri, qrBoxSize)
+        if (qrBmp != null) {
+            canvas.drawBitmap(qrBmp, 33f, 1241f, null)
+        }
+
+        // 6. TOTALS PANEL VALUES (মোট টাকা, ছাড় (-), সর্বমোট টাকা) - Solid Black & Bold
+        // Row 1: মোট টাকা / Subtotal (white box: x=[765..979], y=[1242..1295], center Y=1268.5f, baseline=1278f)
+        val totalAmountVal = if (data.subtotal > 0.0) data.subtotal else data.grandTotal
+        val totalPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black
+            textSize = 28f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+        val subRaw = totalAmountVal.toInt().toString()
+        val subStr = if (isEn) "₹$subRaw" else "₹" + BanglaNumberUtil.toBangla(subRaw)
+        canvas.drawText(subStr, 965f, 1278f, totalPaint)
+
+        // Row 2: ছাড় (-) / Discount (white box: x=[770..979], y=[1302..1356], center Y=1329f, baseline=1338f)
+        val discPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black Bold
+            textSize = 28f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+        val discRaw = data.discount.toInt().toString()
+        val discStr = if (data.discount > 0.0) {
+            if (isEn) "- ₹$discRaw" else "- ₹" + BanglaNumberUtil.toBangla(discRaw)
+        } else {
+            if (isEn) "₹0" else "₹০"
+        }
+        canvas.drawText(discStr, 965f, 1338f, discPaint)
+
+        // Row 3: সর্বমোট টাকা / Grand Total (white box: x=[765..979], y=[1364..1429], center Y=1396.5f, baseline=1407f)
+        val gtPaint = Paint().apply {
+            isAntiAlias = true
+            isSubpixelText = true
+            color = Color.BLACK // Solid Black Bold
+            textSize = 32f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+        val gtRaw = data.grandTotal.toInt().toString()
+        val gtStr = if (isEn) "₹$gtRaw" else "₹" + BanglaNumberUtil.toBangla(gtRaw)
+        canvas.drawText(gtStr, 965f, 1407f, gtPaint)
+
+        // 7. PAYMENT STATUS STAMP / BOKEYA (পরিশোধিত / বকেয়া)
+        // Positioned in status badge area (center x=410f, y=1405f)
+        if (data.paymentType.equals("CASH", ignoreCase = true)) {
+            val stampText = if (isEn) "PAID" else "পরিশোধিত"
+            drawStamp(canvas, stampText, Color.rgb(22, 163, 74), 410f, 1405f, 0f)
+        } else {
+            val stampText = if (isEn) "DUE / বকেয়া" else "বকেয়া (DUE)"
+            drawStamp(canvas, stampText, Color.rgb(220, 38, 38), 410f, 1405f, 0f)
+        }
 
         return bitmap
     }
 
+    private fun loadTemplateBitmap(context: Context?, isEn: Boolean): Bitmap {
+        val assetName = if (isEn) "cash_memo_english.png" else "cash_memo_bengali.png"
+        if (context != null) {
+            try {
+                context.assets.open(assetName).use { inputStream ->
+                    val options = BitmapFactory.Options().apply {
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                        inMutable = true
+                    }
+                    val decoded = BitmapFactory.decodeStream(inputStream, null, options)
+                    if (decoded != null) {
+                        return if (decoded.width != MEMO_WIDTH || decoded.height != MEMO_HEIGHT) {
+                            Bitmap.createScaledBitmap(decoded, MEMO_WIDTH, MEMO_HEIGHT, true).copy(Bitmap.Config.ARGB_8888, true)
+                        } else {
+                            decoded
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.e("CashMemoGenerator", "Failed to load template $assetName from assets", e)
+            }
+        }
+        // Fallback: create empty white bitmap if context or asset unavailable
+        val fallback = Bitmap.createBitmap(MEMO_WIDTH, MEMO_HEIGHT, Bitmap.Config.ARGB_8888)
+        fallback.eraseColor(Color.WHITE)
+        return fallback
+    }
+
+    private fun tableSlPad(colSl: Float): Float = colSl + 12f
+
+    private fun truncateText(text: String, paint: Paint, maxWidth: Float): String {
+        if (paint.measureText(text) <= maxWidth) return text
+        var truncated = text
+        while (truncated.isNotEmpty() && paint.measureText("$truncated...") > maxWidth) {
+            truncated = truncated.dropLast(1)
+        }
+        return "$truncated..."
+    }
+
+    private fun drawStamp(canvas: Canvas, text: String, color: Int, cx: Float, cy: Float, rotation: Float) {
+        canvas.save()
+        canvas.rotate(rotation, cx, cy)
+
+        val stampPaint = Paint().apply {
+            this.color = color
+            isAntiAlias = true
+            style = Paint.Style.STROKE
+            strokeWidth = 2.5f
+        }
+
+        val textPaint = Paint().apply {
+            this.color = color
+            isAntiAlias = true
+            textSize = 18f
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.CENTER
+        }
+
+        val textW = textPaint.measureText(text)
+        val stampRect = RectF(cx - textW / 2f - 12f, cy - 20f, cx + textW / 2f + 12f, cy + 12f)
+        canvas.drawRoundRect(stampRect, 6f, 6f, stampPaint)
+        canvas.drawText(text, cx, cy + 2f, textPaint)
+
+        canvas.restore()
+    }
+
     /**
-     * Generates a genuine PDF file of the receipt and returns the File.
+     * Converts integer amount to Bengali words.
      */
-    fun generatePdfFile(context: Context, memoData: MemoData): File {
-        val dir = File(context.cacheDir, "memos").apply { mkdirs() }
-        val cleanBillNo = memoData.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-        val cleanName = memoData.customerName.ifBlank { "Unknown" }.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
-        val file = File(dir, "${cleanName}_${cleanBillNo}.pdf")
+    fun convertAmountToBanglaWords(amount: Long): String {
+        if (amount == 0L) return "শূন্য টাকা মাত্র"
 
-        val document = android.graphics.pdf.PdfDocument()
-        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
-        val page = document.startPage(pageInfo)
+        val ones = arrayOf("", "এক", "দুই", "তিন", "চার", "পাঁচ", "ছয়", "সাত", "আট", "নয়", "দশ",
+            "এগারো", "বারো", "তেরো", "চৌদ্দ", "পনেরো", "ষোল", "সতেরো", "আঠারো", "উনিশ")
+        val tens = arrayOf("", "", "কুড়ি", "ত্রিশ", "চল্লিশ", "পঞ্চাশ", "ষাট", "সত্তর", "আশি", "নব্বই")
 
-        val bmp = generateMemoBitmap(memoData, context)
+        fun convertLessThanThousand(n: Int): String {
+            if (n == 0) return ""
+            var result = ""
+            val hundred = n / 100
+            val rem = n % 100
+
+            if (hundred > 0) {
+                result += "${ones[hundred]} শত "
+            }
+
+            if (rem in 1..19) {
+                result += ones[rem]
+            } else if (rem >= 20) {
+                val t = rem / 10
+                val o = rem % 10
+                result += tens[t] + (if (o > 0) " ${ones[o]}" else "")
+            }
+            return result.trim()
+        }
+
+        var num = amount
+        var words = ""
+
+        val crore = num / 10000000
+        num %= 10000000
+
+        val lakh = num / 100000
+        num %= 100000
+
+        val thousand = num / 1000
+        num %= 1000
+
+        if (crore > 0) words += "${convertLessThanThousand(crore.toInt())} কোটি "
+        if (lakh > 0) words += "${convertLessThanThousand(lakh.toInt())} লক্ষ "
+        if (thousand > 0) words += "${convertLessThanThousand(thousand.toInt())} হাজার "
+        if (num > 0) words += convertLessThanThousand(num.toInt())
+
+        return "${words.trim()} টাকা মাত্র"
+    }
+
+    /**
+     * Converts integer amount to English words.
+     */
+    fun convertAmountToEnglishWords(amount: Long): String {
+        if (amount == 0L) return "Zero Rupees Only"
+
+        val ones = arrayOf("", "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine",
+            "Ten", "Eleven", "Twelve", "Thirteen", "Fourteen", "Fifteen", "Sixteen", "Seventeen", "Eighteen", "Nineteen")
+        val tens = arrayOf("", "", "Twenty", "Thirty", "Forty", "Fifty", "Sixty", "Seventy", "Eighty", "Ninety")
+
+        fun convertLessThanThousand(n: Int): String {
+            if (n == 0) return ""
+            val hundred = n / 100
+            val rem = n % 100
+            var s = ""
+            if (hundred > 0) s += "${ones[hundred]} Hundred "
+            if (rem in 1..19) {
+                s += ones[rem]
+            } else if (rem >= 20) {
+                val t = rem / 10
+                val o = rem % 10
+                s += tens[t] + (if (o > 0) " ${ones[o]}" else "")
+            }
+            return s.trim()
+        }
+
+        var num = amount
+        var words = ""
+
+        val crore = num / 10000000
+        num %= 10000000
+
+        val lakh = num / 100000
+        num %= 100000
+
+        val thousand = num / 1000
+        num %= 1000
+
+        if (crore > 0) words += "${convertLessThanThousand(crore.toInt())} Crore "
+        if (lakh > 0) words += "${convertLessThanThousand(lakh.toInt())} Lakh "
+        if (thousand > 0) words += "${convertLessThanThousand(thousand.toInt())} Thousand "
+        if (num > 0) words += convertLessThanThousand(num.toInt())
+
+        return "${words.trim()} Rupees Only"
+    }
+
+    /**
+     * Generates a high-quality PDF file of the cash memo and writes it to a file.
+     */
+    fun generatePdfFile(context: Context, data: MemoData): File {
+        val bitmap = generateMemoBitmap(data, context)
+
+        val pdfDocument = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(MEMO_WIDTH, MEMO_HEIGHT, 1).create()
+        val page = pdfDocument.startPage(pageInfo)
+
         val canvas = page.canvas
-        val scale = 540f / bmp.width.toFloat()
-        val matrix = Matrix().apply {
-            postScale(scale, scale)
-            postTranslate(28f, 30f)
-        }
-        canvas.drawBitmap(bmp, matrix, null)
-        document.finishPage(page)
+        canvas.drawBitmap(bitmap, 0f, 0f, null)
+        pdfDocument.finishPage(page)
 
-        FileOutputStream(file).use { out ->
-            document.writeTo(out)
+        val sanitizedCustomerName = data.customerName.ifBlank { "Unknown" }.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val sanitizedBillNo = data.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val fileName = "${sanitizedCustomerName}-${sanitizedBillNo}.pdf"
+        val outputDir = File(context.cacheDir, "memos").apply { mkdirs() }
+        val outputFile = File(outputDir, fileName)
+
+        FileOutputStream(outputFile).use { out ->
+            pdfDocument.writeTo(out)
         }
-        document.close()
-        return file
+        pdfDocument.close()
+        return outputFile
     }
 
-    fun printMemo(context: Context, memoData: MemoData) {
+    /**
+     * Generates a JPEG file of the cash memo for image sharing.
+     */
+    fun generateImageFile(context: Context, data: MemoData): File {
+        val bitmap = generateMemoBitmap(data, context)
+        val sanitizedCustomerName = data.customerName.ifBlank { "Unknown" }.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val sanitizedBillNo = data.billNumber.replace("[^a-zA-Z0-9_-]".toRegex(), "_")
+        val fileName = "${sanitizedCustomerName}-${sanitizedBillNo}.jpg"
+        val outputDir = File(context.cacheDir, "memos").apply { mkdirs() }
+        val outputFile = File(outputDir, fileName)
+
+        FileOutputStream(outputFile).use { out ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 96, out)
+        }
+        return outputFile
+    }
+
+    /**
+     * Prints the Cash Memo directly using Android PrintManager.
+     */
+    fun printMemo(context: Context, data: MemoData) {
         val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager ?: return
-        val isEn = memoData.language.uppercase() == "EN"
+        val jobName = "CashMemo_${data.billNumber}"
 
-        val html = StringBuilder().apply {
-            append("<!DOCTYPE html><html><head><meta charset='utf-8'>")
-            append("<style>")
-            append("body { font-family: monospace; width: 280px; margin: 0 auto; padding: 10px; color: #000; font-size: 12px; }")
-            append(".center { text-align: center; }")
-            append(".bold { font-weight: bold; }")
-            append(".line { border-top: 1px dashed #000; margin: 6px 0; }")
-            append(".row { display: flex; justify-content: space-between; margin: 3px 0; }")
-            append(".title { font-size: 16px; font-weight: bold; }")
-            append("</style></head><body>")
-            append("<div class='center title'>${if (isEn) SHOP_NAME_EN else SHOP_NAME_BN}</div>")
-            append("<div class='center'>${if (isEn) SHOP_SUBTITLE_EN else SHOP_SUBTITLE_BN}</div>")
-            append("<div class='center'>Phone: $SHOP_PHONE</div>")
-            append("<div class='line'></div>")
-            append("<div class='row'><span>${if (isEn) "Bill:" else "বিল নং:"} ${memoData.billNumber}</span><span>${memoData.dateStr}</span></div>")
-            append("<div class='row'><span>${if (isEn) "Cust:" else "গ্রাহক:"} ${memoData.customerName}</span></div>")
-            append("<div class='row'><span>${if (isEn) "Status: " + memoData.paymentType else "পেমেন্ট: " + if (memoData.paymentType == "CASH") "নগদ" else "বাকি"}</span></div>")
-            append("<div class='line'></div>")
-            append("<div class='row bold'><span>${if (isEn) "Item" else "বিবরণ"}</span><span>Qty x Rate</span><span>${if (isEn) "Total" else "মোট"}</span></div>")
-            append("<div class='line'></div>")
-            memoData.items.forEach {
-                append("<div class='row'>")
-                append("<span>${it.serviceName}</span>")
-                append("<span>${it.quantity.toInt()} × ₹${it.unitRate.toInt()}</span>")
-                append("<span>₹${it.lineTotal.toInt()}</span>")
-                append("</div>")
-            }
-            append("<div class='line'></div>")
-            if (memoData.discount > 0.0) {
-                append("<div class='row'><span>Subtotal:</span><span>₹${memoData.subtotal.toInt()}</span></div>")
-                append("<div class='row'><span>Discount:</span><span>-₹${memoData.discount.toInt()}</span></div>")
-            }
-            append("<div class='row bold' style='font-size: 14px;'><span>Grand Total:</span><span>₹${memoData.grandTotal.toInt()}</span></div>")
-            append("<div class='line'></div>")
-            append("<div class='center'>${if (isEn) "Thank you! Visit again." else "ধন্যবাদ! আবার আসবেন।"}</div>")
-            append("</body></html>")
-        }.toString()
+        printManager.print(
+            jobName,
+            object : PrintDocumentAdapter() {
+                private var mPdfDocument: PdfDocument? = null
 
-        val webView = WebView(context)
-        webView.webViewClient = object : WebViewClient() {
-            override fun onPageFinished(view: WebView?, url: String?) {
-                val printAdapter = webView.createPrintDocumentAdapter("CashMemo_${memoData.billNumber}")
-                printManager.print("CashMemo_${memoData.billNumber}", printAdapter, PrintAttributes.Builder().build())
-            }
-        }
-        webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)
+                override fun onLayout(
+                    oldAttributes: PrintAttributes?,
+                    newAttributes: PrintAttributes?,
+                    cancellationSignal: CancellationSignal?,
+                    callback: LayoutResultCallback?,
+                    extras: Bundle?
+                ) {
+                    if (cancellationSignal?.isCanceled == true) {
+                        callback?.onLayoutCancelled()
+                        return
+                    }
+
+                    val info = PrintDocumentInfo.Builder("cash_memo_${data.billNumber}.pdf")
+                        .setContentType(PrintDocumentInfo.CONTENT_TYPE_DOCUMENT)
+                        .setPageCount(1)
+                        .build()
+                    callback?.onLayoutFinished(info, true)
+                }
+
+                override fun onWrite(
+                    pages: Array<out PageRange>?,
+                    destination: ParcelFileDescriptor?,
+                    cancellationSignal: CancellationSignal?,
+                    callback: WriteResultCallback?
+                ) {
+                    if (cancellationSignal?.isCanceled == true) {
+                        callback?.onWriteCancelled()
+                        return
+                    }
+
+                    val pdfDocument = PdfDocument()
+                    val pageInfo = PdfDocument.PageInfo.Builder(MEMO_WIDTH, MEMO_HEIGHT, 1).create()
+                    val page = pdfDocument.startPage(pageInfo)
+
+                    val bitmap = generateMemoBitmap(data, context)
+                    page.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                    pdfDocument.finishPage(page)
+
+                    try {
+                        FileOutputStream(destination?.fileDescriptor).use {
+                            pdfDocument.writeTo(it)
+                        }
+                        callback?.onWriteFinished(arrayOf(PageRange.ALL_PAGES))
+                    } catch (e: Exception) {
+                        callback?.onWriteFailed(e.message)
+                    } finally {
+                        pdfDocument.close()
+                    }
+                }
+            },
+            PrintAttributes.Builder()
+                .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+                .build()
+        )
     }
 
-    fun shareOnWhatsAppOrApps(context: Context, memoData: MemoData, asPdf: Boolean = true) {
-        val file = generatePdfFile(context, memoData)
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    /**
+     * Shares the actual generated PDF cash memo file to WhatsApp or any compatible app.
+     */
+    fun shareOnWhatsAppOrApps(context: Context, data: MemoData, asPdf: Boolean = true) {
+        try {
+            val file = if (asPdf) generatePdfFile(context, data) else generateImageFile(context, data)
+            val uri: Uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                file
+            )
 
-        val intent = Intent(Intent.ACTION_SEND).apply {
-            type = "application/pdf"
-            putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_SUBJECT, "Bill #${memoData.billNumber} - ${memoData.customerName}")
-            putExtra(Intent.EXTRA_TEXT, "🧾 ${if (memoData.language.uppercase() == "EN") "Invoice" else "ক্যাশ মেমো"} #${memoData.billNumber} for ${memoData.customerName}. Total: ₹${memoData.grandTotal.toInt()}")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            val isEn = data.language.uppercase() == "EN"
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = if (asPdf) "application/pdf" else "image/jpeg"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                putExtra(
+                    Intent.EXTRA_SUBJECT,
+                    if (isEn) "Telecom Cyber Cafe - Cash Memo (${data.billNumber})" else "টেলিকম সাইবার ক্যাফে - ক্যাশ মেমো (${data.billNumber})"
+                )
+                putExtra(
+                    Intent.EXTRA_TEXT,
+                    if (isEn) {
+                        "🧾 *TELECOM CYBER CAFE & XEROX*\n" +
+                                "Bill No: ${data.billNumber}\n" +
+                                "Customer: ${data.customerName}\n" +
+                                "Date: ${data.dateFormatted}\n" +
+                                "Total Bill: ₹${data.grandTotal.toInt()}\n" +
+                                "Payment: ${if (data.paymentType == "CASH") "PAID (Cash)" else "DUE (Credit)"}\n" +
+                                "Thank you! Visit again."
+                    } else {
+                        "🧾 *টেলিকম সাইবার ক্যাফে ও জেরক্স*\n" +
+                                "বিল নং: ${data.billNumber}\n" +
+                                "গ্রাহক: ${data.customerName}\n" +
+                                "তারিখ: ${data.dateFormatted}\n" +
+                                "সর্বমোট বিল: ₹${data.grandTotal.toInt()}\n" +
+                                "পেমেন্ট: ${if (data.paymentType == "CASH") "পরিশোধিত" else "বকেয়া"}\n" +
+                                "ধন্যবাদ! আবার আসবেন।"
+                    }
+                )
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+
+            val chooser = Intent.createChooser(shareIntent, if (isEn) "Share Cash Memo" else "ক্যাশ মেমো শেয়ার করুন")
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            e.printStackTrace()
+            Toast.makeText(context, "শেয়ার করতে সমস্যা হয়েছে: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
         }
-        context.startActivity(Intent.createChooser(intent, "Share Bill"))
     }
 }

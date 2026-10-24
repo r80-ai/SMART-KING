@@ -134,9 +134,6 @@ object BackupManager {
 
         if (account != null) {
             checkAndRestoreIfNeeded(context, userKey)
-            schedulePeriodicBackup(context)
-        } else {
-            cancelPeriodicBackup(context)
         }
     }
 
@@ -145,13 +142,6 @@ object BackupManager {
     }
 
     fun schedulePeriodicBackup(context: Context) {
-        val account = GoogleSignIn.getLastSignedInAccount(context)
-        if (account == null) {
-            Log.i(TAG, "No Google account connected. Skipping periodic backup scheduling.")
-            cancelPeriodicBackup(context)
-            return
-        }
-
         try {
             val constraints = Constraints.Builder()
                 .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -169,14 +159,6 @@ object BackupManager {
             )
         } catch (e: Exception) {
             Log.e(TAG, "Error scheduling periodic backup", e)
-        }
-    }
-
-    fun cancelPeriodicBackup(context: Context) {
-        try {
-            WorkManager.getInstance(context).cancelUniqueWork(WORK_NAME_PERIODIC)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error cancelling periodic backup", e)
         }
     }
 

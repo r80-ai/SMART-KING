@@ -2,19 +2,15 @@ package com.example.amardokan.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.*
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material3.*
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.amardokan.data.Bill
 import com.example.amardokan.data.Customer
@@ -26,153 +22,126 @@ import com.example.amardokan.ui.screens.*
 
 @Composable
 fun AmarDokanMainScreen(
-    onExitApp: () -> Unit = {},
-    onOpenPdfTools: () -> Unit = {},
+    onExitApp: () -> Unit,
+    onOpenPdfTools: (() -> Unit)? = null,
+    modifier: Modifier = Modifier,
     viewModel: AmarDokanViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val currentScreen by viewModel.currentScreen.collectAsState()
+    val ledgerCustomerId by viewModel.selectedCustomerIdForLedger.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
-    val selectedCustomerIdForLedger by viewModel.selectedCustomerIdForLedger.collectAsState()
-
-    // Dialog States
-    var showAddCustomerDialog by remember { mutableStateOf(false) }
-    var customerToEdit by remember { mutableStateOf<Customer?>(null) }
-    var selectedBillForDetails by remember { mutableStateOf<Bill?>(null) }
-    var showBackupRestoreDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Dialog states
+    var showAddCustomerDialog by remember { mutableStateOf(false) }
+    var customerToEdit by remember { mutableStateOf<Customer?>(null) }
+    var billToViewDetails by remember { mutableStateOf<Bill?>(null) }
+
     LaunchedEffect(userMessage) {
         userMessage?.let { msg ->
-            snackbarHostState.showSnackbar(msg)
+            snackbarHostState.showSnackbar(message = msg, duration = SnackbarDuration.Short)
             viewModel.clearUserMessage()
         }
     }
 
+    // Intercept Back button
     BackHandler {
         if (!viewModel.navigateBack()) {
             onExitApp()
         }
     }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        floatingActionButton = {
-            if (currentScreen == AmarDokanScreenType.HOME_DASHBOARD) {
-                FloatingActionButton(
-                    onClick = { viewModel.navigateTo(AmarDokanScreenType.NEW_BILL) },
-                    containerColor = AmarDokanColors.NavyDarkHeader,
-                    contentColor = Color.White,
-                    modifier = Modifier.testTag("fab_new_bill")
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Default.Add, contentDescription = "নতুন বিল")
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("নতুন বিল", fontWeight = FontWeight.Bold)
-                    }
+    Box(modifier = modifier.fillMaxSize()) {
+        Crossfade(targetState = currentScreen, label = "amar_dokan_screen_fade") { screen ->
+            when (screen) {
+                AmarDokanScreenType.HOME_DASHBOARD -> {
+                    Screen1HomeDashboard(
+                        viewModel = viewModel,
+                        onOpenPdfTools = onOpenPdfTools
+                    )
+                }
+                AmarDokanScreenType.NEW_BILL -> {
+                    Screen2NewBill(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateBack() },
+                        onOpenAddCustomerDialog = {
+                            customerToEdit = null
+                            showAddCustomerDialog = true
+                        },
+                        onPrintReceipt = { billNumber, custName, dateStr, items, sub, disc, total, payType ->
+                            printReceiptHtml(
+                                context = context,
+                                billNumber = billNumber,
+                                customerName = custName,
+                                dateStr = dateStr,
+                                items = items,
+                                subtotal = sub,
+                                discount = disc,
+                                grandTotal = total,
+                                paymentType = payType
+                            )
+                        }
+                    )
+                }
+                AmarDokanScreenType.DAILY_REPORT -> {
+                    Screen3DailyReport(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateBack() },
+                        onOpenBillDetails = { billToViewDetails = it }
+                    )
+                }
+                AmarDokanScreenType.CUSTOMER_LIST -> {
+                    Screen4CustomerList(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateBack() },
+                        onOpenAddCustomerDialog = {
+                            customerToEdit = null
+                            showAddCustomerDialog = true
+                        },
+                        onEditCustomer = { cust ->
+                            customerToEdit = cust
+                            showAddCustomerDialog = true
+                        }
+                    )
+                }
+                AmarDokanScreenType.CUSTOMER_LEDGER -> {
+                    Screen5CustomerLedger(
+                        viewModel = viewModel,
+                        customerId = ledgerCustomerId,
+                        onBack = { viewModel.navigateBack() }
+                    )
+                }
+                AmarDokanScreenType.RECEIVE_PAYMENT -> {
+                    Screen6ReceivePayment(
+                        viewModel = viewModel,
+                        preselectedCustomerId = ledgerCustomerId,
+                        onBack = { viewModel.navigateBack() }
+                    )
+                }
+                AmarDokanScreenType.ITEM_SETTINGS -> {
+                    Screen7ItemSettings(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateBack() }
+                    )
+                }
+                AmarDokanScreenType.MONTHLY_REPORT -> {
+                    Screen8MonthlyReport(
+                        viewModel = viewModel,
+                        onBack = { viewModel.navigateBack() }
+                    )
                 }
             }
         }
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(innerPadding)
-                .background(AmarDokanColors.ContentBg)
-        ) {
-            Crossfade(
-                targetState = currentScreen,
-                label = "amar_dokan_screens"
-            ) { screen ->
-                when (screen) {
-                    AmarDokanScreenType.HOME_DASHBOARD -> {
-                        Screen1HomeDashboard(
-                            viewModel = viewModel,
-                            onOpenPdfTools = onOpenPdfTools,
-                            onOpenBackupRestore = { showBackupRestoreDialog = true },
-                            onOpenBillDetails = { bill -> selectedBillForDetails = bill }
-                        )
-                    }
-                    AmarDokanScreenType.NEW_BILL -> {
-                        Screen2NewBill(
-                            viewModel = viewModel,
-                            onBack = { viewModel.navigateBack() },
-                            onOpenAddCustomerDialog = {
-                                customerToEdit = null
-                                showAddCustomerDialog = true
-                            },
-                            onPrintReceipt = { billNumber, customerName, dateStr, items, subtotal, discount, grandTotal, paymentType ->
-                                printReceiptHtml(
-                                    context = context,
-                                    billNumber = billNumber,
-                                    customerName = customerName,
-                                    dateStr = dateStr,
-                                    items = items,
-                                    subtotal = subtotal,
-                                    discount = discount,
-                                    grandTotal = grandTotal,
-                                    paymentType = paymentType
-                                )
-                            }
-                        )
-                    }
-                    AmarDokanScreenType.DAILY_REPORT -> {
-                        Screen3DailyReport(
-                            viewModel = viewModel,
-                            onBack = { viewModel.navigateBack() },
-                            onOpenBillDetails = { bill -> selectedBillForDetails = bill }
-                        )
-                    }
-                    AmarDokanScreenType.CUSTOMER_LIST -> {
-                        Screen4CustomerList(
-                            viewModel = viewModel,
-                            onBack = { viewModel.navigateBack() },
-                            onOpenAddCustomerDialog = {
-                                customerToEdit = null
-                                showAddCustomerDialog = true
-                            },
-                            onEditCustomer = { customer ->
-                                customerToEdit = customer
-                                showAddCustomerDialog = true
-                            }
-                        )
-                    }
-                    AmarDokanScreenType.CUSTOMER_LEDGER -> {
-                        Screen5CustomerLedger(
-                            viewModel = viewModel,
-                            customerId = selectedCustomerIdForLedger,
-                            onBack = { viewModel.navigateBack() }
-                        )
-                    }
-                    AmarDokanScreenType.RECEIVE_PAYMENT -> {
-                        Screen6ReceivePayment(
-                            viewModel = viewModel,
-                            preselectedCustomerId = selectedCustomerIdForLedger,
-                            onBack = { viewModel.navigateBack() }
-                        )
-                    }
-                    AmarDokanScreenType.ITEM_SETTINGS -> {
-                        Screen7ItemSettings(
-                            viewModel = viewModel,
-                            onBack = { viewModel.navigateBack() }
-                        )
-                    }
-                    AmarDokanScreenType.MONTHLY_REPORT -> {
-                        Screen8MonthlyReport(
-                            viewModel = viewModel,
-                            onBack = { viewModel.navigateBack() }
-                        )
-                    }
-                }
-            }
-        }
+
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 
-    // Dialogs
+    // ---------------- MODAL DIALOGS ----------------
     if (showAddCustomerDialog) {
         AddCustomerDialog(
             customerToEdit = customerToEdit,
@@ -195,23 +164,15 @@ fun AmarDokanMainScreen(
                 }
                 showAddCustomerDialog = false
                 customerToEdit = null
-            },
-            viewModel = viewModel
+            }
         )
     }
 
-    selectedBillForDetails?.let { bill ->
+    if (billToViewDetails != null) {
         BillDetailDialog(
-            bill = bill,
+            bill = billToViewDetails!!,
             viewModel = viewModel,
-            onDismiss = { selectedBillForDetails = null }
-        )
-    }
-
-    if (showBackupRestoreDialog) {
-        BackupRestoreDialog(
-            viewModel = viewModel,
-            onDismiss = { showBackupRestoreDialog = false }
+            onDismiss = { billToViewDetails = null }
         )
     }
 }
