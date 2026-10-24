@@ -137,9 +137,9 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
     val processingMessage by viewModel.processingMessage.collectAsState()
     val toolResult by viewModel.toolResult.collectAsState()
 
-    // Back handler for Tool Result preview
+    // Back handler for Tool Result preview: Intercepts back press to prevent accidental exit
     BackHandler(enabled = toolResult != null) {
-        viewModel.dismissToolResult(goToFiles = false)
+        // Intercept back button to prevent unexpected dismissal or interruption of state
     }
 
     // Default back handler for active modals (child screens with sub-flows provide their own inner BackHandler)
