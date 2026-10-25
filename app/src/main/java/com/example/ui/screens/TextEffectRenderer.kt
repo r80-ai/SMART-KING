@@ -159,6 +159,8 @@ object TextEffectRenderer {
             Typeface.create(base, style)
         }
 
+        val effectScale = if (strokeScale > 1f) strokeScale else densityDpiScale
+
         drawAdvancedTextPipeline(
             canvas = canvas,
             text = item.text,
@@ -176,30 +178,34 @@ object TextEffectRenderer {
             rotationZ = item.getRotationAngle(),
             rotationX = item.rotate3dX,
             rotationY = item.rotate3dY,
-            perspectiveSlant = item.perspectiveDistort,
+            perspectiveSlant = if (item.perspectiveSkewX != 0f) item.perspectiveSkewX else item.perspectiveDistort,
+            perspectiveSkewX = item.perspectiveSkewX,
+            perspectiveSkewY = item.perspectiveSkewY,
             boxWidth = if (item.boxWidth > 0f) item.boxWidth * strokeScale else 0f,
             boxHeight = if (item.boxHeight > 0f) item.boxHeight * strokeScale else 0f,
             backgroundColor = if (item.backgroundColorHex != 0) item.backgroundColorHex else null,
-            backgroundPadding = item.backgroundPadding * strokeScale,
-            backgroundCornerRadius = item.backgroundCornerRadius * strokeScale,
+            backgroundPadding = item.backgroundPadding * effectScale,
+            backgroundCornerRadius = item.backgroundCornerRadius * effectScale,
             strokeColor = if (item.strokeColorHex != 0) item.strokeColorHex else null,
-            strokeWidth = item.textStrokeWidth * strokeScale,
+            strokeWidth = item.textStrokeWidth * effectScale,
             shadowColor = if (item.shadowColorHex != 0) item.shadowColorHex else null,
-            shadowRadius = item.shadowRadius * strokeScale,
-            shadowDx = item.shadowDx * strokeScale,
-            shadowDy = item.shadowDy * strokeScale,
+            shadowRadius = item.shadowRadius * effectScale,
+            shadowDx = item.shadowDx * effectScale,
+            shadowDy = item.shadowDy * effectScale,
             innerShadowColor = if (item.innerShadowColorHex != 0) item.innerShadowColorHex else null,
-            innerShadowRadius = item.innerShadowRadius * strokeScale,
+            innerShadowRadius = item.innerShadowRadius * effectScale,
+            innerShadowDx = item.innerShadowDx * effectScale,
+            innerShadowDy = item.innerShadowDy * effectScale,
             isEmboss = item.isEmboss,
             curveArc = item.curveRadius,
             is3dText = item.is3dText && item.depth3d > 0f,
-            depth3d = item.depth3d * strokeScale,
+            depth3d = item.depth3d * effectScale,
             depth3dColor = null,
             is3dShadow = item.is3dShadow,
-            depth3dShadowDist = item.depth3dShadowDistance * strokeScale,
+            depth3dShadowDist = item.depth3dShadowDistance * effectScale,
             isReflection = item.isReflection,
             textureBitmap = item.textureBitmap,
-            scaleFactor = strokeScale
+            scaleFactor = effectScale
         )
     }
 
@@ -246,7 +252,11 @@ object TextEffectRenderer {
         depth3dShadowDist: Float,
         isReflection: Boolean,
         textureBitmap: Bitmap?,
-        scaleFactor: Float
+        scaleFactor: Float,
+        perspectiveSkewX: Float = 0f,
+        perspectiveSkewY: Float = 0f,
+        innerShadowDx: Float = 0f,
+        innerShadowDy: Float = 0f
     ) {
         val basePaint = TextPaint(Paint.ANTI_ALIAS_FLAG).apply {
             this.typeface = typeface
@@ -315,7 +325,7 @@ object TextEffectRenderer {
         canvas.save()
 
         // 3D Perspective Transformations via Camera and Matrix
-        if (rotationX != 0f || rotationY != 0f || perspectiveSlant != 0f) {
+        if (rotationX != 0f || rotationY != 0f || perspectiveSlant != 0f || perspectiveSkewX != 0f || perspectiveSkewY != 0f) {
             val camera = Camera()
             val matrix = Matrix()
             camera.save()
@@ -326,6 +336,14 @@ object TextEffectRenderer {
             }
             camera.getMatrix(matrix)
             camera.restore()
+
+            if (perspectiveSkewX != 0f || perspectiveSkewY != 0f) {
+                val skewMatrix = Matrix()
+                val kx = kotlin.math.tan(Math.toRadians(perspectiveSkewX.toDouble())).toFloat()
+                val ky = kotlin.math.tan(Math.toRadians(perspectiveSkewY.toDouble())).toFloat()
+                skewMatrix.setSkew(kx, ky)
+                matrix.postConcat(skewMatrix)
+            }
 
             matrix.preTranslate(-centerX, -centerY)
             matrix.postTranslate(centerX, centerY)
@@ -372,14 +390,29 @@ object TextEffectRenderer {
             }
         }
 
-        // 3. Mirror Reflection
+        // 3. Mirror Glass Reflection with Linear Gradient Alpha Fade
         if (isReflection) {
             canvas.save()
-            canvas.translate(posX, posY + finalBoxH * 1.9f)
-            canvas.scale(1f, -0.6f)
+            val refH = (totalH * 0.75f).coerceAtLeast(16f)
+            val refGap = 4f * scaleFactor
+            canvas.translate(posX, posY + finalBoxH + refGap + refH)
+            canvas.scale(1f, -0.75f)
+
+            val baseR = Color.red(colorHex)
+            val baseG = Color.green(colorHex)
+            val baseB = Color.blue(colorHex)
+            val topAlpha = (alpha * 130).toInt().coerceIn(0, 255)
+            val refShader = android.graphics.LinearGradient(
+                0f, 0f, 0f, totalH,
+                Color.argb(topAlpha, baseR, baseG, baseB),
+                Color.argb(0, baseR, baseG, baseB),
+                Shader.TileMode.CLAMP
+            )
+
             val refPaint = TextPaint(basePaint).apply {
-                this.alpha = (alpha * 60).toInt().coerceIn(0, 255)
+                shader = refShader
                 clearShadowLayer()
+                maskFilter = null
             }
             val refLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 StaticLayout.Builder.obtain(text, 0, text.length, refPaint, targetW.toInt().coerceAtLeast(10))
@@ -465,9 +498,10 @@ object TextEffectRenderer {
                 var baselineY = -fm.ascent
                 for (line in lines) {
                     val lineW = strokePaint.measureText(line)
+                    val contentW = (targetW - backgroundPadding * 2f).coerceAtLeast(lineW)
                     val lineX = when (align) {
-                        Layout.Alignment.ALIGN_CENTER -> (targetW - lineW) / 2f
-                        Layout.Alignment.ALIGN_OPPOSITE -> targetW - lineW
+                        Layout.Alignment.ALIGN_CENTER -> (contentW - lineW) / 2f
+                        Layout.Alignment.ALIGN_OPPOSITE -> contentW - lineW
                         else -> 0f
                     }
                     canvas.drawText(line, lineX, baselineY, strokePaint)
@@ -488,9 +522,10 @@ object TextEffectRenderer {
             var baselineY = -fm.ascent
             for (line in lines) {
                 val lineW = basePaint.measureText(line)
+                val contentW = (targetW - backgroundPadding * 2f).coerceAtLeast(lineW)
                 val lineX = when (align) {
-                    Layout.Alignment.ALIGN_CENTER -> (targetW - lineW) / 2f
-                    Layout.Alignment.ALIGN_OPPOSITE -> targetW - lineW
+                    Layout.Alignment.ALIGN_CENTER -> (contentW - lineW) / 2f
+                    Layout.Alignment.ALIGN_OPPOSITE -> contentW - lineW
                     else -> 0f
                 }
                 canvas.drawText(line, lineX, baselineY, basePaint)
@@ -509,6 +544,8 @@ object TextEffectRenderer {
                 width = targetW,
                 height = staticLayout.height.toFloat(),
                 shadowRadius = innerShadowRadius,
+                shadowDx = innerShadowDx,
+                shadowDy = innerShadowDy,
                 shadowColor = innerShadowColor,
                 alpha = alpha,
                 align = align,
@@ -574,6 +611,8 @@ object TextEffectRenderer {
         width: Float,
         height: Float,
         shadowRadius: Float,
+        shadowDx: Float,
+        shadowDy: Float,
         shadowColor: Int,
         alpha: Float,
         align: Layout.Alignment,
@@ -621,8 +660,11 @@ object TextEffectRenderer {
                 StaticLayout(text, innerPaint, width.toInt().coerceAtLeast(10), align, lineSpacingMultiplier, 0f, false)
             }
 
+            val offX = if (shadowDx != 0f) shadowDx else shadowRadius * 0.4f
+            val offY = if (shadowDy != 0f) shadowDy else shadowRadius * 0.4f
+
             canvas.save()
-            canvas.translate(posX + shadowRadius * 0.4f, posY + shadowRadius * 0.4f)
+            canvas.translate(posX + offX, posY + offY)
             innerLayout.draw(canvas)
             canvas.restore()
 

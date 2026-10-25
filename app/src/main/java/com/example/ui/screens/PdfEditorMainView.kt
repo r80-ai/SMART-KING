@@ -789,6 +789,9 @@ fun PdfEditorMainView(
                                         editItems[idx] = updated
                                     }
                                     textLayerUpdateTrigger++
+                                    textOverlayViewRef?.let { overlay ->
+                                        overlay.updateSingleLayer(updated)
+                                    }
                                 },
                                 onHistoryPush = { pushHistory() },
                                 onOpenLayers = { showLayerManagerDialog = true }
@@ -1252,6 +1255,7 @@ fun PdfEditorMainView(
                                             } else {
                                                 overlay.elevation = 4f * root.resources.displayMetrics.density
                                             }
+                                            val _trigger = textLayerUpdateTrigger
                                             overlay.updateLayers(
                                                 items = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT },
                                                 selectedId = selectedAnnotationId

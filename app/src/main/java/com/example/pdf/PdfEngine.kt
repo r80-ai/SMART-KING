@@ -802,9 +802,23 @@ object PdfEngine {
         val isLocked: Boolean = false,
         val is3dShadow: Boolean = false,
         val depth3dShadowDistance: Float = 12f,
-        val perspectiveDistort: Float = 0f
+        val perspectiveDistort: Float = 0f,
+        val innerShadowDx: Float = 0f,
+        val innerShadowDy: Float = 0f,
+        val perspectiveSkewX: Float = 0f,
+        val perspectiveSkewY: Float = 0f
     ) {
         fun getRotationAngle(): Float = if (rotation != 0f) rotation else imageRotation
+
+        val strokeColor: Int get() = strokeColorHex
+        val shadowColor: Int get() = shadowColorHex
+        val innerShadowColor: Int get() = innerShadowColorHex
+        val isEmbossEnabled: Boolean get() = isEmboss
+        val is3DTextEnabled: Boolean get() = is3dText
+        val extrusionDepth: Float get() = depth3d
+        val isReflectionEnabled: Boolean get() = isReflection
+        val rotationX: Float get() = rotate3dX
+        val rotationY: Float get() = rotate3dY
     }
 
     /**

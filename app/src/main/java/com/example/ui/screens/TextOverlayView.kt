@@ -88,6 +88,8 @@ class TextOverlayView @JvmOverloads constructor(
         isFocusable = false
         isClickable = false
         elevation = 16f * resources.displayMetrics.density
+        // Software layer ensures EmbossMaskFilter, BlurMaskFilter and PorterDuff inner shadows render properly
+        setLayerType(LAYER_TYPE_SOFTWARE, null)
     }
 
     fun addOrSelectLayer(item: PdfEngine.EditItem) {
@@ -128,91 +130,27 @@ class TextOverlayView @JvmOverloads constructor(
 
             val isSelected = layer.id == selectedLayerId
 
-            // Dynamic font measurement
-            val fontSizePx = if (layer.fontSize < 60f) {
-                layer.fontSize * scaledDensity
-            } else {
-                layer.fontSize
-            }.coerceAtLeast(18f)
+            // Render complete text with all real-time visual effects (shadow, stroke, emboss, 3D, reflection, spacing, etc.)
+            TextEffectRenderer.drawPdfEditItem(
+                canvas = canvas,
+                item = layer,
+                strokeScale = 1f,
+                densityDpiScale = scaledDensity
+            )
 
-            val tf = when {
-                layer.customFontPath != null -> try {
-                    Typeface.createFromFile(layer.customFontPath)
-                } catch (_: Exception) { Typeface.DEFAULT }
-                layer.fontFamily.equals("SERIF", ignoreCase = true) -> Typeface.SERIF
-                layer.fontFamily.equals("MONOSPACE", ignoreCase = true) -> Typeface.MONOSPACE
-                else -> Typeface.DEFAULT
-            }
-
-            val style = when {
-                layer.isBold && layer.isItalic -> Typeface.BOLD_ITALIC
-                layer.isBold -> Typeface.BOLD
-                layer.isItalic -> Typeface.ITALIC
-                else -> Typeface.NORMAL
-            }
-
-            textPaint.apply {
-                this.typeface = Typeface.create(tf, style)
-                this.textSize = fontSizePx
-                this.color = if (layer.colorHex != 0) layer.colorHex else Color.RED
-                this.alpha = (layer.opacity.coerceIn(0.05f, 1f) * 255).toInt().coerceIn(0, 255)
-                this.isUnderlineText = layer.isUnderline
-                this.isStrikeThruText = layer.isStrikethrough
-                this.style = Paint.Style.FILL
-                this.isAntiAlias = true
-            }
-
-            val lines = (if (layer.text.isEmpty()) " " else layer.text).split("\n")
-            var maxLineW = 0f
-            for (l in lines) {
-                val w = textPaint.measureText(l)
-                if (w > maxLineW) maxLineW = w
-            }
-
-            val fm = textPaint.fontMetrics
-            val lineHeight = (fm.descent - fm.ascent) * if (layer.lineSpacingMultiplier > 0f) layer.lineSpacingMultiplier else 1.15f
-            val natW = maxLineW + layer.backgroundPadding * 2f + 24f
-            val natH = lines.size * lineHeight + layer.backgroundPadding * 2f + 18f
-            val boxW = if (layer.boxWidth > 0f) max(layer.boxWidth, natW) else natW
-            val boxH = if (layer.boxHeight > 0f) max(layer.boxHeight, natH) else natH
-
-            canvas.save()
-            val centerX = layer.posX + boxW / 2f
-            val centerY = layer.posY + boxH / 2f
-            val rot = layer.getRotationAngle()
-            if (rot != 0f) {
-                canvas.rotate(rot, centerX, centerY)
-            }
-
-            // Optional background fill
-            if (layer.backgroundColorHex != 0) {
-                bgPaint.color = layer.backgroundColorHex
-                bgPaint.alpha = (layer.opacity * Color.alpha(layer.backgroundColorHex)).toInt().coerceIn(0, 255)
-                if (layer.backgroundCornerRadius > 0f) {
-                    canvas.drawRoundRect(
-                        layer.posX, layer.posY, layer.posX + boxW, layer.posY + boxH,
-                        layer.backgroundCornerRadius, layer.backgroundCornerRadius, bgPaint
-                    )
-                } else {
-                    canvas.drawRect(layer.posX, layer.posY, layer.posX + boxW, layer.posY + boxH, bgPaint)
-                }
-            }
-
-            // Draw text lines
-            var curY = layer.posY + layer.backgroundPadding - fm.ascent + 8f
-            for (line in lines) {
-                val lineW = textPaint.measureText(line)
-                val curX = when (layer.alignment.uppercase()) {
-                    "CENTER" -> layer.posX + (boxW - lineW) / 2f
-                    "RIGHT" -> layer.posX + boxW - lineW - layer.backgroundPadding - 12f
-                    else -> layer.posX + layer.backgroundPadding + 12f
-                }
-                canvas.drawText(line, curX, curY, textPaint)
-                curY += lineHeight
-            }
-
-            // Bounding box display and interactive handles
+            // Bounding box display and interactive resize handles for selected item
             if (isSelected) {
+                val boxW = getLayerBoxWidth(layer)
+                val boxH = getLayerBoxHeight(layer)
+                val centerX = layer.posX + boxW / 2f
+                val centerY = layer.posY + boxH / 2f
+                val rot = layer.getRotationAngle()
+
+                canvas.save()
+                if (rot != 0f) {
+                    canvas.rotate(rot, centerX, centerY)
+                }
+
                 boundingPaint.strokeWidth = stroke3dp
                 boundingPaint.color = Color.parseColor("#3B82F6") // ToolBlue Accent
                 canvas.drawRect(layer.posX, layer.posY, layer.posX + boxW, layer.posY + boxH, boundingPaint)
@@ -229,9 +167,9 @@ class TextOverlayView @JvmOverloads constructor(
                     canvas.drawCircle(corner.first, corner.second, handleRadius, handlePaint)
                     canvas.drawCircle(corner.first, corner.second, handleRadius, handleStrokePaint)
                 }
-            }
 
-            canvas.restore()
+                canvas.restore()
+            }
         }
     }
 
@@ -398,17 +336,23 @@ class TextOverlayView @JvmOverloads constructor(
         return false
     }
 
-    private fun updateSingleLayer(updated: PdfEngine.EditItem) {
+    fun updateSingleLayer(updated: PdfEngine.EditItem) {
         val idx = layers.indexOfFirst { it.id == updated.id }
         if (idx != -1) {
             layers[idx] = updated
+        } else {
+            layers.add(updated)
         }
+        postInvalidate()
     }
 
     private fun getLayerBoxWidth(layer: PdfEngine.EditItem): Float {
         val scaledDensity = resources.displayMetrics.scaledDensity
         val fontSizePx = if (layer.fontSize < 60f) layer.fontSize * scaledDensity else layer.fontSize
         textPaint.textSize = fontSizePx.coerceAtLeast(18f)
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.LOLLIPOP) {
+            textPaint.letterSpacing = layer.letterSpacing * 0.05f
+        }
         val lines = (if (layer.text.isEmpty()) " " else layer.text).split("\n")
         var maxLineW = 0f
         for (l in lines) {

@@ -1483,6 +1483,32 @@ private fun TextShadowControl(
                 modifier = Modifier.weight(1f)
             )
         }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("Shadow Color", fontSize = 11.sp, color = Color.LightGray)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            PRESET_COLORS.forEach { c ->
+                Box(
+                    modifier = Modifier
+                        .size(22.dp)
+                        .clip(CircleShape)
+                        .background(Color(c))
+                        .border(
+                            width = if (item.shadowColorHex == c) 2.dp else 1.dp,
+                            color = if (item.shadowColorHex == c) ToolBlue else Color.DarkGray,
+                            shape = CircleShape
+                        )
+                        .clickable {
+                            onHistoryPush()
+                            onUpdate(item.copy(shadowColorHex = c))
+                        }
+                )
+            }
+        }
     }
 }
 
@@ -1503,16 +1529,66 @@ private fun TextInnerShadowControl(
                 checked = item.innerShadowRadius > 0f,
                 onCheckedChange = { checked ->
                     onHistoryPush()
-                    onUpdate(item.copy(innerShadowRadius = if (checked) 8f else 0f, innerShadowColorHex = AndroidColor.DKGRAY))
+                    onUpdate(
+                        item.copy(
+                            innerShadowRadius = if (checked) 8f else 0f,
+                            innerShadowColorHex = if (checked) (if (item.innerShadowColorHex != 0) item.innerShadowColorHex else AndroidColor.DKGRAY) else 0
+                        )
+                    )
                 }
             )
         }
         if (item.innerShadowRadius > 0f) {
+            Text("Blur Radius: ${item.innerShadowRadius.toInt()}", fontSize = 11.sp, color = Color.LightGray)
             Slider(
                 value = item.innerShadowRadius,
                 onValueChange = { onUpdate(item.copy(innerShadowRadius = it)) },
                 valueRange = 1f..20f
             )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Offset X", fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.width(50.dp))
+                Slider(
+                    value = item.innerShadowDx,
+                    onValueChange = { onUpdate(item.copy(innerShadowDx = it)) },
+                    valueRange = -20f..20f,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Offset Y", fontSize = 10.sp, color = Color.LightGray, modifier = Modifier.width(50.dp))
+                Slider(
+                    value = item.innerShadowDy,
+                    onValueChange = { onUpdate(item.copy(innerShadowDy = it)) },
+                    valueRange = -20f..20f,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+            Spacer(modifier = Modifier.height(4.dp))
+            Text("Inner Shadow Color", fontSize = 11.sp, color = Color.LightGray)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                PRESET_COLORS.forEach { c ->
+                    Box(
+                        modifier = Modifier
+                            .size(22.dp)
+                            .clip(CircleShape)
+                            .background(Color(c))
+                            .border(
+                                width = if (item.innerShadowColorHex == c) 2.dp else 1.dp,
+                                color = if (item.innerShadowColorHex == c) ToolBlue else Color.DarkGray,
+                                shape = CircleShape
+                            )
+                            .clickable {
+                                onHistoryPush()
+                                onUpdate(item.copy(innerShadowColorHex = c))
+                            }
+                    )
+                }
+            }
         }
     }
 }
@@ -1618,10 +1694,17 @@ private fun TextPerspectiveControl(
     onHistoryPush: () -> Unit
 ) {
     Column {
-        Text("Slant / Perspective Skew: ${item.rotate3dY.toInt()}°", fontSize = 11.sp, color = Color.LightGray)
+        Text("Perspective Skew X: ${item.perspectiveSkewX.toInt()}°", fontSize = 11.sp, color = Color.LightGray)
         Slider(
-            value = item.rotate3dY,
-            onValueChange = { onUpdate(item.copy(rotate3dY = it)) },
+            value = item.perspectiveSkewX,
+            onValueChange = { onUpdate(item.copy(perspectiveSkewX = it, perspectiveDistort = it)) },
+            valueRange = -45f..45f
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Text("Perspective Skew Y: ${item.perspectiveSkewY.toInt()}°", fontSize = 11.sp, color = Color.LightGray)
+        Slider(
+            value = item.perspectiveSkewY,
+            onValueChange = { onUpdate(item.copy(perspectiveSkewY = it)) },
             valueRange = -45f..45f
         )
     }
