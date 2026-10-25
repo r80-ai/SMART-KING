@@ -353,6 +353,13 @@ class AmarDokanViewModel(application: Application) : AndroidViewModel(applicatio
         showMessage("ব্যাকআপ সফলভাবে রিস্টোর করা হয়েছে")
     }
 
+    suspend fun triggerLocalBackup(context: android.content.Context) {
+        val result = AmarDokanBackupManager.createLocalBackup(context)
+        if (result.isSuccess) {
+            showMessage("✅ ব্যাকআপ সংরক্ষিত: ${result.getOrNull()?.name}")
+        }
+    }
+
     private val moshi = Moshi.Builder().build()
     private val backupAdapter = moshi.adapter(DatabaseBackup::class.java)
 
@@ -360,6 +367,7 @@ class AmarDokanViewModel(application: Application) : AndroidViewModel(applicatio
         val backup = exportDatabaseBackup()
         backupAdapter.toJson(backup)
     }
+
 
     suspend fun importBackupJson(json: String): Boolean = withContext(Dispatchers.IO) {
         try {
@@ -372,3 +380,4 @@ class AmarDokanViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 }
+

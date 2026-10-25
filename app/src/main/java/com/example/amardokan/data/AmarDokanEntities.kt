@@ -141,5 +141,8 @@ data class DatabaseBackup(
     val services: List<ServiceItem> = emptyList(),
     val bills: List<Bill> = emptyList(),
     val billItems: List<BillItem> = emptyList(),
-    val payments: List<Payment> = emptyList()
+    val payments: List<Payment> = emptyList(),
+    val backupTimestamp: Long = System.currentTimeMillis(),
+    val version: Int = 1
 )
+

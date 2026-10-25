@@ -2,7 +2,10 @@ package com.example.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
+
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -45,7 +48,16 @@ import com.example.ui.dialogs.FolderCustomizerDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material.icons.filled.CloudDownload
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.RestorePage
+import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.HorizontalDivider
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -62,6 +74,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -82,21 +95,12 @@ import com.example.ui.theme.ToolOrange
 import com.example.ui.theme.ToolPurple
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import com.google.android.gms.auth.api.signin.GoogleSignIn
-import com.google.android.gms.auth.api.signin.GoogleSignInAccount
-import com.google.android.gms.auth.api.signin.GoogleSignInOptions
-import com.google.android.gms.common.api.ApiException
-import com.google.android.gms.common.api.Scope
-import com.google.api.services.drive.DriveScopes
-import com.example.workers.BackupManager
+import com.example.amardokan.data.AmarDokanBackupManager
+import com.example.amardokan.data.DatabaseBackup
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import android.app.Activity
-import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.material3.CircularProgressIndicator
 import com.example.ui.AppScreen
 
@@ -106,6 +110,7 @@ fun SettingsScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val language by viewModel.appLanguage.collectAsState()
     val darkThemeMode by viewModel.darkThemeMode.collectAsState()
     val allFiles by viewModel.allFiles.collectAsState()
@@ -120,86 +125,34 @@ fun SettingsScreen(
     var showFolderCustomizer by remember { mutableStateOf(false) }
     var autoDeleteTemp by remember { mutableStateOf(true) }
 
-    val activity = context as? Activity
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val isBackupRunning by AmarDokanBackupManager.isBackupRunning.collectAsState()
+    val lastBackupTime by AmarDokanBackupManager.lastBackupTime.collectAsState()
+    val lastBackupPath by AmarDokanBackupManager.lastBackupPath.collectAsState()
 
-    var googleAccount by remember {
-        mutableStateOf<GoogleSignInAccount?>(GoogleSignIn.getLastSignedInAccount(context))
-    }
-    var signInError by remember { mutableStateOf<String?>(null) }
+    var showRestoreDialog by remember { mutableStateOf(false) }
+    var localBackupFiles by remember { mutableStateOf<List<File>>(emptyList()) }
+    var pendingRestoreData by remember { mutableStateOf<Pair<String, DatabaseBackup>?>(null) }
+    var isRestoring by remember { mutableStateOf(false) }
 
-    val isBackupRunning by BackupManager.isBackupRunning.collectAsState()
-    val lastBackupTime by BackupManager.lastBackupTime.collectAsState()
-    val lastStatus by BackupManager.lastStatus.collectAsState()
-
-    val driveScope = remember { Scope(DriveScopes.DRIVE_FILE) }
-
-    val hasDriveScope = googleAccount != null && GoogleSignIn.hasPermissions(googleAccount, driveScope)
-    val hasAllScopes = hasDriveScope
-
-    val gso = remember {
-        GoogleSignInOptions.Builder(GoogleSignInOptions.DEFAULT_SIGN_IN)
-            .requestEmail()
-            .requestScopes(driveScope)
-            .build()
-    }
-
-    // Refresh state on resume
-    DisposableEffect(lifecycleOwner) {
-        val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) {
-                val acc = GoogleSignIn.getLastSignedInAccount(context)
-                googleAccount = acc
-                if (acc != null && GoogleSignIn.hasPermissions(acc, driveScope)) {
-                    if (signInError?.contains("permission") == true || signInError?.contains("অনুমতি") == true) {
-                        signInError = null
-                    }
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            coroutineScope.launch {
+                val inspectResult = AmarDokanBackupManager.inspectBackupUri(context, uri)
+                inspectResult.onSuccess { pair ->
+                    pendingRestoreData = pair
+                }.onFailure { err ->
+                    viewModel.setNotification("❌ ফাইল পড়তে সমস্যা: ${err.message}")
                 }
             }
         }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
     }
 
-    val signInLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        val data = result.data
-        if (data == null) {
-            signInError = "No response data from Google Sign-In"
-            return@rememberLauncherForActivityResult
-        }
-
-        val task = GoogleSignIn.getSignedInAccountFromIntent(data)
-        try {
-            val account = task.getResult(ApiException::class.java)
-            googleAccount = account
-            com.example.util.UserManager.onAccountChanged(context, account)
-            com.example.workers.BackupManager.onUserAccountChanged(context, account)
-            val hasDrive = GoogleSignIn.hasPermissions(account, driveScope)
-            if (!hasDrive) {
-                signInError = if (language == "bn") "⚠️ ড্রাইভ অনুমতি প্রয়োজন। 'অনুমতি দিন' বাটনে ট্যাপ করুন।" else "⚠️ Drive permissions needed. Please tap 'Grant Permissions'."
-            } else {
-                signInError = null
-                viewModel.setNotification("✅ Connected Google Account: ${account.email}")
-            }
-        } catch (e: ApiException) {
-            val explanation = when (e.statusCode) {
-                10 -> "DEVELOPER_ERROR (Code 10): Android OAuth Client ID not found or SHA-1/Package Name mismatch in Google Cloud Console."
-                12500 -> "SIGN_IN_FAILED (Code 12500): Configuration error. Check OAuth Consent Screen & Test Users in Google Cloud."
-                12501 -> "SIGN_IN_CANCELLED (Code 12501): Sign-in cancelled by user."
-                7 -> "NETWORK_ERROR (Code 7): Network error. Please check your connection."
-                else -> "ApiException (Code ${e.statusCode}): ${e.message ?: "Error"}"
-            }
-            signInError = explanation
-            android.util.Log.e("GoogleSignIn", "SettingsScreen sign-in error: code=${e.statusCode}, msg=${e.message}", e)
-        } catch (e: Exception) {
-            signInError = "Error: ${e.message ?: "Unknown"}"
-            android.util.Log.e("GoogleSignIn", "SettingsScreen general error", e)
-        }
+    LaunchedEffect(Unit) {
+        AmarDokanBackupManager.init(context)
     }
+
 
 AppScreen(modifier = modifier, isScrollable = false) {
     LazyColumn(
@@ -351,12 +304,12 @@ AppScreen(modifier = modifier, isScrollable = false) {
             }
         }
 
-        // Section: Google Backup
+        // Section: Amar Dokan Local Storage Backup
         item {
             Spacer(modifier = Modifier.height(14.dp))
             SettingsSectionHeader(
-                title = if (language == "bn") "গুগল ব্যাকআপ" else "Google Backup",
-                icon = Icons.Default.Security,
+                title = if (language == "bn") "লোকাল স্টোরেজ ব্যাকআপ (আমার দোকান)" else "Amar Dokan Local Backup",
+                icon = Icons.Default.Storage,
                 color = ToolGreen
             )
             Card(
@@ -373,123 +326,22 @@ AppScreen(modifier = modifier, isScrollable = false) {
                 ) {
                     val isBn = language == "bn"
 
-                    // Account row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = if (isBn) "সংযুক্ত অ্যাকাউন্ট:" else "Connected Account:",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Text(
-                                text = googleAccount?.email ?: (if (isBn) "কোনো অ্যাকাউন্ট নেই" else "Not Connected"),
-                                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
-                                color = if (hasAllScopes) ToolGreen else if (googleAccount != null) ToolOrange else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            if (googleAccount != null) {
-                                Text(
-                                    text = if (hasAllScopes) (if (isBn) "✅ Drive ও Sheets পারমিশন মঞ্জুর" else "✅ Drive & Sheets Authorized")
-                                           else (if (isBn) "⚠️ Drive/Sheets অনুমতি বাকি" else "⚠️ Drive/Sheets Permission Needed"),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = if (hasAllScopes) ToolGreen else ToolOrange
-                                )
-                            }
-                        }
+                    Text(
+                        text = if (isBn) "লোকাল স্টোরেজ ব্যাকআপ (Local Storage Backup)" else "Local Storage Backup",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
 
-                        if (googleAccount == null) {
-                            Button(
-                                onClick = {
-                                    signInError = null
-                                    val client = GoogleSignIn.getClient(context, gso)
-                                    signInLauncher.launch(client.signInIntent)
-                                },
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text(if (isBn) "কানেক্ট করুন" else "Connect Google")
-                            }
-                        } else {
-                            Button(
-                                onClick = {
-                                    val client = GoogleSignIn.getClient(context, gso)
-                                    client.signOut().addOnCompleteListener {
-                                        googleAccount = null
-                                        signInError = null
-                                        com.example.util.UserManager.onAccountChanged(context, null)
-                                        com.example.workers.BackupManager.onUserAccountChanged(context, null)
-                                        viewModel.setNotification(if (isBn) "গুগল অ্যাকাউন্ট ডিসকানেক্ট করা হয়েছে" else "Disconnected Google Account")
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.errorContainer, contentColor = MaterialTheme.colorScheme.onErrorContainer),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                shape = RoundedCornerShape(10.dp)
-                            ) {
-                                Text(if (isBn) "ডিসকানেক্ট" else "Disconnect")
-                            }
-                        }
-                    }
+                    Text(
+                        text = if (isBn)
+                            "আমার দোকান-এর সমস্ত খদ্দের, বিল, রেট ও লেনদেনের ডাটা ফোনের মেমরিতে অফলাইনে সুরক্ষিত রাখুন।"
+                        else
+                            "Safely back up all Amar Dokan records to your local phone storage without internet.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
 
-                    // Grant Permissions Button (if signed in but missing scopes)
-                    if (googleAccount != null && !hasAllScopes) {
-                        Button(
-                            onClick = {
-                                signInError = null
-                                if (activity != null) {
-                                    GoogleSignIn.requestPermissions(
-                                        activity,
-                                        9001,
-                                        googleAccount,
-                                        driveScope
-                                    )
-                                } else {
-                                    val client = GoogleSignIn.getClient(context, gso)
-                                    signInLauncher.launch(client.signInIntent)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = ToolOrange),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(if (isBn) "ড্রাইভ অনুমতি দিন (Grant Permissions)" else "Grant Drive Permissions", fontWeight = FontWeight.Bold)
-                        }
-                    }
-
-                    // Error banner
-                    if (!signInError.isNullOrBlank()) {
-                        Surface(
-                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(10.dp)) {
-                                Text(
-                                    text = if (isBn) "সাইন-ইন সমস্যা (Error):" else "Authentication Issue:",
-                                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = signInError!!,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onErrorContainer
-                                )
-                                if (signInError!!.contains("DEVELOPER_ERROR") || signInError!!.contains("10")) {
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "Package: com.aistudio.pdfmaster.qvrx\nSHA-1: D5:86:68:06:DA:A6:12:2E:35:87:0A:64:B7:0E:2F:02:29:36:36:FE",
-                                        style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                                        color = MaterialTheme.colorScheme.onErrorContainer
-                                    )
-                                }
-                            }
-                        }
-                    }
-
-                    // Cloud location info
+                    // Target directory info
                     Surface(
                         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                         shape = RoundedCornerShape(8.dp),
@@ -497,14 +349,18 @@ AppScreen(modifier = modifier, isScrollable = false) {
                     ) {
                         Column(modifier = Modifier.padding(10.dp)) {
                             Text(
-                                text = if (isBn) "গুগল ড্রাইভ ফোল্ডার:" else "Google Drive Target:",
-                                style = MaterialTheme.typography.labelSmall,
+                                text = if (isBn) "সংরক্ষণ লোকেশন (Location):" else "Backup Directory:",
+                                style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "Telecom Cyber Cafe\n├── Billing_Data (Sheets: 5 Tables)\n└── Cash_Memo_PDF (YEAR/MONTH/Invoices)",
-                                style = MaterialTheme.typography.bodySmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
-                                color = MaterialTheme.colorScheme.onSurface
+                                text = AmarDokanBackupManager.TARGET_FOLDER_PATH,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                    fontWeight = FontWeight.SemiBold
+                                ),
+                                color = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
@@ -521,29 +377,33 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
 
-                    if (!lastStatus.isNullOrBlank()) {
+                    if (!lastBackupPath.isNullOrBlank()) {
                         Text(
-                            text = (if (isBn) "স্ট্যাটাস: " else "Status: ") + lastStatus,
-                            style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Medium),
-                            color = if (lastStatus!!.startsWith("ব্যর্থ") || lastStatus!!.startsWith("FAILED") || lastStatus!!.startsWith("বাতিল")) MaterialTheme.colorScheme.error else ToolGreen
+                            text = (if (isBn) "ফাইল: " else "File: ") + File(lastBackupPath!!).name,
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+                                fontWeight = FontWeight.Medium
+                            ),
+                            color = ToolGreen
                         )
                     }
 
-                    // Backup Now action
+                    // Button 1: Backup Now
                     Button(
                         onClick = {
-                            if (googleAccount == null) {
-                                signInError = if (isBn) "অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন।" else "Please connect a Google account first."
-                            } else if (!hasAllScopes) {
-                                signInError = if (isBn) "ড্রাইভ ও শিটস অনুমতি দেওয়া হয়নি। অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।" else "Drive & Sheets permissions needed. Please tap 'Grant Permissions'."
-                            } else {
-                                signInError = null
-                                BackupManager.triggerImmediateBackup(context)
-                                viewModel.setNotification(if (isBn) "⏳ ক্লাউড ব্যাকআপ শুরু হয়েছে..." else "⏳ Cloud backup started...")
+                            coroutineScope.launch {
+                                val res = AmarDokanBackupManager.createLocalBackup(context)
+                                if (res.isSuccess) {
+                                    viewModel.setNotification(
+                                        if (isBn) "✅ ব্যাকআপ তৈরি সম্পন্ন হয়েছে" else "✅ Local backup created successfully"
+                                    )
+                                }
                             }
                         },
                         enabled = !isBackupRunning,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("btn_settings_amar_dokan_backup"),
                         shape = RoundedCornerShape(10.dp)
                     ) {
                         if (isBackupRunning) {
@@ -553,36 +413,34 @@ AppScreen(modifier = modifier, isScrollable = false) {
                                 strokeWidth = 2.dp
                             )
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(if (isBn) "কাজ চলছে..." else "In progress...")
+                            Text(if (isBn) "ব্যাকআপ হচ্ছে..." else "Backing up...")
                         } else {
-                            Text(if (isBn) "এখনই ব্যাকআপ নিন (Backup Now)" else "Backup Now to Google Drive")
+                            Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(if (isBn) "এখনই ব্যাকআপ নিন (Backup Now)" else "Backup Now")
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(8.dp))
+                    // Button 2: Restore from Storage
                     OutlinedButton(
                         onClick = {
-                            if (googleAccount == null) {
-                                signInError = if (isBn) "অনুগ্রহ করে প্রথমে গুগল অ্যাকাউন্ট কানেক্ট করুন।" else "Please connect a Google account first."
-                            } else if (!hasAllScopes) {
-                                signInError = if (isBn) "ড্রাইভ ও শিটস অনুমতি দেওয়া হয়নি। অনুগ্রহ করে 'অনুমতি দিন' বাটনে চাপুন।" else "Drive & Sheets permissions needed. Please tap 'Grant Permissions'."
-                            } else {
-                                signInError = null
-                                BackupManager.triggerImmediateRestore(context)
-                                viewModel.setNotification(if (isBn) "⏳ ড্রাইভ থেকে রিস্টোর শুরু হয়েছে..." else "⏳ Restoring from Google Drive...")
-                            }
+                            localBackupFiles = AmarDokanBackupManager.listLocalBackupFiles()
+                            showRestoreDialog = true
                         },
                         enabled = !isBackupRunning,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("btn_settings_amar_dokan_restore"),
                         shape = RoundedCornerShape(10.dp)
                     ) {
-                        Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.RestorePage, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text(if (isBn) "ড্রাইভ থেকে রিস্টোর (Restore from Drive)" else "Restore from Google Drive")
+                        Text(if (isBn) "ব্যাকআপ থেকে রিস্টোর (Restore from Storage)" else "Restore from Storage")
                     }
                 }
             }
         }
+
 
         // Section: About App
         item {
@@ -638,7 +496,195 @@ AppScreen(modifier = modifier, isScrollable = false) {
             onDismiss = { showFolderCustomizer = false }
         )
     }
+
+    // Confirmation dialog before restoring database
+    if (pendingRestoreData != null) {
+        val (fileName, backup) = pendingRestoreData!!
+        val isBn = language == "bn"
+        AlertDialog(
+            onDismissRequest = { if (!isRestoring) pendingRestoreData = null },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = ToolOrange)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isBn) "ব্যাকআপ রিস্টোর নিশ্চিত করুন" else "Confirm Restore", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = (if (isBn) "ফাইল: " else "File: ") + fileName,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 12.sp,
+                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                    )
+                    HorizontalDivider()
+                    Text(if (isBn) "রেকর্ড সংখ্যা:" else "Included Records:", fontWeight = FontWeight.Medium)
+                    Text("• " + (if (isBn) "খদ্দের তালিকা: ${backup.customers.size} জন" else "Customers: ${backup.customers.size}"))
+                    Text("• " + (if (isBn) "তৈরি বিল: ${backup.bills.size} টি" else "Bills: ${backup.bills.size}"))
+                    Text("• " + (if (isBn) "গৃহীত পেমেন্ট: ${backup.payments.size} টি" else "Payments: ${backup.payments.size}"))
+                    Text("• " + (if (isBn) "আইটেম ও রেট: ${backup.services.size} টি" else "Items/Services: ${backup.services.size}"))
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Surface(
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Text(
+                            text = if (isBn)
+                                "⚠️ রিস্টোর করলে বর্তমান ডাটাবেজ এই ব্যাকআপ ফাইলের তথ্য দিয়ে প্রতিস্থাপিত হবে।"
+                            else
+                                "⚠️ Restoring will overwrite existing Amar Dokan database records.",
+                            fontSize = 11.sp,
+                            color = MaterialTheme.colorScheme.onErrorContainer,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isRestoring = true
+                        coroutineScope.launch {
+                            val res = AmarDokanBackupManager.restoreDatabase(context, backup)
+                            isRestoring = false
+                            pendingRestoreData = null
+                            showRestoreDialog = false
+                            if (res.isSuccess) {
+                                viewModel.setNotification(
+                                    if (isBn) "✅ রিস্টোর সফলভাবে সম্পন্ন হয়েছে" else "✅ Data restored successfully"
+                                )
+                            }
+                        }
+                    },
+                    enabled = !isRestoring,
+                    colors = ButtonDefaults.buttonColors(containerColor = ToolGreen)
+                ) {
+                    if (isRestoring) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isBn) "রিস্টোর হচ্ছে..." else "Restoring...")
+                    } else {
+                        Text(if (isBn) "হ্যাঁ, রিস্টোর করুন" else "Yes, Restore")
+                    }
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { pendingRestoreData = null },
+                    enabled = !isRestoring
+                ) {
+                    Text(if (isBn) "বাতিল" else "Cancel")
+                }
+            }
+        )
+    }
+
+    // Modal dialog to select local backup file
+    if (showRestoreDialog) {
+        val isBn = language == "bn"
+        AlertDialog(
+            onDismissRequest = { showRestoreDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.RestorePage, contentDescription = null, tint = ToolGreen)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isBn) "ব্যাকআপ ফাইল থেকে রিস্টোর" else "Restore from Local Backup", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = if (isBn)
+                            "📁 সংরক্ষিত ফাইল (${localBackupFiles.size}টি):"
+                        else
+                            "📁 Local Backups (${localBackupFiles.size}):",
+                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold)
+                    )
+
+                    if (localBackupFiles.isEmpty()) {
+                        Text(
+                            text = if (isBn)
+                                "লোকাল ফোল্ডারে কোনো ব্যাকআপ পাওয়া যায়নি। আপনি 'এখনই ব্যাকআপ নিন' বাটনে চাপ দিয়ে ব্যাকআপ ফাইল তৈরি করতে পারেন।"
+                            else
+                                "No backup files found in /storage/emulated/0/Smart King/Amar Dokan.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    } else {
+                        localBackupFiles.forEach { file ->
+                            val dateStr = SimpleDateFormat("dd/MM/yyyy hh:mm a", Locale.getDefault()).format(Date(file.lastModified()))
+                            val sizeKb = (file.length() / 1024).coerceAtLeast(1)
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(10.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(file.name, style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold), maxLines = 1)
+                                        Text("$dateStr • ${sizeKb} KB", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Button(
+                                        onClick = {
+                                            coroutineScope.launch {
+                                                val inspectRes = AmarDokanBackupManager.inspectBackupFile(file)
+                                                inspectRes.onSuccess { backup ->
+                                                    pendingRestoreData = Pair(file.name, backup)
+                                                }.onFailure { err ->
+                                                    viewModel.setNotification("❌ ত্রুটি: ${err.message}")
+                                                }
+                                            }
+                                        },
+                                        colors = ButtonDefaults.buttonColors(containerColor = ToolGreen),
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                        shape = RoundedCornerShape(6.dp)
+                                    ) {
+                                        Text(if (isBn) "রিস্টোর" else "Restore", fontSize = 11.sp)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    // Pick file via system file picker
+                    OutlinedButton(
+                        onClick = {
+                            filePickerLauncher.launch(arrayOf("application/json", "text/*", "*/*"))
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Icon(Icons.Default.FileOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(if (isBn) "অন্য ফোল্ডার থেকে ফাইল বাছুন..." else "Choose file from device...", fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showRestoreDialog = false }) {
+                    Text(if (isBn) "বন্ধ করুন" else "Close")
+                }
+            }
+        )
+    }
 }
+
 
 @Composable
 fun SettingsSectionHeader(

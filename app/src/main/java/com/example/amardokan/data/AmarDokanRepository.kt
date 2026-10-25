@@ -187,16 +187,15 @@ class AmarDokanRepository(private val dao: AmarDokanDao) {
     }
 
     suspend fun restoreBackup(backup: DatabaseBackup) = withContext(Dispatchers.IO) {
-        backup.customers.forEach { dao.insertCustomer(it) }
-        if (backup.services.isNotEmpty()) {
-            dao.insertServices(backup.services)
-        }
-        backup.bills.forEach { dao.insertBill(it) }
-        if (backup.billItems.isNotEmpty()) {
-            dao.insertAllBillItems(backup.billItems)
-        }
-        backup.payments.forEach { dao.insertPayment(it) }
+        dao.restoreAllData(
+            customers = backup.customers,
+            services = backup.services,
+            bills = backup.bills,
+            billItems = backup.billItems,
+            payments = backup.payments
+        )
     }
+
 
     companion object {
         @Volatile

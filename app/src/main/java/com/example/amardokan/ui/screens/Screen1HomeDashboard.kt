@@ -98,8 +98,8 @@ fun Screen1HomeDashboard(
                                         .testTag("btn_backup_restore")
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Default.CloudSync,
-                                        contentDescription = "ব্যাকআপ ও রিস্টোর",
+                                        imageVector = Icons.Default.Storage,
+                                        contentDescription = "লোকাল ব্যাকআপ ও রিস্টোর",
                                         tint = Color.White
                                     )
                                 }
