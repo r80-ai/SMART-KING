@@ -72,7 +72,8 @@ enum class ActiveModal {
     PVC_CARD_MAKER,
     RESUME_BUILDER,
     DOC_ENHANCER,
-    NAME_DATE_PHOTO
+    NAME_DATE_PHOTO,
+    APPLICATION_MAKER
 }
 
 data class ToolResultInfo(

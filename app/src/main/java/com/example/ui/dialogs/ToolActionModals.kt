@@ -336,6 +336,11 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
                 onBack = { viewModel.closeModal() }
             )
         }
+        ActiveModal.APPLICATION_MAKER -> {
+            com.example.ui.screens.ApplicationMakerScreen(
+                onBack = { viewModel.closeModal() }
+            )
+        }
         ActiveModal.DOC_ENHANCER -> {
             com.example.ui.screens.DocEnhancerScreen(
                 viewModel = viewModel,
