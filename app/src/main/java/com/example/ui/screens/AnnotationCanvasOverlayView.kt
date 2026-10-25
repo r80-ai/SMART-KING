@@ -224,6 +224,28 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         }
     }
 
+    private fun disallowParentIntercept(disallow: Boolean) {
+        var p = parent
+        while (p != null) {
+            p.requestDisallowInterceptTouchEvent(disallow)
+            p = p.parent
+        }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (isInteractionEnabled) {
+            when (ev.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                    disallowParentIntercept(true)
+                }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    disallowParentIntercept(false)
+                }
+            }
+        }
+        return super.dispatchTouchEvent(ev)
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isInteractionEnabled) {
             return false
@@ -234,7 +256,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
+                disallowParentIntercept(true)
 
                 when (currentTool) {
                     ToolMode.PEN, ToolMode.HIGHLIGHT -> {
@@ -267,7 +289,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
+                disallowParentIntercept(true)
 
                 when (currentTool) {
                     ToolMode.PEN, ToolMode.HIGHLIGHT -> {
@@ -298,7 +320,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP -> {
-                parent?.requestDisallowInterceptTouchEvent(false)
+                disallowParentIntercept(false)
 
                 when (currentTool) {
                     ToolMode.PEN, ToolMode.HIGHLIGHT -> {
