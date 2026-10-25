@@ -224,6 +224,14 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         }
     }
 
+    private fun disallowParentIntercept(disallow: Boolean) {
+        var p = parent
+        while (p != null) {
+            p.requestDisallowInterceptTouchEvent(disallow)
+            p = p.parent
+        }
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isInteractionEnabled) {
             return false
@@ -234,7 +242,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
+                disallowParentIntercept(true)
 
                 when (currentTool) {
                     ToolMode.PEN, ToolMode.HIGHLIGHT -> {
@@ -267,7 +275,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_MOVE -> {
-                parent?.requestDisallowInterceptTouchEvent(true)
+                disallowParentIntercept(true)
 
                 when (currentTool) {
                     ToolMode.PEN, ToolMode.HIGHLIGHT -> {
@@ -298,7 +306,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_UP -> {
-                parent?.requestDisallowInterceptTouchEvent(false)
+                disallowParentIntercept(false)
 
                 when (currentTool) {
                     ToolMode.PEN, ToolMode.HIGHLIGHT -> {
@@ -387,7 +395,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
 
             MotionEvent.ACTION_CANCEL -> {
-                parent?.requestDisallowInterceptTouchEvent(false)
+                disallowParentIntercept(false)
                 activePoints.clear()
                 activePath.reset()
                 isDrawingShape = false
@@ -455,17 +463,21 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     private fun checkStrokeIntersection(item: PdfEngine.EditItem, touchX: Float, touchY: Float, radiusPx: Float): Boolean {
         val pts = item.points
         if (pts.isEmpty()) return false
-        val halfW = (item.strokeWidth * resources.displayMetrics.density) / 2f
+        val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+        val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+        val halfW = (item.strokeWidth * resources.displayMetrics.density * ((scaleX + scaleY) / 2f)) / 2f
         val hitThreshold = radiusPx + halfW
 
         if (pts.size == 1) {
-            return hypot(touchX - pts[0].first, touchY - pts[0].second) <= hitThreshold
+            return hypot(touchX - pts[0].first * scaleX, touchY - pts[0].second * scaleY) <= hitThreshold
         }
 
         for (i in 0 until pts.size - 1) {
-            val p1 = pts[i]
-            val p2 = pts[i + 1]
-            if (distToSegment(touchX, touchY, p1.first, p1.second, p2.first, p2.second) <= hitThreshold) {
+            val p1x = pts[i].first * scaleX
+            val p1y = pts[i].second * scaleY
+            val p2x = pts[i + 1].first * scaleX
+            val p2y = pts[i + 1].second * scaleY
+            if (distToSegment(touchX, touchY, p1x, p1y, p2x, p2y) <= hitThreshold) {
                 return true
             }
         }
@@ -473,11 +485,13 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     }
 
     private fun checkRectangleIntersection(item: PdfEngine.EditItem, touchX: Float, touchY: Float, radiusPx: Float): Boolean {
-        val left = min(item.posX, item.endX)
-        val top = min(item.posY, item.endY)
-        val right = max(item.posX, item.endX)
-        val bottom = max(item.posY, item.endY)
-        val halfW = (item.strokeWidth * resources.displayMetrics.density) / 2f
+        val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+        val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+        val left = min(item.posX * scaleX, item.endX * scaleX)
+        val top = min(item.posY * scaleY, item.endY * scaleY)
+        val right = max(item.posX * scaleX, item.endX * scaleX)
+        val bottom = max(item.posY * scaleY, item.endY * scaleY)
+        val halfW = (item.strokeWidth * resources.displayMetrics.density * ((scaleX + scaleY) / 2f)) / 2f
         val threshold = radiusPx + halfW
 
         // Check if user hit the filled interior
@@ -499,10 +513,12 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     }
 
     private fun checkEllipseIntersection(item: PdfEngine.EditItem, touchX: Float, touchY: Float, radiusPx: Float): Boolean {
-        val left = min(item.posX, item.endX)
-        val top = min(item.posY, item.endY)
-        val right = max(item.posX, item.endX)
-        val bottom = max(item.posY, item.endY)
+        val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+        val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+        val left = min(item.posX * scaleX, item.endX * scaleX)
+        val top = min(item.posY * scaleY, item.endY * scaleY)
+        val right = max(item.posX * scaleX, item.endX * scaleX)
+        val bottom = max(item.posY * scaleY, item.endY * scaleY)
 
         val cx = (left + right) / 2f
         val cy = (top + bottom) / 2f
@@ -520,7 +536,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         }
 
         val distToPerimeter = abs(normDist - 1.0f) * min(rx, ry)
-        val halfW = (item.strokeWidth * resources.displayMetrics.density) / 2f
+        val halfW = (item.strokeWidth * resources.displayMetrics.density * ((scaleX + scaleY) / 2f)) / 2f
         return distToPerimeter <= (radiusPx + halfW)
     }
 
@@ -543,6 +559,10 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         // 1. Render all committed annotations for the current page
         val currentList = pageAnnotations[currentPageIndex] ?: emptyList()
         for (item in currentList) {
+            val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+            val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+            val strokeScale = (scaleX + scaleY) / 2f
+
             when (item.type) {
                 PdfEngine.AnnotationType.PEN,
                 PdfEngine.AnnotationType.DRAW,
@@ -550,28 +570,30 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                     val pts = item.points
                     if (pts.size >= 2) {
                         val path = Path()
-                        path.moveTo(pts[0].first, pts[0].second)
+                        path.moveTo(pts[0].first * scaleX, pts[0].second * scaleY)
                         for (i in 1 until pts.size) {
-                            val prev = pts[i - 1]
-                            val curr = pts[i]
-                            val midX = (prev.first + curr.first) / 2f
-                            val midY = (prev.second + curr.second) / 2f
-                            path.quadTo(prev.first, prev.second, midX, midY)
+                            val prevX = pts[i - 1].first * scaleX
+                            val prevY = pts[i - 1].second * scaleY
+                            val currX = pts[i].first * scaleX
+                            val currY = pts[i].second * scaleY
+                            val midX = (prevX + currX) / 2f
+                            val midY = (prevY + currY) / 2f
+                            path.quadTo(prevX, prevY, midX, midY)
                         }
-                        path.lineTo(pts.last().first, pts.last().second)
+                        path.lineTo(pts.last().first * scaleX, pts.last().second * scaleY)
 
                         strokePaint.color = item.colorHex
                         strokePaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
-                        strokePaint.strokeWidth = item.strokeWidth * density
+                        strokePaint.strokeWidth = item.strokeWidth * density * strokeScale
                         canvas.drawPath(path, strokePaint)
                     }
                 }
 
                 PdfEngine.AnnotationType.RECTANGLE -> {
-                    val l = min(item.posX, item.endX)
-                    val t = min(item.posY, item.endY)
-                    val r = max(item.posX, item.endX)
-                    val b = max(item.posY, item.endY)
+                    val l = min(item.posX * scaleX, item.endX * scaleX)
+                    val t = min(item.posY * scaleY, item.endY * scaleY)
+                    val r = max(item.posX * scaleX, item.endX * scaleX)
+                    val b = max(item.posY * scaleY, item.endY * scaleY)
 
                     if (item.fillColorHex != null) {
                         fillPaint.color = item.fillColorHex
@@ -581,15 +603,15 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 
                     strokePaint.color = item.colorHex
                     strokePaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
-                    strokePaint.strokeWidth = item.strokeWidth * density
+                    strokePaint.strokeWidth = item.strokeWidth * density * strokeScale
                     canvas.drawRect(l, t, r, b, strokePaint)
                 }
 
                 PdfEngine.AnnotationType.CIRCLE -> {
-                    val l = min(item.posX, item.endX)
-                    val t = min(item.posY, item.endY)
-                    val r = max(item.posX, item.endX)
-                    val b = max(item.posY, item.endY)
+                    val l = min(item.posX * scaleX, item.endX * scaleX)
+                    val t = min(item.posY * scaleY, item.endY * scaleY)
+                    val r = max(item.posX * scaleX, item.endX * scaleX)
+                    val b = max(item.posY * scaleY, item.endY * scaleY)
 
                     if (item.fillColorHex != null) {
                         fillPaint.color = item.fillColorHex
@@ -599,32 +621,37 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 
                     strokePaint.color = item.colorHex
                     strokePaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
-                    strokePaint.strokeWidth = item.strokeWidth * density
+                    strokePaint.strokeWidth = item.strokeWidth * density * strokeScale
                     canvas.drawOval(l, t, r, b, strokePaint)
                 }
 
                 PdfEngine.AnnotationType.LINE -> {
                     strokePaint.color = item.colorHex
                     strokePaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
-                    strokePaint.strokeWidth = item.strokeWidth * density
-                    canvas.drawLine(item.posX, item.posY, item.endX, item.endY, strokePaint)
+                    strokePaint.strokeWidth = item.strokeWidth * density * strokeScale
+                    canvas.drawLine(item.posX * scaleX, item.posY * scaleY, item.endX * scaleX, item.endY * scaleY, strokePaint)
                 }
 
                 PdfEngine.AnnotationType.ARROW -> {
+                    val sX = item.posX * scaleX
+                    val sY = item.posY * scaleY
+                    val eX = item.endX * scaleX
+                    val eY = item.endY * scaleY
+
                     strokePaint.color = item.colorHex
                     strokePaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
-                    strokePaint.strokeWidth = item.strokeWidth * density
-                    canvas.drawLine(item.posX, item.posY, item.endX, item.endY, strokePaint)
+                    strokePaint.strokeWidth = item.strokeWidth * density * strokeScale
+                    canvas.drawLine(sX, sY, eX, eY, strokePaint)
 
-                    val angle = atan2((item.endY - item.posY).toDouble(), (item.endX - item.posX).toDouble())
-                    val arrowHeadLen = (item.strokeWidth * density * 3.5f).coerceIn(16f, 48f)
-                    val x1 = (item.endX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
-                    val y1 = (item.endY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
-                    val x2 = (item.endX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
-                    val y2 = (item.endY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
+                    val angle = atan2((eY - sY).toDouble(), (eX - sX).toDouble())
+                    val arrowHeadLen = (item.strokeWidth * density * strokeScale * 3.5f).coerceIn(16f, 48f)
+                    val x1 = (eX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
+                    val y1 = (eY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
+                    val x2 = (eX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
+                    val y2 = (eY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
                     val headPath = Path().apply {
                         moveTo(x1, y1)
-                        lineTo(item.endX, item.endY)
+                        lineTo(eX, eY)
                         lineTo(x2, y2)
                     }
                     canvas.drawPath(headPath, strokePaint)

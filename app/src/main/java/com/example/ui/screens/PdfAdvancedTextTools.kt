@@ -1151,17 +1151,36 @@ private fun TextPositionControl(
 ) {
     var step by remember { mutableFloatStateOf(5f) }
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            listOf(1f, 5f, 20f).forEach { s ->
-                FilterChip(
-                    selected = step == s,
-                    onClick = { step = s },
-                    label = { Text("${s.toInt()}px", fontSize = 10.sp) },
-                    modifier = Modifier.height(26.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                color = ToolBlue.copy(alpha = 0.15f),
+                shape = RoundedCornerShape(6.dp),
+                border = BorderStroke(1.dp, ToolBlue.copy(alpha = 0.4f))
+            ) {
+                Text(
+                    text = "X: ${item.posX.roundToInt()} px  •  Y: ${item.posY.roundToInt()} px",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = ToolBlue,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                 )
             }
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf(1f, 5f, 20f).forEach { s ->
+                    FilterChip(
+                        selected = step == s,
+                        onClick = { step = s },
+                        label = { Text("${s.toInt()}px", fontSize = 10.sp) },
+                        modifier = Modifier.height(26.dp)
+                    )
+                }
+            }
         }
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(
                 onClick = {

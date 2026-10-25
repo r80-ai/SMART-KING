@@ -1014,34 +1014,39 @@ fun PdfEditorMainView(
             } else {
                 val currentBmp = pages.getOrNull(currentPageIndex) ?: pages.firstOrNull()
                 if (currentBmp != null) {
+                    val isPenActive = activeTab == EditorTopTab.PEN
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTransformGestures { centroid, pan, zoom, _ ->
-                                    val oldScale = zoomScale
-                                    val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
-                                    if (newScale != oldScale) {
-                                        panOffset = (panOffset - centroid) * (newScale / oldScale) + centroid + pan
-                                        zoomScale = newScale
-                                    } else {
-                                        panOffset += pan
+                            .pointerInput(isPenActive) {
+                                if (!isPenActive) {
+                                    detectTransformGestures { centroid, pan, zoom, _ ->
+                                        val oldScale = zoomScale
+                                        val newScale = (zoomScale * zoom).coerceIn(0.75f, 6.0f)
+                                        if (newScale != oldScale) {
+                                            panOffset = (panOffset - centroid) * (newScale / oldScale) + centroid + pan
+                                            zoomScale = newScale
+                                        } else {
+                                            panOffset += pan
+                                        }
                                     }
                                 }
                             }
-                            .pointerInput(Unit) {
-                                detectTapGestures(
-                                    onDoubleTap = { tapOffset ->
-                                        if (zoomScale > 1.2f) {
-                                            zoomScale = 1.0f
-                                            panOffset = Offset.Zero
-                                        } else {
-                                            val targetScale = 2.5f
-                                            panOffset = (panOffset - tapOffset) * (targetScale / zoomScale) + tapOffset
-                                            zoomScale = targetScale
+                            .pointerInput(isPenActive) {
+                                if (!isPenActive) {
+                                    detectTapGestures(
+                                        onDoubleTap = { tapOffset ->
+                                            if (zoomScale > 1.2f) {
+                                                zoomScale = 1.0f
+                                                panOffset = Offset.Zero
+                                            } else {
+                                                val targetScale = 2.5f
+                                                panOffset = (panOffset - tapOffset) * (targetScale / zoomScale) + tapOffset
+                                                zoomScale = targetScale
+                                            }
                                         }
-                                    }
-                                )
+                                    )
+                                }
                             },
                         contentAlignment = Alignment.Center
                     ) {
@@ -1234,14 +1239,21 @@ fun PdfEditorMainView(
                                                         annotOverlay.setEraserMode(eraserSize)
                                                     }
                                                 }
+                                                annotOverlay.elevation = 24f * root.resources.displayMetrics.density
                                                 annotOverlay.bringToFront()
+                                            } else {
+                                                annotOverlay.elevation = 8f * root.resources.displayMetrics.density
                                             }
 
                                             val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
                                             textOverlayViewRef = overlay
                                             overlay.visibility = View.VISIBLE
+                                            overlay.isInteractionsEnabled = !isPenActive
                                             if (!isPenActive) {
+                                                overlay.elevation = 20f * root.resources.displayMetrics.density
                                                 overlay.bringToFront()
+                                            } else {
+                                                overlay.elevation = 4f * root.resources.displayMetrics.density
                                             }
                                             overlay.updateLayers(
                                                 items = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.TEXT },

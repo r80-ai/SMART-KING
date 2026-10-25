@@ -84,9 +84,9 @@ class TextOverlayView @JvmOverloads constructor(
     })
 
     init {
-        // Ensure overlay can receive touch events and renders above sibling views
-        isFocusable = true
-        isClickable = true
+        // Overlay renders above siblings but does not consume empty-area touches
+        isFocusable = false
+        isClickable = false
         elevation = 16f * resources.displayMetrics.density
     }
 
@@ -104,6 +104,10 @@ class TextOverlayView @JvmOverloads constructor(
     }
 
     fun updateLayers(items: List<PdfEngine.EditItem>, selectedId: String?) {
+        // Do not overwrite coordinates from external state during an active touch drag
+        if (activeMode != TouchMode.NONE) {
+            return
+        }
         layers.clear()
         layers.addAll(items)
         selectedLayerId = selectedId
@@ -233,6 +237,14 @@ class TextOverlayView @JvmOverloads constructor(
 
     var isInteractionsEnabled: Boolean = true
 
+    private fun disallowParentIntercept(disallow: Boolean) {
+        var p = parent
+        while (p != null) {
+            p.requestDisallowInterceptTouchEvent(disallow)
+            p = p.parent
+        }
+    }
+
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isInteractionsEnabled) {
             return false
@@ -256,6 +268,7 @@ class TextOverlayView @JvmOverloads constructor(
                         activeMode = TouchMode.RESIZE
                         activeResizeCorner = cornerIdx
                         initialItem = selItem
+                        disallowParentIntercept(true)
                         return true
                     }
                 }
@@ -268,6 +281,7 @@ class TextOverlayView @JvmOverloads constructor(
                     onLayerSelected?.invoke(hit.id)
                     activeMode = if (!hit.isLocked) TouchMode.DRAG else TouchMode.NONE
                     initialItem = hit
+                    disallowParentIntercept(true)
                     postInvalidate()
                     return true
                 } else {
@@ -277,6 +291,8 @@ class TextOverlayView @JvmOverloads constructor(
                         postInvalidate()
                     }
                     activeMode = TouchMode.NONE
+                    disallowParentIntercept(false)
+                    return false
                 }
             }
 
@@ -290,9 +306,13 @@ class TextOverlayView @JvmOverloads constructor(
                 if (curItem != null && !curItem.isLocked) {
                     when (activeMode) {
                         TouchMode.DRAG -> {
+                            disallowParentIntercept(true)
+
+                            val newX = curItem.posX + dx
+                            val newY = curItem.posY + dy
                             val updated = curItem.copy(
-                                posX = curItem.posX + dx,
-                                posY = curItem.posY + dy
+                                posX = newX,
+                                posY = newY
                             )
                             updateSingleLayer(updated)
                             onLayerUpdated?.invoke(updated)
@@ -301,6 +321,8 @@ class TextOverlayView @JvmOverloads constructor(
                         }
 
                         TouchMode.RESIZE -> {
+                            disallowParentIntercept(true)
+
                             val curW = getLayerBoxWidth(curItem)
                             val curH = getLayerBoxHeight(curItem)
                             var newX = curItem.posX
@@ -348,14 +370,32 @@ class TextOverlayView @JvmOverloads constructor(
                 }
             }
 
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+            MotionEvent.ACTION_UP -> {
+                disallowParentIntercept(false)
+                if (activeMode != TouchMode.NONE) {
+                    val curItem = layers.find { it.id == selectedLayerId }
+                    if (curItem != null) {
+                        onLayerUpdated?.invoke(curItem)
+                    }
+                }
                 activeMode = TouchMode.NONE
                 activeResizeCorner = -1
                 initialItem = null
+                postInvalidate()
+                return true
+            }
+
+            MotionEvent.ACTION_CANCEL -> {
+                disallowParentIntercept(false)
+                activeMode = TouchMode.NONE
+                activeResizeCorner = -1
+                initialItem = null
+                postInvalidate()
+                return true
             }
         }
 
-        return super.onTouchEvent(event)
+        return false
     }
 
     private fun updateSingleLayer(updated: PdfEngine.EditItem) {
@@ -391,14 +431,35 @@ class TextOverlayView @JvmOverloads constructor(
     }
 
     private fun findLayerAt(x: Float, y: Float): PdfEngine.EditItem? {
+        val touchSlop = 16f * resources.displayMetrics.density
         // Iterate backwards so top-most layers get hit first
         for (i in layers.indices.reversed()) {
             val item = layers[i]
             if (!item.isVisible) continue
             val w = getLayerBoxWidth(item)
             val h = getLayerBoxHeight(item)
-            val rect = RectF(item.posX, item.posY, item.posX + w, item.posY + h)
-            if (rect.contains(x, y)) {
+            val rot = item.getRotationAngle()
+            val (localX, localY) = if (rot != 0f) {
+                val rad = -Math.toRadians(rot.toDouble())
+                val cosA = Math.cos(rad)
+                val sinA = Math.sin(rad)
+                val cx = item.posX + w / 2f
+                val cy = item.posY + h / 2f
+                val dx = x - cx
+                val dy = y - cy
+                val rx = (dx * cosA - dy * sinA).toFloat() + cx
+                val ry = (dx * sinA + dy * cosA).toFloat() + cy
+                rx to ry
+            } else {
+                x to y
+            }
+            val rect = RectF(
+                item.posX - touchSlop,
+                item.posY - touchSlop,
+                item.posX + w + touchSlop,
+                item.posY + h + touchSlop
+            )
+            if (rect.contains(localX, localY)) {
                 return item
             }
         }
@@ -408,7 +469,22 @@ class TextOverlayView @JvmOverloads constructor(
     private fun getHitCorner(item: PdfEngine.EditItem, x: Float, y: Float): Int {
         val w = getLayerBoxWidth(item)
         val h = getLayerBoxHeight(item)
-        val hitRadius = 24f * resources.displayMetrics.density
+        val rot = item.getRotationAngle()
+        val (localX, localY) = if (rot != 0f) {
+            val rad = -Math.toRadians(rot.toDouble())
+            val cosA = Math.cos(rad)
+            val sinA = Math.sin(rad)
+            val cx = item.posX + w / 2f
+            val cy = item.posY + h / 2f
+            val dx = x - cx
+            val dy = y - cy
+            val rx = (dx * cosA - dy * sinA).toFloat() + cx
+            val ry = (dx * sinA + dy * cosA).toFloat() + cy
+            rx to ry
+        } else {
+            x to y
+        }
+        val hitRadius = 28f * resources.displayMetrics.density
         val corners = listOf(
             Pair(item.posX, item.posY),
             Pair(item.posX + w, item.posY),
@@ -417,7 +493,7 @@ class TextOverlayView @JvmOverloads constructor(
         )
         for (i in corners.indices) {
             val c = corners[i]
-            if (abs(x - c.first) <= hitRadius && abs(y - c.second) <= hitRadius) {
+            if (abs(localX - c.first) <= hitRadius && abs(localY - c.second) <= hitRadius) {
                 return i
             }
         }
