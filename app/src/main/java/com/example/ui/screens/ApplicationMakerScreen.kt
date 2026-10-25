@@ -5,6 +5,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.print.PrintAttributes
 import android.print.PrintManager
 import android.speech.RecognizerIntent
@@ -13,6 +14,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +24,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.ui.graphics.asImageBitmap
+import com.example.ui.components.SignatureUploadSection
+import com.example.ui.components.toBase64Png
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
@@ -483,6 +488,9 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
     var dynamicField1 by remember { mutableStateOf("") }
     var dynamicField2 by remember { mutableStateOf("") }
 
+    // Signature State
+    var signatureBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
     // Voice typing launcher
     var activeVoiceTarget by remember { mutableStateOf<String?>(null) }
     val speechLauncher = rememberLauncherForActivityResult(
@@ -520,8 +528,9 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
     // Dynamic Live Preview Generator
     val generatedLetter = remember(
         isBengali, currentCategory, currentLetterType,
-        applicantName, date, recipientTitle, officeName, applicantAddress, place, dynamicField1, dynamicField2
+        applicantName, date, recipientTitle, officeName, applicantAddress, place, dynamicField1, dynamicField2, signatureBitmap
     ) {
+        val sigPlaceholder = if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত / Attached]" else "................................"
         if (isBengali) {
             val body = currentLetterType.bodyTemplateBn(
                 applicantName, applicantAddress, officeName, dynamicField1, dynamicField2
@@ -543,8 +552,7 @@ $body
 
 ধন্যবাদান্তে,
 ${applicantName.ifBlank { "................" }}
-ঠিকানা: ${applicantAddress.ifBlank { "................" }}
-স্বাক্ষর: ................................
+${if (applicantAddress.isNotBlank()) "ঠিকানা: $applicantAddress\n" else ""}স্বাক্ষর: $sigPlaceholder
             """.trimIndent()
         } else {
             val body = currentLetterType.bodyTemplateEn(
@@ -567,8 +575,7 @@ Place: ${place.ifBlank { "................" }}
 
 Yours faithfully,
 ${applicantName.ifBlank { "................" }}
-Address: ${applicantAddress.ifBlank { "................" }}
-Signature: ................................
+${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}Signature: $sigPlaceholder
             """.trimIndent()
         }
     }
@@ -926,7 +933,17 @@ Signature: ................................
                 )
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Signature Upload Section (Optional with ONNX AI BG Remove & Original/Manual)
+            SignatureUploadSection(
+                signatureBitmap = signatureBitmap,
+                onSignatureChanged = { signatureBitmap = it },
+                title = if (isBengali) "স্বাক্ষর আপলোড (Upload Signature - ঐচ্ছিক)" else "Upload Signature (Optional)",
+                subtitle = if (isBengali) "স্বাক্ষর আপলোড করলে প্রিন্ট কপিতে সই বসে যাবে। না দিলে ডট-লাইনে (................) হাতে সই করতে পারবেন।" else "Uploaded signature will be placed in the printout. If empty, a dot-line will appear for manual signing."
+            )
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             // Action Buttons: Print A4 / Save PDF, Copy, Clear
             Row(
@@ -937,6 +954,18 @@ Signature: ................................
                 Button(
                     onClick = {
                         val webView = WebView(context)
+                        val bodyText = if (isBengali) {
+                            currentLetterType.bodyTemplateBn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
+                        } else {
+                            currentLetterType.bodyTemplateEn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
+                        }
+
+                        val signatureHtml = if (signatureBitmap != null) {
+                            """<img src="data:image/png;base64,${signatureBitmap!!.toBase64Png()}" class="sig-img" alt="Signature" /><span style="font-size: 9pt; color: #555;">(${if (isBengali) "স্বাক্ষর" else "Signature"})</span>"""
+                        } else {
+                            """................................<br><span style="font-size: 9pt; color: #555;">(${if (isBengali) "স্বাক্ষর" else "Signature"})</span>"""
+                        }
+
                         val htmlContent = """
                             <!DOCTYPE html>
                             <html>
@@ -944,20 +973,105 @@ Signature: ................................
                                 <meta charset="UTF-8">
                                 <style>
                                     @page {
-                                        size: A4;
-                                        margin: 25mm 20mm 20mm 25mm;
+                                        size: A4 portrait;
+                                        margin: 24mm 20mm 20mm 24mm;
                                     }
                                     body {
-                                        font-family: 'Noto Sans Bengali', sans-serif, 'Segoe UI', Arial;
-                                        font-size: 13pt;
-                                        line-height: 1.8;
+                                        font-family: 'Noto Sans Bengali', sans-serif, 'Segoe UI', Arial, sans-serif;
+                                        font-size: 12.5pt;
+                                        line-height: 1.7;
                                         color: #111;
-                                        padding: 10px;
-                                        white-space: pre-wrap;
+                                        padding: 0;
+                                        margin: 0;
+                                    }
+                                    .recipient {
+                                        margin-bottom: 16px;
+                                    }
+                                    .subject {
+                                        font-weight: bold;
+                                        margin: 16px 0;
+                                        text-decoration: underline;
+                                    }
+                                    .salutation {
+                                        margin-bottom: 8px;
+                                        font-weight: bold;
+                                    }
+                                    .body-text {
+                                        text-align: justify;
+                                        margin-bottom: 16px;
+                                    }
+                                    .closing-text {
+                                        text-align: justify;
+                                        margin-bottom: 24px;
+                                    }
+                                    .footer-table {
+                                        width: 100%;
+                                        margin-top: 24px;
+                                        border-collapse: collapse;
+                                    }
+                                    .footer-left {
+                                        width: 50%;
+                                        vertical-align: bottom;
+                                        font-size: 11pt;
+                                        line-height: 1.6;
+                                    }
+                                    .footer-right {
+                                        width: 50%;
+                                        vertical-align: bottom;
+                                        text-align: right;
+                                        font-size: 11.5pt;
+                                    }
+                                    .sig-container {
+                                        display: inline-block;
+                                        text-align: center;
+                                        min-width: 140px;
+                                        margin-top: 8px;
+                                    }
+                                    .sig-img {
+                                        max-height: 48px;
+                                        max-width: 140px;
+                                        object-fit: contain;
+                                        display: block;
+                                        margin: 0 auto;
                                     }
                                 </style>
                             </head>
-                            <body>$generatedLetter</body>
+                            <body>
+                                <div class="recipient">
+                                    <div>${if (isBengali) "প্রতি," else "To,"}</div>
+                                    <div>${recipientTitle.ifBlank { if (isBengali) currentCategory.defaultRecipientBn else currentCategory.defaultRecipientEn }}</div>
+                                    <div>${officeName.ifBlank { "...................................." }}</div>
+                                </div>
+
+                                <div class="subject">
+                                    ${if (isBengali) "বিষয়: " + currentLetterType.subjectBn else "Subject: " + currentLetterType.subjectEn}
+                                </div>
+
+                                <div class="salutation">${if (isBengali) "মহাশয়/মহাশয়া," else "Respected Sir/Madam,"}</div>
+                                
+                                <div class="body-text">$bodyText</div>
+
+                                <div class="closing-text">
+                                    ${if (isBengali) "অতএব, মহাশয়ের নিকট বিনীত প্রার্থনা, উক্ত বিষয়টি বিবেচনা করে প্রয়োজনীয় ব্যবস্থা গ্রহণ করলে আমি বিশেষভাবে উপকৃত হব।" else "Therefore, I request you to kindly take necessary action in this regard at your earliest convenience."}
+                                </div>
+
+                                <table class="footer-table">
+                                    <tr>
+                                        <td class="footer-left">
+                                            <div>${if (isBengali) "তারিখ: " + date else "Date: " + date}</div>
+                                            <div>${if (isBengali) "স্থান: " + place.ifBlank { "................" } else "Place: " + place.ifBlank { "................" }}</div>
+                                        </td>
+                                        <td class="footer-right">
+                                            <div>${if (isBengali) "ধন্যবাদান্তে," else "Yours faithfully,"}</div>
+                                            <div style="font-weight: bold; margin: 3px 0;">${applicantName.ifBlank { "................" }}</div>
+                                            ${if (applicantAddress.isNotBlank()) "<div style='font-size: 10.5pt; color: #444;'>" + (if (isBengali) "ঠিকানা: " else "Address: ") + applicantAddress + "</div>" else ""}
+                                            <div class="sig-container">
+                                                $signatureHtml
+                                            </div>
+                                        </td>
+                                    </tr>
+                                </table>
+                            </body>
                             </html>
                         """.trimIndent()
 
@@ -1007,6 +1121,7 @@ Signature: ................................
                         place = ""
                         dynamicField1 = ""
                         dynamicField2 = ""
+                        signatureBitmap = null
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
@@ -1047,12 +1162,89 @@ Signature: ................................
                     .border(1.dp, Color(0xFF334155), RoundedCornerShape(12.dp))
                     .padding(16.dp)
             ) {
-                Text(
-                    text = generatedLetter,
-                    color = Color(0xFFE2E8F0),
-                    fontSize = 13.sp,
-                    lineHeight = 22.sp
-                )
+                Column {
+                    val bodyText = if (isBengali) {
+                        currentLetterType.bodyTemplateBn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
+                    } else {
+                        currentLetterType.bodyTemplateEn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
+                    }
+
+                    Text(
+                        text = if (isBengali) "প্রতি,\n${recipientTitle.ifBlank { currentCategory.defaultRecipientBn }}\n${officeName.ifBlank { "...................................." }}"
+                               else "To,\n${recipientTitle.ifBlank { currentCategory.defaultRecipientEn }}\n${officeName.ifBlank { "...................................." }}",
+                        color = Color(0xFFE2E8F0),
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = if (isBengali) "বিষয়: ${currentLetterType.subjectBn}" else "Subject: ${currentLetterType.subjectEn}",
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.5.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = if (isBengali) "মহাশয়/মহাশয়া," else "Respected Sir/Madam,",
+                        color = Color(0xFFE2E8F0),
+                        fontWeight = FontWeight.Medium,
+                        fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Text(
+                        text = bodyText,
+                        color = Color(0xFFE2E8F0),
+                        fontSize = 13.sp,
+                        lineHeight = 22.sp
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    Text(
+                        text = if (isBengali) "অতএব, মহাশয়ের নিকট বিনীত প্রার্থনা, উক্ত বিষয়টি বিবেচনা করে প্রয়োজনীয় ব্যবস্থা গ্রহণ করলে আমি বিশেষভাবে উপকৃত হব।"
+                               else "Therefore, I request you to kindly take necessary action in this regard at your earliest convenience.",
+                        color = Color(0xFFE2E8F0),
+                        fontSize = 13.sp,
+                        lineHeight = 20.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        Column {
+                            Text("তারিখ: $date", color = Color(0xFF94A3B8), fontSize = 11.5.sp)
+                            Text("স্থান: ${place.ifBlank { "................" }}", color = Color(0xFF94A3B8), fontSize = 11.5.sp)
+                        }
+
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(if (isBengali) "ধন্যবাদান্তে," else "Yours faithfully,", color = Color(0xFFE2E8F0), fontSize = 12.sp)
+                            Text(applicantName.ifBlank { "................" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                            if (applicantAddress.isNotBlank()) {
+                                Text(applicantAddress, color = Color(0xFF94A3B8), fontSize = 11.sp)
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            if (signatureBitmap != null) {
+                                Image(
+                                    bitmap = signatureBitmap!!.asImageBitmap(),
+                                    contentDescription = "Signature",
+                                    modifier = Modifier
+                                        .height(40.dp)
+                                        .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
+                                        .padding(2.dp)
+                                )
+                                Text("(স্বাক্ষর)", color = Color(0xFF94A3B8), fontSize = 9.sp)
+                            } else {
+                                Text("স্বাক্ষর: ................................", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
             }
             
             Spacer(modifier = Modifier.height(30.dp))

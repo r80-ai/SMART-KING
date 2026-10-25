@@ -5,12 +5,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.net.Uri
 import android.print.PrintAttributes
 import android.print.PrintManager
 import android.speech.RecognizerIntent
-import android.util.Base64
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -27,15 +24,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Assignment
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Print
-import androidx.compose.material.icons.filled.Tune
-import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -49,26 +42,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.photo.birefnet.BiRefNetLiteEngine
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
+import com.example.ui.components.SignatureUploadSection
+import com.example.ui.components.toBase64Png
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-
-enum class SignatureFilterMode {
-    AI_BG_REMOVE,
-    MANUAL_INK,
-    ORIGINAL
-}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AnnapurnaDeclarationScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
     val scrollState = rememberScrollState()
 
     // 1. Form Inputs State
@@ -113,11 +96,7 @@ fun AnnapurnaDeclarationScreen(onBack: () -> Unit) {
     var voterNo by remember { mutableStateOf("") }
 
     // Signature State
-    var rawSignatureBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var processedSignatureBitmap by remember { mutableStateOf<Bitmap?>(null) }
-    var signatureFilterMode by remember { mutableStateOf(SignatureFilterMode.AI_BG_REMOVE) }
-    var inkThreshold by remember { mutableFloatStateOf(180f) }
-    var isAiProcessing by remember { mutableStateOf(false) }
+    var signatureBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     // Voice recognition target and launcher
     var activeVoiceTarget by remember { mutableStateOf("") }
@@ -168,41 +147,11 @@ fun AnnapurnaDeclarationScreen(onBack: () -> Unit) {
         }
     }
 
-    // Photo picker for signature
-    val photoPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        if (uri != null) {
-            scope.launch(Dispatchers.IO) {
-                try {
-                    val bitmap = decodeSampledBitmap(context, uri)
-                    withContext(Dispatchers.Main) {
-                        rawSignatureBitmap = bitmap
-                        if (bitmap != null) {
-                            applySignatureProcessing(
-                                context = context,
-                                rawBitmap = bitmap,
-                                mode = signatureFilterMode,
-                                threshold = inkThreshold.toInt(),
-                                onProcessingChange = { isAiProcessing = it },
-                                onResult = { processedSignatureBitmap = it }
-                            )
-                        }
-                    }
-                } catch (e: Exception) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(context, "স্বাক্ষর লোড করতে ব্যর্থ হয়েছে", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-        }
-    }
-
     // Plain text formatted letter for clipboard
     val plainTextDeclaration = remember(
         applicantName, guardianName, guardianType, address, postOffice, policeStation, pinCode, panchayatArea,
         guardianProfession, monthlyIncome, houseDescription, landAmount, selectedOptionIndex, customOptionText,
-        formDate, mobileNo, idNo, aadhaarNo, voterNo
+        formDate, mobileNo, idNo, aadhaarNo, voterNo, signatureBitmap
     ) {
         val selectedStatusStr = if (selectedOptionIndex == 8) {
             "9. ${customOptionText.ifBlank { "অন্যান্য কারণ" }}"
@@ -239,7 +188,7 @@ ${panchayatArea.ifBlank { "................" }} পঞ্চায়েতে�
 আধার কার্ড ও ভোটার স্লিপের জেরক্স।
 
 বিনীত-
-${if (processedSignatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"}
+${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"}
         """.trimIndent()
     }
 
@@ -867,185 +816,13 @@ ${if (processedSignatureBitmap != null) "[স্বাক্ষর সংযু�
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // SECTION 5: Signature Feature (Optional with AI BG Remove / Manual Threshold)
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
-                    .border(1.dp, Color(0xFF334155), RoundedCornerShape(12.dp))
-                    .padding(14.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = "৫. আবেদনকারীর স্বাক্ষর (Signature):",
-                            color = Color(0xFFFBBF24),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
-                        Text(
-                            text = "স্বাক্ষর আপলোড ঐচ্ছিক। না দিলে ডট-লাইনে হাতে সই করতে পারবেন।",
-                            color = Color(0xFF94A3B8),
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    Button(
-                        onClick = { photoPickerLauncher.launch("image/*") },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
-                    ) {
-                        Icon(Icons.Default.UploadFile, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("স্বাক্ষর আপলোড", fontSize = 12.sp, color = Color.White)
-                    }
-                }
-
-                if (rawSignatureBitmap != null) {
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    // Signature Mode Selector: AI BG Remove, Manual Ink, Original
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        FilterChip(
-                            selected = signatureFilterMode == SignatureFilterMode.AI_BG_REMOVE,
-                            onClick = {
-                                signatureFilterMode = SignatureFilterMode.AI_BG_REMOVE
-                                rawSignatureBitmap?.let { bmp ->
-                                    applySignatureProcessing(
-                                        context = context,
-                                        rawBitmap = bmp,
-                                        mode = SignatureFilterMode.AI_BG_REMOVE,
-                                        threshold = inkThreshold.toInt(),
-                                        onProcessingChange = { isAiProcessing = it },
-                                        onResult = { processedSignatureBitmap = it }
-                                    )
-                                }
-                            },
-                            label = { Text("Auto AI BG", fontSize = 11.sp) },
-                            leadingIcon = { Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF22C55E),
-                                selectedLabelColor = Color.White
-                            )
-                        )
-
-                        FilterChip(
-                            selected = signatureFilterMode == SignatureFilterMode.MANUAL_INK,
-                            onClick = {
-                                signatureFilterMode = SignatureFilterMode.MANUAL_INK
-                                rawSignatureBitmap?.let { bmp ->
-                                    applySignatureProcessing(
-                                        context = context,
-                                        rawBitmap = bmp,
-                                        mode = SignatureFilterMode.MANUAL_INK,
-                                        threshold = inkThreshold.toInt(),
-                                        onProcessingChange = { isAiProcessing = it },
-                                        onResult = { processedSignatureBitmap = it }
-                                    )
-                                }
-                            },
-                            label = { Text("Manual Ink", fontSize = 11.sp) },
-                            leadingIcon = { Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(14.dp)) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF3B82F6),
-                                selectedLabelColor = Color.White
-                            )
-                        )
-
-                        FilterChip(
-                            selected = signatureFilterMode == SignatureFilterMode.ORIGINAL,
-                            onClick = {
-                                signatureFilterMode = SignatureFilterMode.ORIGINAL
-                                processedSignatureBitmap = rawSignatureBitmap
-                            },
-                            label = { Text("Original", fontSize = 11.sp) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = Color(0xFF64748B),
-                                selectedLabelColor = Color.White
-                            )
-                        )
-                    }
-
-                    // Threshold Slider for Manual Ink Adjust
-                    if (signatureFilterMode == SignatureFilterMode.MANUAL_INK) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text("Ink Threshold: ${inkThreshold.toInt()}", color = Color.White, fontSize = 11.sp)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Slider(
-                                value = inkThreshold,
-                                onValueChange = {
-                                    inkThreshold = it
-                                    rawSignatureBitmap?.let { bmp ->
-                                        processedSignatureBitmap = processSignatureThreshold(bmp, it.toInt())
-                                    }
-                                },
-                                valueRange = 50f..240f,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
-
-                    // Preview of processed signature
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(80.dp)
-                            .background(Color.White, RoundedCornerShape(8.dp))
-                            .border(1.dp, Color(0xFFE2E8F0), RoundedCornerShape(8.dp)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (isAiProcessing) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color(0xFFD97706), strokeWidth = 2.dp)
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("AI ব্যাকগ্রাউন্ড রিমুভ হচ্ছে...", color = Color.Black, fontSize = 12.sp)
-                            }
-                        } else {
-                            val displayBitmap = processedSignatureBitmap ?: rawSignatureBitmap
-                            if (displayBitmap != null) {
-                                Image(
-                                    bitmap = displayBitmap.asImageBitmap(),
-                                    contentDescription = "Signature",
-                                    modifier = Modifier.fillMaxHeight().padding(4.dp)
-                                )
-                            }
-                        }
-
-                        // Remove signature button
-                        IconButton(
-                            onClick = {
-                                rawSignatureBitmap = null
-                                processedSignatureBitmap = null
-                            },
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .size(28.dp)
-                        ) {
-                            Icon(Icons.Default.Close, contentDescription = "Remove", tint = Color.Red, modifier = Modifier.size(16.dp))
-                        }
-                    }
-                } else {
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "স্বাক্ষর যুক্ত না থাকলে প্রিন্ট কপিতে '................' ডট লাইন থাকবে যাতে পেন দিয়ে সই করা যায়।",
-                        color = Color(0xFF64748B),
-                        fontSize = 11.sp
-                    )
-                }
-            }
+            // SECTION 5: Unified Reusable Signature Upload Section (AI BG Remove + Original/Manual Toggle)
+            SignatureUploadSection(
+                signatureBitmap = signatureBitmap,
+                onSignatureChanged = { signatureBitmap = it },
+                title = "৫. আবেদনকারীর স্বাক্ষর (Signature - ঐচ্ছিক):",
+                subtitle = "স্বাক্ষর আপলোড করলে প্রিন্ট কপিতে সই বসে যাবে। না দিলে ডট-লাইনে (................) হাতে সই করতে পারবেন।"
+            )
 
             Spacer(modifier = Modifier.height(20.dp))
 
@@ -1079,7 +856,7 @@ ${if (processedSignatureBitmap != null) "[স্বাক্ষর সংযু�
                             idNo = idNo,
                             aadhaarNo = aadhaarNo,
                             voterNo = voterNo,
-                            signatureBitmap = processedSignatureBitmap
+                            signatureBitmap = signatureBitmap
                         )
 
                         webView.webViewClient = object : WebViewClient() {
@@ -1141,8 +918,7 @@ ${if (processedSignatureBitmap != null) "[স্বাক্ষর সংযু�
                         idNo = ""
                         aadhaarNo = ""
                         voterNo = ""
-                        rawSignatureBitmap = null
-                        processedSignatureBitmap = null
+                        signatureBitmap = null
                     },
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEF4444)),
@@ -1322,7 +1098,7 @@ ${if (processedSignatureBitmap != null) "[স্বাক্ষর সংযু�
                         ) {
                             Text("বিনীত-", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(4.dp))
-                            val sig = processedSignatureBitmap ?: rawSignatureBitmap
+                            val sig = signatureBitmap
                             if (sig != null) {
                                 Image(
                                     bitmap = sig.asImageBitmap(),
@@ -1340,98 +1116,6 @@ ${if (processedSignatureBitmap != null) "[স্বাক্ষর সংযু�
 
             Spacer(modifier = Modifier.height(30.dp))
         }
-    }
-}
-
-// Helper: Applies AI BG Remove via ONNX BiRefNetLiteEngine or Threshold
-private fun applySignatureProcessing(
-    context: Context,
-    rawBitmap: Bitmap,
-    mode: SignatureFilterMode,
-    threshold: Int,
-    onProcessingChange: (Boolean) -> Unit,
-    onResult: (Bitmap) -> Unit
-) {
-    when (mode) {
-        SignatureFilterMode.AI_BG_REMOVE -> {
-            onProcessingChange(true)
-            kotlinx.coroutines.CoroutineScope(Dispatchers.Default).launch {
-                try {
-                    val result = BiRefNetLiteEngine.removeBackground(context, rawBitmap).getOrNull()
-                    withContext(Dispatchers.Main) {
-                        onProcessingChange(false)
-                        if (result != null) {
-                            onResult(result.transparentForeground)
-                        } else {
-                            // Fallback to threshold
-                            onResult(processSignatureThreshold(rawBitmap, threshold))
-                        }
-                    }
-                } catch (e: Throwable) {
-                    withContext(Dispatchers.Main) {
-                        onProcessingChange(false)
-                        onResult(processSignatureThreshold(rawBitmap, threshold))
-                    }
-                }
-            }
-        }
-        SignatureFilterMode.MANUAL_INK -> {
-            onResult(processSignatureThreshold(rawBitmap, threshold))
-        }
-        SignatureFilterMode.ORIGINAL -> {
-            onResult(rawBitmap)
-        }
-    }
-}
-
-// Threshold filter: Converts paper white to transparent and sharpens dark ink
-fun processSignatureThreshold(source: Bitmap, threshold: Int): Bitmap {
-    val width = source.width
-    val height = source.height
-    val outBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val pixels = IntArray(width * height)
-    source.getPixels(pixels, 0, width, 0, 0, width, height)
-    for (i in pixels.indices) {
-        val pixel = pixels[i]
-        val r = (pixel shr 16) and 0xFF
-        val g = (pixel shr 8) and 0xFF
-        val b = pixel and 0xFF
-        val lum = (0.299f * r + 0.587f * g + 0.114f * b).toInt()
-        if (lum > threshold) {
-            pixels[i] = 0 // Transparent background
-        } else {
-            // Keep original ink or deep dark/blue ink
-            pixels[i] = (255 shl 24) or (r shl 16) or (g shl 8) or b
-        }
-    }
-    outBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
-    return outBitmap
-}
-
-// Memory-safe bitmap decoding
-private fun decodeSampledBitmap(context: Context, uri: Uri, reqWidth: Int = 800, reqHeight: Int = 800): Bitmap? {
-    return try {
-        val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-        context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, options)
-        }
-        var inSampleSize = 1
-        if (options.outHeight > reqHeight || options.outWidth > reqWidth) {
-            val halfHeight = options.outHeight / 2
-            val halfWidth = options.outWidth / 2
-            while ((halfHeight / inSampleSize) >= reqHeight && (halfWidth / inSampleSize) >= reqWidth) {
-                inSampleSize *= 2
-            }
-        }
-        val decodeOptions = BitmapFactory.Options().apply {
-            this.inSampleSize = inSampleSize
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-        }
-        context.contentResolver.openInputStream(uri)?.use {
-            BitmapFactory.decodeStream(it, null, decodeOptions)
-        }
-    } catch (e: Exception) {
-        null
     }
 }
 
@@ -1460,10 +1144,7 @@ private fun buildAnnapurnaHtml(
     signatureBitmap: Bitmap?
 ): String {
     val signatureHtml = if (signatureBitmap != null) {
-        val baos = ByteArrayOutputStream()
-        signatureBitmap.compress(Bitmap.CompressFormat.PNG, 100, baos)
-        val b64 = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
-        """<img src="data:image/png;base64,$b64" class="sig-img" alt="Signature" /><br><span style="font-size: 9pt; color: #444;">(আবেদনকারীর স্বাক্ষর)</span>"""
+        """<img src="data:image/png;base64,${signatureBitmap.toBase64Png()}" class="sig-img" alt="Signature" /><br><span style="font-size: 9pt; color: #444;">(আবেদনকারীর স্বাক্ষর)</span>"""
     } else {
         """................................................<br><span style="font-size: 9pt; color: #444;">(আবেদনকারীর স্বাক্ষর)</span>"""
     }
