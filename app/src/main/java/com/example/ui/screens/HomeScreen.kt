@@ -451,14 +451,15 @@ AppScreen(modifier = modifier, isScrollable = false) {
                     }
                 }
 
-                // ROW 3: Application Letter Maker (দরখাস্ত তৈরি)
+                // ROW 3: Application Maker + Annapurna Self-Declaration
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
+                    // APPLICATION MAKER
                     Card(
                         modifier = Modifier
-                            .fillMaxWidth()
+                            .weight(1f)
                             .height(84.dp)
                             .clickable { viewModel.openModal(ActiveModal.APPLICATION_MAKER) }
                             .testTag("card_application_maker"),
@@ -469,7 +470,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         Row(
                             modifier = Modifier
                                 .fillMaxSize()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
@@ -486,17 +487,68 @@ AppScreen(modifier = modifier, isScrollable = false) {
                                     modifier = Modifier.size(22.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (language == "bn") "দরখাস্ত তৈরি" else "Application Letter Maker",
+                                    text = if (language == "bn") "দরখাস্ত তৈরি" else "Application Maker",
                                     style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
                                     color = Color.White,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = if (language == "bn") "ব্যাংক, স্কুল, পুলিশ, বিদ্যুৎ ও সরকারি দরখাস্ত" else "Bank, School, Police, Power & Govt Letters",
+                                    text = if (language == "bn") "সরকারি ও বেসরকারি দরখাস্ত" else "Letter Generator",
+                                    style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+
+                    // ANNAPURNA SELF-DECLARATION
+                    Card(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(84.dp)
+                            .clickable { viewModel.openModal(ActiveModal.ANNAPURNA_DECLARATION) }
+                            .testTag("card_annapurna_declaration"),
+                        shape = RoundedCornerShape(14.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFFD97706)),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Color.White.copy(alpha = 0.2f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Assignment,
+                                    contentDescription = "Annapurna Declaration",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (language == "bn") "অন্নপূর্ণা স্ব-ঘোষণা" else "Annapurna Form",
+                                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold, fontSize = 13.sp),
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = if (language == "bn") "স্ব-ঘোষণা পত্র জেনারেটর" else "Self-Declaration Form",
                                     style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
                                     color = Color.White.copy(alpha = 0.85f),
                                     maxLines = 1,

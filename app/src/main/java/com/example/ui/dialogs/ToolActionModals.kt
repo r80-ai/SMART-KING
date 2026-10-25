@@ -341,6 +341,11 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
                 onBack = { viewModel.closeModal() }
             )
         }
+        ActiveModal.ANNAPURNA_DECLARATION -> {
+            com.example.ui.screens.AnnapurnaDeclarationScreen(
+                onBack = { viewModel.closeModal() }
+            )
+        }
         ActiveModal.DOC_ENHANCER -> {
             com.example.ui.screens.DocEnhancerScreen(
                 viewModel = viewModel,

@@ -73,7 +73,8 @@ enum class ActiveModal {
     RESUME_BUILDER,
     DOC_ENHANCER,
     NAME_DATE_PHOTO,
-    APPLICATION_MAKER
+    APPLICATION_MAKER,
+    ANNAPURNA_DECLARATION
 }
 
 data class ToolResultInfo(
