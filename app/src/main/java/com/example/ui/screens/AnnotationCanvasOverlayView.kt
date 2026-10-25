@@ -1,11 +1,14 @@
 package com.example.ui.screens
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.DashPathEffect
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.RectF
 import android.util.AttributeSet
 import android.view.MotionEvent
@@ -21,16 +24,17 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 /**
- * AnnotationCanvasOverlayView provides a dedicated, high-performance Android View canvas
+ * AnnotationCanvasOverlayView provides a high-performance Android View canvas
  * positioned right above the rendered PDF page.
  *
  * Capabilities:
  * - Smooth quadratic Bézier curves for Freehand Pen and Highlighter.
- * - Manual drag-to-create geometric shapes (Rectangle, Circle/Ellipse, Line, Arrow) with live preview.
- * - Continuous geometry-based Eraser that ONLY intersects and removes annotation strokes/shapes
- *   without EVER modifying, whitening, or cutting the original PDF page content.
- * - Independent per-page annotation data models.
- * - Touch interception management (requestDisallowInterceptTouchEvent) during drawing/erasing.
+ * - Geometric shapes (Rectangle, Circle/Ellipse, Line, Arrow) with live preview.
+ * - Dual Eraser Modes:
+ *     Mode A: "Stroke Eraser" (Auto Object Eraser) - deletes whole object on touch.
+ *     Mode B: "Manual Eraser" (Partial Drag Eraser) - erases only touched pixels via PorterDuff.Mode.CLEAR.
+ * - Select, Drag-to-Move, and Corner Handle Resize for all drawn pen strokes, highlights, and shapes.
+ * - Touch interception management (requestDisallowInterceptTouchEvent) during dragging/resizing/drawing/erasing.
  * - Undo, Redo, and Clear support.
  */
 class AnnotationCanvasOverlayView @JvmOverloads constructor(
@@ -40,11 +44,16 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     enum class ToolMode {
-        PEN, HIGHLIGHT, SHAPE, ERASER
+        SELECT, PEN, HIGHLIGHT, SHAPE, ERASER
     }
 
     enum class ShapeType {
         RECTANGLE, CIRCLE, LINE, ARROW
+    }
+
+    enum class EraserType {
+        STROKE, // Mode A: Auto Object Eraser
+        MANUAL  // Mode B: Partial Drag Eraser
     }
 
     enum class EraserSize(val radiusDp: Float) {
@@ -65,6 +74,9 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     var currentTool: ToolMode = ToolMode.PEN
         set(value) {
             field = value
+            if (value != ToolMode.SELECT) {
+                // Keep selectedAnnotationId if manipulating, or let user deselect
+            }
             invalidate()
         }
 
@@ -74,7 +86,19 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             invalidate()
         }
 
+    var eraserType: EraserType = EraserType.STROKE
+        set(value) {
+            field = value
+            invalidate()
+        }
+
     var eraserSize: EraserSize = EraserSize.MEDIUM
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var selectedAnnotationId: String? = null
         set(value) {
             field = value
             invalidate()
@@ -97,6 +121,8 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     // Callbacks for ViewModel & history synchronization
     var onAnnotationAdded: ((PdfEngine.EditItem) -> Unit)? = null
     var onAnnotationsRemoved: ((List<PdfEngine.EditItem>) -> Unit)? = null
+    var onAnnotationUpdated: ((PdfEngine.EditItem) -> Unit)? = null
+    var onAnnotationSelected: ((String?) -> Unit)? = null
     var onHistoryPush: (() -> Unit)? = null
 
     // Per-page annotation storage
@@ -122,6 +148,29 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     private var eraserTouchX = 0f
     private var eraserTouchY = 0f
     private val removedDuringCurrentGesture = mutableListOf<PdfEngine.EditItem>()
+
+    // Mode B: Manual Eraser drawing layer
+    private var drawingLayerBitmap: Bitmap? = null
+    private var drawingLayerCanvas: Canvas? = null
+    private var manualEraserItem: PdfEngine.EditItem? = null
+
+    // Move & Resize interaction state
+    private enum class TouchInteraction {
+        NONE,
+        DRAW_STROKE,
+        DRAW_SHAPE,
+        ERASE_STROKE,
+        ERASE_MANUAL,
+        MOVE_ANNOTATION,
+        RESIZE_ANNOTATION
+    }
+
+    private var activeInteraction = TouchInteraction.NONE
+    private var activeResizeCorner = -1 // 0: TL, 1: TR, 2: BL, 3: BR
+    private var touchStartX = 0f
+    private var touchStartY = 0f
+    private var initialItemState: PdfEngine.EditItem? = null
+    private var initialItemBounds = RectF()
 
     // Paints
     private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -150,6 +199,35 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         style = Paint.Style.STROKE
         color = Color.rgb(239, 68, 68)
         strokeWidth = 2f
+    }
+
+    private val selectedBoundingPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#3B82F6") // ToolBlue
+        strokeWidth = 2.5f
+    }
+
+    private val handleFillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.FILL
+        color = Color.WHITE
+    }
+
+    private val handleStrokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        color = Color.parseColor("#3B82F6")
+        strokeWidth = 2.5f
+    }
+
+    private val manualErasePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        style = Paint.Style.STROKE
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    private val manualEraseCirclePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+        style = Paint.Style.FILL
     }
 
     init {
@@ -195,16 +273,18 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun setEraserMode(size: EraserSize) {
+    fun setEraserMode(size: EraserSize, type: EraserType = eraserType) {
         currentTool = ToolMode.ERASER
         eraserSize = size
+        eraserType = type
         invalidate()
     }
 
-    /**
-     * Clears all pen, highlight, and shape annotations on the current page.
-     * Original PDF content is completely untouched.
-     */
+    fun setSelectMode() {
+        currentTool = ToolMode.SELECT
+        invalidate()
+    }
+
     fun clearCurrentPageAnnotations() {
         val currentList = pageAnnotations[currentPageIndex] ?: return
         val itemsToRemove = currentList.filter {
@@ -219,6 +299,8 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         if (itemsToRemove.isNotEmpty()) {
             onHistoryPush?.invoke()
             currentList.removeAll(itemsToRemove)
+            selectedAnnotationId = null
+            onAnnotationSelected?.invoke(null)
             onAnnotationsRemoved?.invoke(itemsToRemove)
             invalidate()
         }
@@ -229,6 +311,314 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         while (p != null) {
             p.requestDisallowInterceptTouchEvent(disallow)
             p = p.parent
+        }
+    }
+
+    // --- Bounding Box & Corner Handles Calculation ---
+
+    fun computeAnnotationBounds(item: PdfEngine.EditItem): RectF {
+        val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+        val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+        val density = resources.displayMetrics.density
+
+        return when (item.type) {
+            PdfEngine.AnnotationType.PEN,
+            PdfEngine.AnnotationType.DRAW,
+            PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                if (item.points.isNotEmpty()) {
+                    var minX = Float.MAX_VALUE
+                    var maxX = -Float.MAX_VALUE
+                    var minY = Float.MAX_VALUE
+                    var maxY = -Float.MAX_VALUE
+                    for (pt in item.points) {
+                        val px = pt.first * scaleX
+                        val py = pt.second * scaleY
+                        if (px < minX) minX = px
+                        if (px > maxX) maxX = px
+                        if (py < minY) minY = py
+                        if (py > maxY) maxY = py
+                    }
+                    val pad = max(16f, (item.strokeWidth * density) / 2f + 8f)
+                    RectF(minX - pad, minY - pad, maxX + pad, maxY + pad)
+                } else if (item.drawingBitmap != null) {
+                    val l = item.posX * scaleX
+                    val t = item.posY * scaleY
+                    val r = l + (item.drawingBitmap.width.toFloat() * scaleX)
+                    val b = t + (item.drawingBitmap.height.toFloat() * scaleY)
+                    RectF(l, t, r, b)
+                } else {
+                    RectF(item.posX * scaleX - 20f, item.posY * scaleY - 20f, item.posX * scaleX + 20f, item.posY * scaleY + 20f)
+                }
+            }
+
+            PdfEngine.AnnotationType.RECTANGLE,
+            PdfEngine.AnnotationType.CIRCLE -> {
+                val l = min(item.posX * scaleX, item.endX * scaleX)
+                val t = min(item.posY * scaleY, item.endY * scaleY)
+                val r = max(item.posX * scaleX, item.endX * scaleX)
+                val b = max(item.posY * scaleY, item.endY * scaleY)
+                val pad = max(12f, (item.strokeWidth * density) / 2f + 4f)
+                RectF(l - pad, t - pad, r + pad, b + pad)
+            }
+
+            PdfEngine.AnnotationType.LINE,
+            PdfEngine.AnnotationType.ARROW -> {
+                val l = min(item.posX * scaleX, item.endX * scaleX)
+                val t = min(item.posY * scaleY, item.endY * scaleY)
+                val r = max(item.posX * scaleX, item.endX * scaleX)
+                val b = max(item.posY * scaleY, item.endY * scaleY)
+                val pad = max(20f, (item.strokeWidth * density * 2f))
+                RectF(l - pad, t - pad, r + pad, b + pad)
+            }
+
+            else -> {
+                val l = item.posX * scaleX
+                val t = item.posY * scaleY
+                val r = item.endX * scaleX
+                val b = item.endY * scaleY
+                RectF(min(l, r), min(t, b), max(l, r), max(t, b))
+            }
+        }
+    }
+
+    private fun getCornerHandles(bounds: RectF): List<Pair<Float, Float>> {
+        return listOf(
+            Pair(bounds.left, bounds.top),       // 0: Top-Left
+            Pair(bounds.right, bounds.top),      // 1: Top-Right
+            Pair(bounds.left, bounds.bottom),    // 2: Bottom-Left
+            Pair(bounds.right, bounds.bottom)    // 3: Bottom-Right
+        )
+    }
+
+    private fun findCornerHandleHit(bounds: RectF, touchX: Float, touchY: Float): Int {
+        val touchRadius = 24f * resources.displayMetrics.density
+        val handles = getCornerHandles(bounds)
+        for (i in handles.indices) {
+            val (hx, hy) = handles[i]
+            if (hypot(touchX - hx, touchY - hy) <= touchRadius) {
+                return i
+            }
+        }
+        return -1
+    }
+
+    fun findAnnotationAt(touchX: Float, touchY: Float): PdfEngine.EditItem? {
+        val currentList = pageAnnotations[currentPageIndex] ?: return null
+        val density = resources.displayMetrics.density
+        val searchRadius = 18f * density
+
+        for (i in currentList.indices.reversed()) {
+            val item = currentList[i]
+            val isHit = when (item.type) {
+                PdfEngine.AnnotationType.PEN,
+                PdfEngine.AnnotationType.DRAW,
+                PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                    checkStrokeIntersection(item, touchX, touchY, searchRadius)
+                }
+
+                PdfEngine.AnnotationType.LINE,
+                PdfEngine.AnnotationType.ARROW -> {
+                    val halfW = (item.strokeWidth * density) / 2f
+                    val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+                    val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+                    distToSegment(touchX, touchY, item.posX * scaleX, item.posY * scaleY, item.endX * scaleX, item.endY * scaleY) <= (searchRadius + halfW)
+                }
+
+                PdfEngine.AnnotationType.RECTANGLE -> {
+                    checkRectangleIntersection(item, touchX, touchY, searchRadius)
+                }
+
+                PdfEngine.AnnotationType.CIRCLE -> {
+                    checkEllipseIntersection(item, touchX, touchY, searchRadius)
+                }
+
+                else -> false
+            }
+
+            if (isHit) {
+                return item
+            }
+        }
+        return null
+    }
+
+    private fun transformItem(
+        initial: PdfEngine.EditItem,
+        dx: Float,
+        dy: Float,
+        mode: TouchInteraction,
+        corner: Int,
+        initialBounds: RectF
+    ): PdfEngine.EditItem {
+        val scaleX = if (initial.baseWidth > 0f && width > 0) width.toFloat() / initial.baseWidth else 1f
+        val scaleY = if (initial.baseHeight > 0f && height > 0) height.toFloat() / initial.baseHeight else 1f
+
+        if (mode == TouchInteraction.MOVE_ANNOTATION) {
+            val unscaleDx = dx / scaleX
+            val unscaleDy = dy / scaleY
+
+            return when (initial.type) {
+                PdfEngine.AnnotationType.PEN,
+                PdfEngine.AnnotationType.DRAW,
+                PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                    val newPts = initial.points.map { Pair(it.first + unscaleDx, it.second + unscaleDy) }
+                    initial.copy(
+                        points = newPts,
+                        posX = initial.posX + unscaleDx,
+                        posY = initial.posY + unscaleDy,
+                        endX = initial.endX + unscaleDx,
+                        endY = initial.endY + unscaleDy
+                    )
+                }
+                else -> {
+                    initial.copy(
+                        posX = initial.posX + unscaleDx,
+                        posY = initial.posY + unscaleDy,
+                        endX = initial.endX + unscaleDx,
+                        endY = initial.endY + unscaleDy
+                    )
+                }
+            }
+        } else if (mode == TouchInteraction.RESIZE_ANNOTATION) {
+            val origL = initialBounds.left
+            val origT = initialBounds.top
+            val origR = initialBounds.right
+            val origB = initialBounds.bottom
+            val minDim = 24f
+
+            var newL = origL
+            var newT = origT
+            var newR = origR
+            var newB = origB
+
+            when (corner) {
+                0 -> { // Top-Left
+                    newL = min(origR - minDim, origL + dx)
+                    newT = min(origB - minDim, origT + dy)
+                }
+                1 -> { // Top-Right
+                    newR = max(origL + minDim, origR + dx)
+                    newT = min(origB - minDim, origT + dy)
+                }
+                2 -> { // Bottom-Left
+                    newL = min(origR - minDim, origL + dx)
+                    newB = max(origT + minDim, origB + dy)
+                }
+                3 -> { // Bottom-Right
+                    newR = max(origL + minDim, origR + dx)
+                    newB = max(origT + minDim, origB + dy)
+                }
+            }
+
+            val origW = max(1f, origR - origL)
+            val origH = max(1f, origB - origT)
+            val newW = max(1f, newR - newL)
+            val newH = max(1f, newB - newT)
+
+            fun mapPoint(px: Float, py: Float): Pair<Float, Float> {
+                val u = (px - origL) / origW
+                val v = (py - origT) / origH
+                val nx = newL + u * newW
+                val ny = newT + v * newH
+                return Pair(nx / scaleX, ny / scaleY)
+            }
+
+            return when (initial.type) {
+                PdfEngine.AnnotationType.PEN,
+                PdfEngine.AnnotationType.DRAW,
+                PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                    val newPts = initial.points.map { pt ->
+                        mapPoint(pt.first * scaleX, pt.second * scaleY)
+                    }
+                    initial.copy(
+                        points = newPts,
+                        posX = newL / scaleX,
+                        posY = newT / scaleY,
+                        endX = newR / scaleX,
+                        endY = newB / scaleY
+                    )
+                }
+                PdfEngine.AnnotationType.RECTANGLE,
+                PdfEngine.AnnotationType.CIRCLE -> {
+                    initial.copy(
+                        posX = newL / scaleX,
+                        posY = newT / scaleY,
+                        endX = newR / scaleX,
+                        endY = newB / scaleY
+                    )
+                }
+                PdfEngine.AnnotationType.LINE,
+                PdfEngine.AnnotationType.ARROW -> {
+                    val (spX, spY) = mapPoint(initial.posX * scaleX, initial.posY * scaleY)
+                    val (epX, epY) = mapPoint(initial.endX * scaleX, initial.endY * scaleY)
+                    initial.copy(
+                        posX = spX,
+                        posY = spY,
+                        endX = epX,
+                        endY = epY
+                    )
+                }
+                else -> initial
+            }
+        }
+        return initial
+    }
+
+    // --- Mode B: Manual Partial Pixel Eraser ---
+
+    private fun prepareDrawingLayerForManualEraser() {
+        if (width <= 0 || height <= 0) return
+        val currentList = pageAnnotations[currentPageIndex] ?: return
+        if (currentList.isEmpty()) return
+
+        onHistoryPush?.invoke()
+
+        if (drawingLayerBitmap == null || drawingLayerBitmap?.width != width || drawingLayerBitmap?.height != height) {
+            drawingLayerBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+            drawingLayerCanvas = Canvas(drawingLayerBitmap!!)
+        }
+        val bmpCanvas = drawingLayerCanvas ?: return
+        bmpCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
+
+        // Render current vector items into transparent drawingLayerBitmap
+        renderAnnotationsToCanvas(bmpCanvas, currentList)
+
+        // Replace individual items with the single baked drawing layer item
+        manualEraserItem = PdfEngine.EditItem(
+            pageIndex = currentPageIndex,
+            type = PdfEngine.AnnotationType.DRAW,
+            drawingBitmap = drawingLayerBitmap,
+            baseWidth = width.toFloat(),
+            baseHeight = height.toFloat()
+        )
+        val removed = currentList.toList()
+        currentList.clear()
+        currentList.add(manualEraserItem!!)
+        onAnnotationsRemoved?.invoke(removed)
+        onAnnotationAdded?.invoke(manualEraserItem!!)
+    }
+
+    private fun applyManualEraserAt(x: Float, y: Float, lx: Float, ly: Float) {
+        val bmpCanvas = drawingLayerCanvas ?: return
+        val radiusPx = eraserSize.radiusDp * resources.displayMetrics.density
+
+        manualErasePaint.strokeWidth = radiusPx * 2f
+        bmpCanvas.drawLine(lx, ly, x, y, manualErasePaint)
+        bmpCanvas.drawCircle(x, y, radiusPx, manualEraseCirclePaint)
+    }
+
+    private fun finishManualEraserGesture() {
+        if (manualEraserItem != null && drawingLayerBitmap != null) {
+            val updated = manualEraserItem!!.copy(
+                drawingBitmap = drawingLayerBitmap?.copy(Bitmap.Config.ARGB_8888, true)
+            )
+            val currentList = pageAnnotations[currentPageIndex]
+            val idx = currentList?.indexOfFirst { it.id == manualEraserItem!!.id } ?: -1
+            if (idx != -1) {
+                currentList!![idx] = updated
+                manualEraserItem = updated
+                onAnnotationUpdated?.invoke(updated)
+            }
         }
     }
 
@@ -243,18 +633,80 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 disallowParentIntercept(true)
+                touchStartX = x
+                touchStartY = y
+                lastX = x
+                lastY = y
 
+                // 1. Check if an existing selected annotation is touched on its handles or body
+                val selectedItem = pageAnnotations[currentPageIndex]?.find { it.id == selectedAnnotationId }
+                if (selectedItem != null) {
+                    val bounds = computeAnnotationBounds(selectedItem)
+                    val cornerHit = findCornerHandleHit(bounds, x, y)
+                    if (cornerHit != -1) {
+                        activeInteraction = TouchInteraction.RESIZE_ANNOTATION
+                        activeResizeCorner = cornerHit
+                        initialItemState = selectedItem
+                        initialItemBounds = bounds
+                        invalidate()
+                        return true
+                    } else if (bounds.contains(x, y)) {
+                        activeInteraction = TouchInteraction.MOVE_ANNOTATION
+                        initialItemState = selectedItem
+                        initialItemBounds = bounds
+                        invalidate()
+                        return true
+                    }
+                }
+
+                // 2. If in SELECT mode or user taps an annotation:
+                if (currentTool == ToolMode.SELECT) {
+                    val hit = findAnnotationAt(x, y)
+                    if (hit != null) {
+                        selectedAnnotationId = hit.id
+                        onAnnotationSelected?.invoke(hit.id)
+                        activeInteraction = TouchInteraction.MOVE_ANNOTATION
+                        initialItemState = hit
+                        initialItemBounds = computeAnnotationBounds(hit)
+                    } else {
+                        selectedAnnotationId = null
+                        onAnnotationSelected?.invoke(null)
+                        activeInteraction = TouchInteraction.NONE
+                    }
+                    invalidate()
+                    return true
+                }
+
+                // 3. If user directly taps an annotation while not using eraser:
+                if (currentTool != ToolMode.ERASER) {
+                    val hit = findAnnotationAt(x, y)
+                    if (hit != null && selectedAnnotationId == null) {
+                        selectedAnnotationId = hit.id
+                        onAnnotationSelected?.invoke(hit.id)
+                        activeInteraction = TouchInteraction.MOVE_ANNOTATION
+                        initialItemState = hit
+                        initialItemBounds = computeAnnotationBounds(hit)
+                        invalidate()
+                        return true
+                    }
+                }
+
+                // 4. Tool-specific actions
                 when (currentTool) {
                     ToolMode.PEN, ToolMode.HIGHLIGHT -> {
+                        selectedAnnotationId = null
+                        onAnnotationSelected?.invoke(null)
+                        activeInteraction = TouchInteraction.DRAW_STROKE
                         activePoints.clear()
                         activePoints.add(x to y)
                         activePath.reset()
                         activePath.moveTo(x, y)
-                        lastX = x
-                        lastY = y
                     }
 
                     ToolMode.SHAPE -> {
+                        selectedAnnotationId = null
+                        onAnnotationSelected?.invoke(null)
+                        activeInteraction = TouchInteraction.DRAW_SHAPE
                         isDrawingShape = true
                         shapeStartX = x
                         shapeStartY = y
@@ -263,13 +715,26 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                     }
 
                     ToolMode.ERASER -> {
+                        selectedAnnotationId = null
+                        onAnnotationSelected?.invoke(null)
                         isErasing = true
                         eraserTouchX = x
                         eraserTouchY = y
-                        removedDuringCurrentGesture.clear()
-                        checkAndEraseAnnotationsAt(x, y)
+
+                        if (eraserType == EraserType.STROKE) {
+                            activeInteraction = TouchInteraction.ERASE_STROKE
+                            removedDuringCurrentGesture.clear()
+                            checkAndEraseAnnotationsAt(x, y)
+                        } else {
+                            activeInteraction = TouchInteraction.ERASE_MANUAL
+                            prepareDrawingLayerForManualEraser()
+                            applyManualEraserAt(x, y, lastX, lastY)
+                        }
                     }
+
+                    ToolMode.SELECT -> {}
                 }
+
                 invalidate()
                 return true
             }
@@ -277,9 +742,23 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             MotionEvent.ACTION_MOVE -> {
                 disallowParentIntercept(true)
 
-                when (currentTool) {
-                    ToolMode.PEN, ToolMode.HIGHLIGHT -> {
-                        // Smooth Bézier curve interpolation via midpoints
+                when (activeInteraction) {
+                    TouchInteraction.MOVE_ANNOTATION, TouchInteraction.RESIZE_ANNOTATION -> {
+                        val init = initialItemState ?: return true
+                        val dx = x - touchStartX
+                        val dy = y - touchStartY
+                        val transformed = transformItem(init, dx, dy, activeInteraction, activeResizeCorner, initialItemBounds)
+                        val currentList = pageAnnotations[currentPageIndex] ?: return true
+                        val idx = currentList.indexOfFirst { it.id == transformed.id }
+                        if (idx != -1) {
+                            currentList[idx] = transformed
+                            onAnnotationUpdated?.invoke(transformed)
+                        }
+                        invalidate()
+                        return true
+                    }
+
+                    TouchInteraction.DRAW_STROKE -> {
                         val midX = (lastX + x) / 2f
                         val midY = (lastY + y) / 2f
                         activePath.quadTo(lastX, lastY, midX, midY)
@@ -287,29 +766,56 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                         lastY = y
                         activePoints.add(x to y)
                         invalidate()
+                        return true
                     }
 
-                    ToolMode.SHAPE -> {
+                    TouchInteraction.DRAW_SHAPE -> {
                         shapeCurrentX = x
                         shapeCurrentY = y
                         invalidate()
+                        return true
                     }
 
-                    ToolMode.ERASER -> {
+                    TouchInteraction.ERASE_STROKE -> {
                         eraserTouchX = x
                         eraserTouchY = y
                         checkAndEraseAnnotationsAt(x, y)
                         invalidate()
+                        return true
                     }
+
+                    TouchInteraction.ERASE_MANUAL -> {
+                        eraserTouchX = x
+                        eraserTouchY = y
+                        applyManualEraserAt(x, y, lastX, lastY)
+                        lastX = x
+                        lastY = y
+                        invalidate()
+                        return true
+                    }
+
+                    TouchInteraction.NONE -> return false
                 }
-                return true
             }
 
             MotionEvent.ACTION_UP -> {
                 disallowParentIntercept(false)
 
-                when (currentTool) {
-                    ToolMode.PEN, ToolMode.HIGHLIGHT -> {
+                when (activeInteraction) {
+                    TouchInteraction.MOVE_ANNOTATION, TouchInteraction.RESIZE_ANNOTATION -> {
+                        val init = initialItemState
+                        if (init != null) {
+                            val currentList = pageAnnotations[currentPageIndex]
+                            val finalItem = currentList?.find { it.id == init.id }
+                            if (finalItem != null && finalItem != init) {
+                                onHistoryPush?.invoke()
+                                onAnnotationUpdated?.invoke(finalItem)
+                            }
+                        }
+                        initialItemState = null
+                    }
+
+                    TouchInteraction.DRAW_STROKE -> {
                         activePath.lineTo(x, y)
                         activePoints.add(x to y)
 
@@ -330,12 +836,11 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                             currentList.add(newAnnotation)
                             onAnnotationAdded?.invoke(newAnnotation)
                         }
-
                         activePoints.clear()
                         activePath.reset()
                     }
 
-                    ToolMode.SHAPE -> {
+                    TouchInteraction.DRAW_SHAPE -> {
                         shapeCurrentX = x
                         shapeCurrentY = y
                         isDrawingShape = false
@@ -381,15 +886,24 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                         }
                     }
 
-                    ToolMode.ERASER -> {
+                    TouchInteraction.ERASE_STROKE -> {
                         isErasing = false
                         if (removedDuringCurrentGesture.isNotEmpty()) {
                             onAnnotationsRemoved?.invoke(removedDuringCurrentGesture.toList())
                         }
                         removedDuringCurrentGesture.clear()
                     }
+
+                    TouchInteraction.ERASE_MANUAL -> {
+                        isErasing = false
+                        finishManualEraserGesture()
+                    }
+
+                    TouchInteraction.NONE -> {}
                 }
 
+                activeInteraction = TouchInteraction.NONE
+                activeResizeCorner = -1
                 invalidate()
                 return true
             }
@@ -401,6 +915,9 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                 isDrawingShape = false
                 isErasing = false
                 removedDuringCurrentGesture.clear()
+                activeInteraction = TouchInteraction.NONE
+                activeResizeCorner = -1
+                initialItemState = null
                 invalidate()
                 return true
             }
@@ -410,9 +927,8 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     }
 
     /**
-     * Geometry collision detection:
+     * Mode A: Auto Object Eraser:
      * Erases stroke paths and shape objects intersecting the eraser touch circle.
-     * PDF background text and bitmap are completely untouched.
      */
     private fun checkAndEraseAnnotationsAt(touchX: Float, touchY: Float) {
         val currentList = pageAnnotations[currentPageIndex] ?: return
@@ -432,7 +948,9 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                 PdfEngine.AnnotationType.LINE,
                 PdfEngine.AnnotationType.ARROW -> {
                     val halfW = (item.strokeWidth * resources.displayMetrics.density) / 2f
-                    distToSegment(touchX, touchY, item.posX, item.posY, item.endX, item.endY) <= (radiusPx + halfW)
+                    val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+                    val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+                    distToSegment(touchX, touchY, item.posX * scaleX, item.posY * scaleY, item.endX * scaleX, item.endY * scaleY) <= (radiusPx + halfW)
                 }
 
                 PdfEngine.AnnotationType.RECTANGLE -> {
@@ -457,12 +975,27 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
             currentList.removeAll(toRemove)
             removedDuringCurrentGesture.addAll(toRemove)
+            if (toRemove.any { it.id == selectedAnnotationId }) {
+                selectedAnnotationId = null
+                onAnnotationSelected?.invoke(null)
+            }
         }
     }
 
     private fun checkStrokeIntersection(item: PdfEngine.EditItem, touchX: Float, touchY: Float, radiusPx: Float): Boolean {
         val pts = item.points
-        if (pts.isEmpty()) return false
+        if (pts.isEmpty()) {
+            if (item.drawingBitmap != null) {
+                val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
+                val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
+                val l = item.posX * scaleX
+                val t = item.posY * scaleY
+                val r = l + (item.drawingBitmap.width.toFloat() * scaleX)
+                val b = t + (item.drawingBitmap.height.toFloat() * scaleY)
+                return touchX in (l - radiusPx)..(r + radiusPx) && touchY in (t - radiusPx)..(b + radiusPx)
+            }
+            return false
+        }
         val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
         val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
         val halfW = (item.strokeWidth * resources.displayMetrics.density * ((scaleX + scaleY) / 2f)) / 2f
@@ -494,7 +1027,6 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         val halfW = (item.strokeWidth * resources.displayMetrics.density * ((scaleX + scaleY) / 2f)) / 2f
         val threshold = radiusPx + halfW
 
-        // Check if user hit the filled interior
         if (item.fillColorHex != null) {
             if (touchX in (left - radiusPx)..(right + radiusPx) &&
                 touchY in (top - radiusPx)..(bottom + radiusPx)
@@ -503,7 +1035,6 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
         }
 
-        // Check distance to the 4 perimeter edges
         if (distToSegment(touchX, touchY, left, top, right, top) <= threshold) return true
         if (distToSegment(touchX, touchY, right, top, right, bottom) <= threshold) return true
         if (distToSegment(touchX, touchY, right, bottom, left, bottom) <= threshold) return true
@@ -552,13 +1083,10 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         return hypot(px - projX, py - projY)
     }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
+    private fun renderAnnotationsToCanvas(canvas: Canvas, items: List<PdfEngine.EditItem>) {
         val density = resources.displayMetrics.density
 
-        // 1. Render all committed annotations for the current page
-        val currentList = pageAnnotations[currentPageIndex] ?: emptyList()
-        for (item in currentList) {
+        for (item in items) {
             val scaleX = if (item.baseWidth > 0f && width > 0) width.toFloat() / item.baseWidth else 1f
             val scaleY = if (item.baseHeight > 0f && height > 0) height.toFloat() / item.baseHeight else 1f
             val strokeScale = (scaleX + scaleY) / 2f
@@ -567,6 +1095,10 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                 PdfEngine.AnnotationType.PEN,
                 PdfEngine.AnnotationType.DRAW,
                 PdfEngine.AnnotationType.HIGHLIGHTER -> {
+                    if (item.drawingBitmap != null) {
+                        canvas.drawBitmap(item.drawingBitmap, item.posX * scaleX, item.posY * scaleY, null)
+                    }
+
                     val pts = item.points
                     if (pts.size >= 2) {
                         val path = Path()
@@ -660,6 +1192,15 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                 else -> {}
             }
         }
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val density = resources.displayMetrics.density
+
+        // 1. Render all committed annotations for the current page
+        val currentList = pageAnnotations[currentPageIndex] ?: emptyList()
+        renderAnnotationsToCanvas(canvas, currentList)
 
         // 2. Render active in-progress stroke
         if ((currentTool == ToolMode.PEN || currentTool == ToolMode.HIGHLIGHT) && activePoints.size >= 2) {
@@ -730,6 +1271,23 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             val radiusPx = eraserSize.radiusDp * density
             canvas.drawCircle(eraserTouchX, eraserTouchY, radiusPx, eraserIndicatorFillPaint)
             canvas.drawCircle(eraserTouchX, eraserTouchY, radiusPx, eraserIndicatorStrokePaint)
+        }
+
+        // 5. Render Bounding Box and 4 Corner Resize Handles for selected annotation
+        if (selectedAnnotationId != null) {
+            val selectedItem = currentList.find { it.id == selectedAnnotationId }
+            if (selectedItem != null) {
+                val bounds = computeAnnotationBounds(selectedItem)
+                selectedBoundingPaint.strokeWidth = 2f * density
+                canvas.drawRect(bounds, selectedBoundingPaint)
+
+                val handleRadius = 6.5f * density
+                val handles = getCornerHandles(bounds)
+                for ((hx, hy) in handles) {
+                    canvas.drawCircle(hx, hy, handleRadius, handleFillPaint)
+                    canvas.drawCircle(hx, hy, handleRadius, handleStrokePaint)
+                }
+            }
         }
     }
 }

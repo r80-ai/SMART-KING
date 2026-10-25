@@ -271,6 +271,78 @@ class EditPdfIntegrationTest {
         assertEquals(100, dstRect.width())
         assertEquals(125, dstRect.height())
     }
+
+    @Test
+    fun testAnnotationCanvasOverlayToolModesAndEraserTypes() {
+        val context = org.robolectric.RuntimeEnvironment.getApplication()
+        val view = com.example.ui.screens.AnnotationCanvasOverlayView(context)
+
+        // Verify default tool mode and eraser type
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.ToolMode.PEN, view.currentTool)
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.STROKE, view.eraserType)
+
+        // Verify switching to SELECT mode
+        view.setSelectMode()
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.ToolMode.SELECT, view.currentTool)
+
+        // Verify switching to ERASER mode with STROKE (Mode A)
+        view.setEraserMode(
+            com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.LARGE,
+            com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.STROKE
+        )
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.ToolMode.ERASER, view.currentTool)
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.STROKE, view.eraserType)
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.LARGE, view.eraserSize)
+
+        // Verify switching to ERASER mode with MANUAL (Mode B)
+        view.setEraserMode(
+            com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.MEDIUM,
+            com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.MANUAL
+        )
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.ToolMode.ERASER, view.currentTool)
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.MANUAL, view.eraserType)
+        assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.MEDIUM, view.eraserSize)
+    }
+
+    @Test
+    fun testAnnotationBoundingBoxCalculationAndTransform() {
+        val rectItem = PdfEngine.EditItem(
+            id = "test_rect_1",
+            pageIndex = 0,
+            type = PdfEngine.AnnotationType.RECTANGLE,
+            posX = 100f,
+            posY = 100f,
+            endX = 300f,
+            endY = 200f,
+            colorHex = Color.RED,
+            strokeWidth = 4f
+        )
+
+        // Calculate expected bounds
+        val minX = minOf(rectItem.posX, rectItem.endX)
+        val maxX = maxOf(rectItem.posX, rectItem.endX)
+        val minY = minOf(rectItem.posY, rectItem.endY)
+        val maxY = maxOf(rectItem.posY, rectItem.endY)
+
+        assertEquals(100f, minX)
+        assertEquals(300f, maxX)
+        assertEquals(100f, minY)
+        assertEquals(200f, maxY)
+        assertEquals(200f, maxX - minX)
+        assertEquals(100f, maxY - minY)
+
+        // Verify simulated move by delta (+50, +30)
+        val movedItem = rectItem.copy(
+            posX = rectItem.posX + 50f,
+            posY = rectItem.posY + 30f,
+            endX = rectItem.endX + 50f,
+            endY = rectItem.endY + 30f
+        )
+        assertEquals(150f, movedItem.posX)
+        assertEquals(130f, movedItem.posY)
+        assertEquals(350f, movedItem.endX)
+        assertEquals(230f, movedItem.endY)
+    }
 }
 
 

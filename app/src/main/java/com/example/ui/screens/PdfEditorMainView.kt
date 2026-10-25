@@ -196,6 +196,7 @@ fun PdfEditorMainView(
     var shapeFillColor by remember { mutableStateOf<Int?>(null) }
 
     var eraserSize by remember { mutableStateOf(AnnotationCanvasOverlayView.EraserSize.MEDIUM) }
+    var eraserType by remember { mutableStateOf(AnnotationCanvasOverlayView.EraserType.STROKE) }
     var annotationCanvasRef by remember { mutableStateOf<AnnotationCanvasOverlayView?>(null) }
 
     // Sub-dialogs state
@@ -890,8 +891,24 @@ fun PdfEditorMainView(
                                 onShapeStrokeWidthChange = { shapeStrokeWidth = it },
                                 shapeFillColor = shapeFillColor,
                                 onShapeFillColorChange = { shapeFillColor = it },
+                                eraserType = eraserType,
+                                onEraserTypeChange = { eraserType = it },
                                 eraserSize = eraserSize,
                                 onEraserSizeChange = { eraserSize = it },
+                                selectedAnnotationId = selectedAnnotationId,
+                                onDeleteSelectedAnnotation = {
+                                    selectedAnnotationId?.let { id ->
+                                        pushHistory()
+                                        editItems.removeAll { it.id == id }
+                                        selectedAnnotationId = null
+                                        annotationCanvasRef?.selectedAnnotationId = null
+                                        annotationCanvasRef?.setAnnotations(
+                                            editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.TEXT && it.type != PdfEngine.AnnotationType.IMAGE },
+                                            currentPageIndex
+                                        )
+                                        Toast.makeText(context, "Annotation deleted", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
                                 onClearAll = {
                                     val toRemove = editItems.filter {
                                         it.pageIndex == currentPageIndex && (
@@ -907,6 +924,8 @@ fun PdfEditorMainView(
                                     if (toRemove.isNotEmpty()) {
                                         pushHistory()
                                         editItems.removeAll(toRemove)
+                                        selectedAnnotationId = null
+                                        annotationCanvasRef?.selectedAnnotationId = null
                                         annotationCanvasRef?.setAnnotations(
                                             editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.TEXT && it.type != PdfEngine.AnnotationType.IMAGE },
                                             currentPageIndex
@@ -1196,9 +1215,24 @@ fun PdfEditorMainView(
                                             annotOverlay.onHistoryPush = { pushHistory() }
                                             annotOverlay.onAnnotationAdded = { item ->
                                                 editItems.add(item)
+                                                textLayerUpdateTrigger++
                                             }
                                             annotOverlay.onAnnotationsRemoved = { removedItems ->
                                                 editItems.removeAll(removedItems)
+                                                if (removedItems.any { it.id == selectedAnnotationId }) {
+                                                    selectedAnnotationId = null
+                                                }
+                                                textLayerUpdateTrigger++
+                                            }
+                                            annotOverlay.onAnnotationUpdated = { updatedItem ->
+                                                val idx = editItems.indexOfFirst { it.id == updatedItem.id }
+                                                if (idx != -1) {
+                                                    editItems[idx] = updatedItem
+                                                }
+                                                textLayerUpdateTrigger++
+                                            }
+                                            annotOverlay.onAnnotationSelected = { id ->
+                                                selectedAnnotationId = id
                                             }
                                             annotationCanvasRef = annotOverlay
 
@@ -1234,6 +1268,8 @@ fun PdfEditorMainView(
 
                                             val annotOverlay = root.findViewById<AnnotationCanvasOverlayView>(R.id.annotation_canvas_overlay_view)
                                             annotationCanvasRef = annotOverlay
+                                            annotOverlay.selectedAnnotationId = selectedAnnotationId
+                                            annotOverlay.eraserType = eraserType
                                             annotOverlay.setAnnotations(
                                                 editItems.filter { it.pageIndex == currentPageIndex && it.type != PdfEngine.AnnotationType.TEXT && it.type != PdfEngine.AnnotationType.IMAGE },
                                                 currentPageIndex
@@ -1242,6 +1278,9 @@ fun PdfEditorMainView(
                                             annotOverlay.isInteractionEnabled = isPenActive
                                             if (isPenActive) {
                                                 when (penSubTool) {
+                                                    AnnotationCanvasOverlayView.ToolMode.SELECT -> {
+                                                        annotOverlay.setSelectMode()
+                                                    }
                                                     AnnotationCanvasOverlayView.ToolMode.PEN -> {
                                                         annotOverlay.setPenMode(penColor, penStrokeThickness, penOpacity)
                                                     }
@@ -1252,7 +1291,7 @@ fun PdfEditorMainView(
                                                         annotOverlay.setShapeMode(shapeType, shapeColor, shapeStrokeWidth, penOpacity, shapeFillColor)
                                                     }
                                                     AnnotationCanvasOverlayView.ToolMode.ERASER -> {
-                                                        annotOverlay.setEraserMode(eraserSize)
+                                                        annotOverlay.setEraserMode(eraserSize, eraserType)
                                                     }
                                                 }
                                                 annotOverlay.elevation = 24f * root.resources.displayMetrics.density
@@ -2724,8 +2763,12 @@ private fun PenSubToolbarSection(
     onShapeStrokeWidthChange: (Float) -> Unit,
     shapeFillColor: Int?,
     onShapeFillColorChange: (Int?) -> Unit,
+    eraserType: AnnotationCanvasOverlayView.EraserType,
+    onEraserTypeChange: (AnnotationCanvasOverlayView.EraserType) -> Unit,
     eraserSize: AnnotationCanvasOverlayView.EraserSize,
     onEraserSizeChange: (AnnotationCanvasOverlayView.EraserSize) -> Unit,
+    selectedAnnotationId: String? = null,
+    onDeleteSelectedAnnotation: () -> Unit = {},
     onClearAll: () -> Unit,
     onUndo: () -> Unit,
     canUndo: Boolean,
@@ -2800,7 +2843,7 @@ private fun PenSubToolbarSection(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Sub-tool switcher tabs: Freehand Pen, Highlight, Shapes, Eraser
+        // Sub-tool switcher tabs: Select, Freehand Pen, Highlight, Shapes, Eraser
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -2808,6 +2851,13 @@ private fun PenSubToolbarSection(
             horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            FilterChip(
+                selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.SELECT,
+                onClick = { onSubToolChange(AnnotationCanvasOverlayView.ToolMode.SELECT) },
+                label = { Text("Select", fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Default.TouchApp, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp).testTag("chip_tool_select")
+            )
             FilterChip(
                 selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.PEN,
                 onClick = { onSubToolChange(AnnotationCanvasOverlayView.ToolMode.PEN) },
@@ -2842,6 +2892,55 @@ private fun PenSubToolbarSection(
 
         // Tool-specific options row
         when (activeSubTool) {
+            AnnotationCanvasOverlayView.ToolMode.SELECT -> {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.TouchApp,
+                                contentDescription = null,
+                                tint = CrimsonPrimary,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = if (selectedAnnotationId != null) "Annotation Selected" else "Select Mode Active",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+
+                        if (selectedAnnotationId != null) {
+                            TextButton(
+                                onClick = onDeleteSelectedAnnotation,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp).testTag("btn_delete_selected_annotation")
+                            ) {
+                                Icon(Icons.Default.Delete, contentDescription = null, tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Delete", color = Color(0xFFEF4444), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Text(
+                        text = if (selectedAnnotationId != null)
+                            "Drag inside box to move. Drag corner handles to scale / resize."
+                        else
+                            "Tap any pen stroke, highlight, or shape to select, move, and resize it.",
+                        color = Color(0xFF94A3B8),
+                        fontSize = 10.sp
+                    )
+                }
+            }
+
             AnnotationCanvasOverlayView.ToolMode.PEN -> {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     // Size presets
@@ -3042,6 +3141,29 @@ private fun PenSubToolbarSection(
 
             AnnotationCanvasOverlayView.ToolMode.ERASER -> {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Dual Eraser Mode Switcher: Mode A (Stroke Eraser) vs Mode B (Manual Eraser)
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text("Eraser Mode:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        FilterChip(
+                            selected = eraserType == AnnotationCanvasOverlayView.EraserType.STROKE,
+                            onClick = { onEraserTypeChange(AnnotationCanvasOverlayView.EraserType.STROKE) },
+                            label = { Text("Stroke Eraser (Auto)", fontSize = 10.sp) },
+                            modifier = Modifier.height(26.dp).testTag("chip_eraser_stroke")
+                        )
+                        FilterChip(
+                            selected = eraserType == AnnotationCanvasOverlayView.EraserType.MANUAL,
+                            onClick = { onEraserTypeChange(AnnotationCanvasOverlayView.EraserType.MANUAL) },
+                            label = { Text("Manual Eraser (Partial)", fontSize = 10.sp) },
+                            modifier = Modifier.height(26.dp).testTag("chip_eraser_manual")
+                        )
+                    }
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
@@ -3075,7 +3197,10 @@ private fun PenSubToolbarSection(
                     }
 
                     Text(
-                        text = "Touch and drag to erase annotation strokes & shapes. Original PDF background is never modified.",
+                        text = if (eraserType == AnnotationCanvasOverlayView.EraserType.STROKE)
+                            "Mode A: Tap any stroke, highlight, or shape to erase entire object instantly."
+                        else
+                            "Mode B: Drag finger across annotations to erase only the touched portion.",
                         color = Color(0xFF94A3B8),
                         fontSize = 10.sp
                     )
