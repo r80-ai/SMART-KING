@@ -81,6 +81,7 @@ import com.example.pdf.PdfToJpgConversionResult
 import com.example.pdf.PdfToJpgConverter
 import com.example.storage.GlobalSaveManager
 import com.example.ui.PdfMasterViewModel
+import com.example.ui.ActiveModal
 import com.example.ui.dialogs.WorkspaceCropDialog
 import com.example.ui.dialogs.WorkspacePageNumbersDialog
 import com.example.ui.dialogs.WorkspacePagesSheet
@@ -614,9 +615,7 @@ fun PdfEditorMainView(
                             leadingIcon = { Icon(Icons.Default.Compress, contentDescription = null) },
                             onClick = {
                                 moreMenuExpanded = false
-                                val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                viewModel.compressPdfCustom(currentFile, targetKB, outName)
+                                viewModel.openModal(ActiveModal.COMPRESS, currentFile)
                             },
                             modifier = Modifier.testTag("menu_item_compress")
                         )
@@ -905,10 +904,8 @@ fun PdfEditorMainView(
                         EditorTopTab.MORE -> {
                             MoreOptionsSection(
                                 onCompress = {
-                                    val targetKB = (currentFile.fileSize / 2048).coerceAtLeast(50L)
-                                    val outName = "${currentFile.nameWithoutExtension()}_compressed.pdf"
-                                    viewModel.compressPdfCustom(currentFile, targetKB, outName)
-                                    Toast.makeText(context, "Compressing PDF...", Toast.LENGTH_SHORT).show()
+                                    activeTab = EditorTopTab.NONE
+                                    viewModel.openModal(ActiveModal.COMPRESS, currentFile)
                                 },
                                 onConvertToImages = {
                                     handleConvertToImages()
