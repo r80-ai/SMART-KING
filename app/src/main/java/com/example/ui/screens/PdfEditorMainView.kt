@@ -82,6 +82,10 @@ import com.example.pdf.PdfToJpgConverter
 import com.example.storage.GlobalSaveManager
 import com.example.ui.PdfMasterViewModel
 import com.example.ui.ActiveModal
+import com.example.photo.birefnet.BiRefNetLiteEngine
+import com.example.ui.dialogs.PdfImageBgRemovalChoiceDialog
+import com.example.ui.dialogs.PdfImageBgRemovalProgressDialog
+import com.example.ui.dialogs.PdfImageManualEraserDialog
 import com.example.ui.dialogs.WorkspaceCropDialog
 import com.example.ui.dialogs.WorkspacePageNumbersDialog
 import com.example.ui.dialogs.WorkspacePagesSheet
@@ -209,6 +213,10 @@ fun PdfEditorMainView(
     var showStoragePermissionRationaleDialog by remember { mutableStateOf(false) }
     var pendingSaveFileName by remember { mutableStateOf<String?>(null) }
     var pendingSaveSuccessCallback by remember { mutableStateOf<((PdfFileRecord) -> Unit)?>(null) }
+    var showBgRemovalChoiceDialog by remember { mutableStateOf(false) }
+    var isRemovingBackground by remember { mutableStateOf(false) }
+    var showManualEraserDialog by remember { mutableStateOf(false) }
+    var manualEraserTargetItem by remember { mutableStateOf<PdfEngine.EditItem?>(null) }
 
     val requestSavePdf: (String, ((PdfFileRecord) -> Unit)?) -> Unit = { outputName, onComplete ->
         val hasFullPerm = StoragePermissionHelper.hasFullStoragePermission(context)
@@ -846,6 +854,14 @@ fun PdfEditorMainView(
                                         selectedAnnotationId = null
                                         Toast.makeText(context, "Image removed", Toast.LENGTH_SHORT).show()
                                     } ?: Toast.makeText(context, "Tap an image first", Toast.LENGTH_SHORT).show()
+                                },
+                                onRemoveBackground = {
+                                    val selectedItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.IMAGE }
+                                    if (selectedItem != null && selectedItem.imageBitmap != null) {
+                                        showBgRemovalChoiceDialog = true
+                                    } else {
+                                        Toast.makeText(context, "Tap an image to select it first", Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             )
                         }
@@ -2108,6 +2124,104 @@ fun PdfEditorMainView(
         )
     }
 
+    if (showBgRemovalChoiceDialog) {
+        PdfImageBgRemovalChoiceDialog(
+            onDismiss = { showBgRemovalChoiceDialog = false },
+            onAutoAiRemove = {
+                showBgRemovalChoiceDialog = false
+                val selectedItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.IMAGE }
+                if (selectedItem == null || selectedItem.imageBitmap == null) {
+                    Toast.makeText(context, "Tap an image to select it first", Toast.LENGTH_SHORT).show()
+                } else {
+                    isRemovingBackground = true
+                    coroutineScope.launch(Dispatchers.Default) {
+                        try {
+                            val targetBmp = selectedItem.originalImageBitmap ?: selectedItem.imageBitmap!!
+                            val result = BiRefNetLiteEngine.removeBackground(context.applicationContext, targetBmp)
+                            withContext(Dispatchers.Main) {
+                                isRemovingBackground = false
+                                if (result.isSuccess) {
+                                    val seg = result.getOrThrow()
+                                    pushHistory()
+                                    val idx = editItems.indexOfFirst { it.id == selectedItem.id }
+                                    if (idx != -1) {
+                                        val old = editItems[idx]
+                                        editItems[idx] = old.copy(
+                                            imageBitmap = seg.transparentForeground,
+                                            originalImageBitmap = old.originalImageBitmap ?: old.imageBitmap,
+                                            alphaMask = seg.alphaMask,
+                                            maskWidth = seg.maskWidth,
+                                            maskHeight = seg.maskHeight
+                                        )
+                                        textLayerUpdateTrigger++
+                                        Toast.makeText(context, "Background removed with BiRefNet Lite AI!", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    val err = result.exceptionOrNull()
+                                    val msg = err?.localizedMessage ?: err?.message ?: "Background removal failed"
+                                    Toast.makeText(context, "AI Background Removal error: $msg", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                isRemovingBackground = false
+                                Toast.makeText(context, "Failed to remove background: ${e.message}", Toast.LENGTH_LONG).show()
+                            }
+                        }
+                    }
+                }
+            },
+            onManualEraser = {
+                showBgRemovalChoiceDialog = false
+                val selectedItem = editItems.firstOrNull { it.id == selectedAnnotationId && it.type == PdfEngine.AnnotationType.IMAGE }
+                if (selectedItem != null && selectedItem.imageBitmap != null) {
+                    manualEraserTargetItem = selectedItem
+                    showManualEraserDialog = true
+                } else {
+                    Toast.makeText(context, "Tap an image to select it first", Toast.LENGTH_SHORT).show()
+                }
+            }
+        )
+    }
+
+    if (isRemovingBackground) {
+        PdfImageBgRemovalProgressDialog()
+    }
+
+    if (showManualEraserDialog && manualEraserTargetItem != null) {
+        val target = manualEraserTargetItem!!
+        val currentImg = target.imageBitmap
+        val origImg = target.originalImageBitmap ?: target.imageBitmap
+        if (currentImg != null && origImg != null) {
+            PdfImageManualEraserDialog(
+                imageBitmap = currentImg,
+                originalBitmap = origImg,
+                onApply = { updatedBmp ->
+                    pushHistory()
+                    val idx = editItems.indexOfFirst { it.id == target.id }
+                    if (idx != -1) {
+                        val old = editItems[idx]
+                        editItems[idx] = old.copy(
+                            imageBitmap = updatedBmp,
+                            originalImageBitmap = old.originalImageBitmap ?: old.imageBitmap
+                        )
+                        textLayerUpdateTrigger++
+                        Toast.makeText(context, "Image updated with manual refine!", Toast.LENGTH_SHORT).show()
+                    }
+                    showManualEraserDialog = false
+                    manualEraserTargetItem = null
+                },
+                onDismiss = {
+                    showManualEraserDialog = false
+                    manualEraserTargetItem = null
+                }
+            )
+        } else {
+            showManualEraserDialog = false
+            manualEraserTargetItem = null
+        }
+    }
+
     if (showSaveAsDialog) {
         AlertDialog(
             onDismissRequest = { showSaveAsDialog = false },
@@ -2562,7 +2676,8 @@ private fun ImageOptionsSection(
     onReplaceImage: () -> Unit,
     onRotateSelectedImage: () -> Unit,
     onResizeImage: (Float) -> Unit = {},
-    onDeleteSelectedImage: () -> Unit
+    onDeleteSelectedImage: () -> Unit,
+    onRemoveBackground: () -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -2578,8 +2693,9 @@ private fun ImageOptionsSection(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            ToolButtonCard(Modifier.weight(1f), "Remove BG", Icons.Default.AutoFixHigh, ToolGreen, onRemoveBackground)
             ToolButtonCard(Modifier.weight(1f), "Delete Image", Icons.Default.Delete, CrimsonPrimary, onDeleteSelectedImage)
-            Spacer(modifier = Modifier.weight(2f))
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
 }

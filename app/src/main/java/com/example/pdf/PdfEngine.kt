@@ -806,7 +806,10 @@ object PdfEngine {
         val innerShadowDx: Float = 0f,
         val innerShadowDy: Float = 0f,
         val perspectiveSkewX: Float = 0f,
-        val perspectiveSkewY: Float = 0f
+        val perspectiveSkewY: Float = 0f,
+        val alphaMask: FloatArray? = null,
+        val maskWidth: Int = 0,
+        val maskHeight: Int = 0
     ) {
         fun getRotationAngle(): Float = if (rotation != 0f) rotation else imageRotation
 
