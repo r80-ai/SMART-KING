@@ -1126,26 +1126,48 @@ fun RefineMaskOverlay(
             }
     ) {
         val pos = touchPos
-        if (pos != null) {
+        if (pos != null || currentPoints.isNotEmpty()) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val r = brushSizeDp.dp.toPx()
                 val color = if (refineMode == BgRefineMode.RESTORE_SUBJECT) Color(0xFF10B981) else Color(0xFFE11D48)
-                drawCircle(
-                    color = color.copy(alpha = 0.35f),
-                    radius = r,
-                    center = pos
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = r,
-                    center = pos,
-                    style = Stroke(width = 2.dp.toPx())
-                )
-                drawCircle(
-                    color = color,
-                    radius = 3.dp.toPx(),
-                    center = pos
-                )
+
+                if (currentPoints.size > 1) {
+                    val path = androidx.compose.ui.graphics.Path()
+                    val first = currentPoints.first()
+                    path.moveTo(first.x * size.width, first.y * size.height)
+                    for (i in 1 until currentPoints.size) {
+                        val pt = currentPoints[i]
+                        path.lineTo(pt.x * size.width, pt.y * size.height)
+                    }
+                    drawPath(
+                        path = path,
+                        color = color.copy(alpha = 0.45f),
+                        style = Stroke(
+                            width = r * 2f,
+                            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                            join = androidx.compose.ui.graphics.StrokeJoin.Round
+                        )
+                    )
+                }
+
+                if (pos != null) {
+                    drawCircle(
+                        color = color.copy(alpha = 0.35f),
+                        radius = r,
+                        center = pos
+                    )
+                    drawCircle(
+                        color = Color.White,
+                        radius = r,
+                        center = pos,
+                        style = Stroke(width = 2.dp.toPx())
+                    )
+                    drawCircle(
+                        color = color,
+                        radius = 3.dp.toPx(),
+                        center = pos
+                    )
+                }
             }
         }
     }

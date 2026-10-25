@@ -960,26 +960,38 @@ fun PhotoEditingScreen(
                                                 bgRefineStrokes.add(stroke)
                                                 bgRefineRedoStrokes.clear()
                                                 val orig = bgOriginalBitmap ?: currentBitmap ?: return@RefineMaskOverlay
-                                                val mask = bgWorkingMask
-                                                val w = bgMaskWidth
-                                                val h = bgMaskHeight
-                                                val refinedSub = if (mask != null && w > 0 && h > 0) {
-                                                    for (pt in stroke.points) {
-                                                        BiRefNetLiteEngine.applyBrushToMask(
-                                                            mask = mask,
-                                                            width = w,
-                                                            height = h,
-                                                            centerX = pt.x * w,
-                                                            centerY = pt.y * h,
-                                                            radius = stroke.radiusPx * (w.toFloat() / 320f).coerceAtLeast(1f),
-                                                            isRestore = stroke.isRestore,
-                                                            isSoft = stroke.isSoft
-                                                        )
-                                                    }
-                                                    BiRefNetLiteEngine.createRefinedForegroundBitmap(orig, mask, w, h)
-                                                } else {
-                                                    val baseSub = extractedSubjectBitmap ?: return@RefineMaskOverlay
-                                                    PhotoEditorEngine.applyManualRefinement(baseSub, orig, listOf(stroke))
+                                                var mask = bgWorkingMask
+                                                var w = bgMaskWidth
+                                                var h = bgMaskHeight
+                                                if (mask == null || w <= 0 || h <= 0) {
+                                                    w = orig.width
+                                                    h = orig.height
+                                                    bgMaskWidth = w
+                                                    bgMaskHeight = h
+                                                    mask = FloatArray(w * h) { 1.0f }
+                                                    bgWorkingMask = mask
+                                                    bgOriginalMask = mask.clone()
+                                                }
+                                                val radPx = stroke.radiusPx * (w.toFloat() / 320f).coerceAtLeast(1f)
+                                                for (pt in stroke.points) {
+                                                    BiRefNetLiteEngine.applyBrushToMask(
+                                                        mask = mask,
+                                                        width = w,
+                                                        height = h,
+                                                        centerX = pt.x * w,
+                                                        centerY = pt.y * h,
+                                                        radius = radPx,
+                                                        isRestore = stroke.isRestore,
+                                                        isSoft = stroke.isSoft
+                                                    )
+                                                }
+                                                val refinedSub = BiRefNetLiteEngine.createRefinedForegroundBitmap(orig, mask, w, h)
+                                                if (!stroke.isRestore && !stroke.isSoft) {
+                                                    PhotoEditorEngine.applyPorterDuffClear(
+                                                        bitmap = refinedSub,
+                                                        points = stroke.points,
+                                                        radiusPx = radPx
+                                                    )
                                                 }
                                                 extractedSubjectBitmap = refinedSub
                                                 updateBgComposite(refinedSub)

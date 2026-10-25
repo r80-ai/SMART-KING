@@ -821,6 +821,41 @@ object PhotoEditorEngine {
     }
 
     /**
+     * Applies clear transparent alpha blending (PorterDuff.Mode.CLEAR) directly on the bitmap.
+     */
+    fun applyPorterDuffClear(
+        bitmap: Bitmap,
+        points: List<PointF>,
+        radiusPx: Float
+    ) {
+        if (bitmap.isRecycled || points.isEmpty()) return
+        val canvas = Canvas(bitmap)
+        val clearPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+            style = android.graphics.Paint.Style.STROKE
+            strokeCap = android.graphics.Paint.Cap.ROUND
+            strokeJoin = android.graphics.Paint.Join.ROUND
+            strokeWidth = radiusPx * 2f
+        }
+        val w = bitmap.width.toFloat()
+        val h = bitmap.height.toFloat()
+        if (points.size == 1) {
+            val fillPaint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.CLEAR)
+                style = android.graphics.Paint.Style.FILL
+            }
+            canvas.drawCircle(points[0].x * w, points[0].y * h, radiusPx, fillPaint)
+        } else {
+            val path = android.graphics.Path()
+            path.moveTo(points[0].x * w, points[0].y * h)
+            for (i in 1 until points.size) {
+                path.lineTo(points[i].x * w, points[i].y * h)
+            }
+            canvas.drawPath(path, clearPaint)
+        }
+    }
+
+    /**
      * Composites a subject bitmap (with transparent background) over a chosen background style:
      * - Transparent
      * - Solid Color
