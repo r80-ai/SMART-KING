@@ -530,7 +530,7 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
         isBengali, currentCategory, currentLetterType,
         applicantName, date, recipientTitle, officeName, applicantAddress, place, dynamicField1, dynamicField2, signatureBitmap
     ) {
-        val sigPlaceholder = if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"
+        val sigLine = if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"
         if (isBengali) {
             val body = currentLetterType.bodyTemplateBn(
                 applicantName, applicantAddress, officeName, dynamicField1, dynamicField2
@@ -551,8 +551,9 @@ $body
 স্থান: ${place.ifBlank { "................" }}
 
 ধন্যবাদান্তে,
+$sigLine
 ${applicantName.ifBlank { "................" }}
-${if (applicantAddress.isNotBlank()) "ঠিকানা: $applicantAddress\n" else ""}${if (signatureBitmap != null) "" else "স্বাক্ষর: ................................"}
+${if (applicantAddress.isNotBlank()) "ঠিকানা: $applicantAddress\n" else ""}
             """.trimIndent()
         } else {
             val body = currentLetterType.bodyTemplateEn(
@@ -574,8 +575,9 @@ Date: $date
 Place: ${place.ifBlank { "................" }}
 
 Yours faithfully,
+$sigLine
 ${applicantName.ifBlank { "................" }}
-${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}${if (signatureBitmap != null) "" else "Signature: ................................"}
+${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
             """.trimIndent()
         }
     }
@@ -963,7 +965,7 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}${if
                         val signatureHtml = if (signatureBitmap != null) {
                             """<img src="data:image/png;base64,${signatureBitmap!!.toBase64Png()}" class="sig-img" alt="Signature" />"""
                         } else {
-                            """................................"""
+                            """<div class="sig-dots">................................</div>"""
                         }
 
                         val htmlContent = """
@@ -1023,16 +1025,23 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}${if
                                     }
                                     .sig-container {
                                         display: inline-block;
-                                        text-align: center;
+                                        text-align: right;
                                         min-width: 140px;
-                                        margin-top: 8px;
+                                        margin: 4px 0;
                                     }
                                     .sig-img {
-                                        max-height: 48px;
-                                        max-width: 140px;
+                                        max-height: 50px;
+                                        max-width: 150px;
                                         object-fit: contain;
                                         display: block;
-                                        margin: 0 auto;
+                                        margin-left: auto;
+                                        margin-right: 0;
+                                    }
+                                    .sig-dots {
+                                        letter-spacing: 2px;
+                                        color: #444;
+                                        font-size: 11pt;
+                                        margin: 8px 0 4px 0;
                                     }
                                 </style>
                             </head>
@@ -1063,11 +1072,11 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}${if
                                         </td>
                                         <td class="footer-right">
                                             <div>${if (isBengali) "ধন্যবাদান্তে," else "Yours faithfully,"}</div>
-                                            <div style="font-weight: bold; margin: 3px 0;">${applicantName.ifBlank { "................" }}</div>
-                                            ${if (applicantAddress.isNotBlank()) "<div style='font-size: 10.5pt; color: #444;'>" + (if (isBengali) "ঠিকানা: " else "Address: ") + applicantAddress + "</div>" else ""}
                                             <div class="sig-container">
                                                 $signatureHtml
                                             </div>
+                                            <div style="font-weight: bold; margin-top: 2px;">${applicantName.ifBlank { "................" }}</div>
+                                            ${if (applicantAddress.isNotBlank()) "<div style='font-size: 10.5pt; color: #444; margin-top: 2px;'>" + (if (isBengali) "ঠিকানা: " else "Address: ") + applicantAddress + "</div>" else ""}
                                         </td>
                                     </tr>
                                 </table>
@@ -1223,23 +1232,47 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}${if
                         }
 
                         Column(horizontalAlignment = Alignment.End) {
-                            Text(if (isBengali) "ধন্যবাদান্তে," else "Yours faithfully,", color = Color(0xFFE2E8F0), fontSize = 12.sp)
-                            Text(applicantName.ifBlank { "................" }, color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
-                            if (applicantAddress.isNotBlank()) {
-                                Text(applicantAddress, color = Color(0xFF94A3B8), fontSize = 11.sp)
-                            }
+                            Text(
+                                text = if (isBengali) "ধন্যবাদান্তে," else "Yours faithfully,",
+                                color = Color(0xFFE2E8F0),
+                                fontSize = 12.sp
+                            )
                             Spacer(modifier = Modifier.height(4.dp))
                             if (signatureBitmap != null) {
-                                Image(
-                                    bitmap = signatureBitmap!!.asImageBitmap(),
-                                    contentDescription = "Signature",
+                                Box(
                                     modifier = Modifier
-                                        .height(40.dp)
-                                        .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
-                                        .padding(2.dp)
-                                )
+                                        .background(Color.White.copy(alpha = 0.95f), RoundedCornerShape(4.dp))
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                                ) {
+                                    Image(
+                                        bitmap = signatureBitmap!!.asImageBitmap(),
+                                        contentDescription = "Signature",
+                                        modifier = Modifier
+                                            .height(40.dp)
+                                            .widthIn(max = 140.dp)
+                                    )
+                                }
                             } else {
-                                Text("................................", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                Text(
+                                    text = "................................",
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(vertical = 4.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = applicantName.ifBlank { "................" },
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 12.5.sp
+                            )
+                            if (applicantAddress.isNotBlank()) {
+                                Text(
+                                    text = applicantAddress,
+                                    color = Color(0xFF94A3B8),
+                                    fontSize = 11.sp
+                                )
                             }
                         }
                     }
