@@ -10,6 +10,7 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.print.PrintAttributes
@@ -28,6 +29,7 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -44,6 +46,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -77,6 +80,40 @@ fun AnnapurnaDeclarationScreen(onBack: () -> Unit) {
     val scrollState = rememberScrollState()
     val coroutineScope = rememberCoroutineScope()
     var isSavingPdf by remember { mutableStateOf(false) }
+
+    // PDF Save & Picker States
+    var pendingPdfBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var savedPdfUri by remember { mutableStateOf<Uri?>(null) }
+    var savedPdfSizeKb by remember { mutableIntStateOf(0) }
+    var savedPdfLocationText by remember { mutableStateOf("") }
+    var showSaveSuccessDialog by remember { mutableStateOf(false) }
+
+    val createDocumentLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/pdf")
+    ) { uri: Uri? ->
+        if (uri != null && pendingPdfBytes != null) {
+            coroutineScope.launch(Dispatchers.IO) {
+                try {
+                    context.contentResolver.openOutputStream(uri)?.use { os ->
+                        os.write(pendingPdfBytes!!)
+                        os.flush()
+                    }
+                    val sizeKb = pendingPdfBytes!!.size / 1024
+                    val location = getHumanReadablePath(context, uri)
+                    withContext(Dispatchers.Main) {
+                        savedPdfUri = uri
+                        savedPdfSizeKb = sizeKb
+                        savedPdfLocationText = location
+                        showSaveSuccessDialog = true
+                    }
+                } catch (e: Exception) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(context, "Error saving file: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        }
+    }
 
     // 1. Form Inputs State
     val currentDate = remember { SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date()) }
@@ -880,18 +917,12 @@ ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]
                                 signatureBitmap = signatureBitmap
                             )
                             val pdfBytes = generateStrictSizedPdf(bitmap, targetKb = 185)
-                            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
-                            val fileName = "Annapurna_Declaration_$timestamp.pdf"
-                            val saved = savePdfToDownloads(context, pdfBytes, fileName)
-                            
+                            pendingPdfBytes = pdfBytes
+
                             withContext(Dispatchers.Main) {
                                 isSavingPdf = false
-                                if (saved) {
-                                    val sizeKb = pdfBytes.size / 1024
-                                    Toast.makeText(context, "PDF Saved Successfully ($sizeKb KB)", Toast.LENGTH_LONG).show()
-                                } else {
-                                    Toast.makeText(context, "PDF সংরক্ষণ করতে ব্যর্থ হয়েছে!", Toast.LENGTH_SHORT).show()
-                                }
+                                val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                                createDocumentLauncher.launch("Annapurna_Declaration_$timestamp.pdf")
                             }
                         } catch (e: Exception) {
                             withContext(Dispatchers.Main) {
@@ -1208,6 +1239,100 @@ ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]
 
             Spacer(modifier = Modifier.height(30.dp))
         }
+    }
+
+    // Save Confirmation Dialog with Exact Location & Open PDF
+    if (showSaveSuccessDialog && savedPdfUri != null) {
+        AlertDialog(
+            onDismissRequest = { showSaveSuccessDialog = false },
+            containerColor = Color(0xFF1E293B),
+            titleContentColor = Color.White,
+            textContentColor = Color(0xFFE2E8F0),
+            icon = {
+                Box(
+                    modifier = Modifier
+                        .size(48.dp)
+                        .background(Color(0xFF22C55E).copy(alpha = 0.2f), RoundedCornerShape(24.dp)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = Color(0xFF22C55E),
+                        modifier = Modifier.size(28.dp)
+                    )
+                }
+            },
+            title = {
+                Text(
+                    text = "File Saved Successfully! ($savedPdfSizeKb KB)",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 17.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "অন্নপূর্ণা স্ব-ঘোষণা পত্রটি ১৮০ KB - ১৯০ KB সাইজ বজায় রেখে আপনার নির্বাচিত ফোল্ডারে সফলভাবে সেভ হয়েছে।",
+                        fontSize = 12.5.sp,
+                        color = Color(0xFFCBD5E1),
+                        lineHeight = 18.sp
+                    )
+
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFF0F172A),
+                        border = BorderStroke(1.dp, Color(0xFF334155)),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Text(
+                                text = "সংরক্ষিত অবস্থান (Location):",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = Color(0xFF60A5FA)
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = savedPdfLocationText,
+                                fontSize = 12.sp,
+                                color = Color(0xFFF1F5F9),
+                                lineHeight = 16.sp
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        openPdf(context, savedPdfUri!!)
+                        showSaveSuccessDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Icon(Icons.Default.PictureAsPdf, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Open PDF", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                OutlinedButton(
+                    onClick = { showSaveSuccessDialog = false },
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF94A3B8)),
+                    border = BorderStroke(1.dp, Color(0xFF475569)),
+                    shape = RoundedCornerShape(8.dp)
+                ) {
+                    Text("Done / OK")
+                }
+            }
+        )
     }
 }
 
@@ -1867,3 +1992,49 @@ private fun savePdfToDownloads(context: Context, pdfBytes: ByteArray, fileName: 
         false
     }
 }
+
+/**
+ * Opens a PDF document with the system's default PDF viewer application
+ */
+private fun openPdf(context: Context, uri: Uri) {
+    try {
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/pdf")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(Intent.createChooser(intent, "Open PDF"))
+    } catch (e: Exception) {
+        Toast.makeText(context, "No PDF viewer application found on device", Toast.LENGTH_SHORT).show()
+    }
+}
+
+/**
+ * Extracts a friendly human-readable location from the SAF Document Uri
+ */
+private fun getHumanReadablePath(context: Context, uri: Uri): String {
+    try {
+        val path = uri.path ?: ""
+        if (path.contains("primary:")) {
+            return "Internal Storage > " + path.substringAfter("primary:").replace("/", " > ")
+        }
+        if (path.contains("/document/")) {
+            val docPart = path.substringAfter("/document/")
+            if (docPart.contains(":")) {
+                return docPart.substringBefore(":") + " > " + docPart.substringAfter(":").replace("/", " > ")
+            }
+            return docPart
+        }
+        context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+            val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+            if (nameIndex != -1 && cursor.moveToFirst()) {
+                val name = cursor.getString(nameIndex)
+                return "Selected Folder > $name"
+            }
+        }
+    } catch (e: Exception) {
+        // fallback
+    }
+    return uri.lastPathSegment ?: uri.toString()
+}
+
