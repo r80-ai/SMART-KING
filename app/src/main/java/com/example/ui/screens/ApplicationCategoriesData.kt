@@ -30,7 +30,7 @@ data class LetterTypeItem(
 )
 
 /**
- * Complete Repository containing all 21 Categories and their corresponding Letter Types.
+ * Complete Repository containing all 27 Categories and their corresponding Letter Types.
  */
 fun getApplicationCategories(): List<LetterCategory> {
     return listOf(
@@ -230,47 +230,459 @@ fun getApplicationCategories(): List<LetterCategory> {
                     }
                 ),
                 LetterTypeItem(
-                    id = "bank_block_atm",
-                    titleBn = "ATM কার্ড ব্লকের আবেদন",
-                    titleEn = "Block Lost ATM Card",
-                    subjectBn = "হারানো/চুরি হওয়া এটিএম কার্ড জরুরি ব্লকের আবেদন",
-                    subjectEn = "Application for urgent blocking of lost / stolen ATM Card",
+                    id = "bank_dormant",
+                    titleBn = "ডরম্যান্ট / ইনঅ্যাক্টিভ অ্যাকাউন্ট চালু করার আবেদন",
+                    titleEn = "Reactivate Inactive / Dormant Account",
+                    subjectBn = "নিষ্ক্রিয় (Dormant/Inactive) অ্যাকাউন্ট পুনরায় চালু করার আবেদন",
+                    subjectEn = "Application for reactivation of dormant / inoperative bank account",
                     field1LabelBn = "অ্যাকাউন্ট নম্বর / Account No",
                     field1LabelEn = "Account Number",
-                    field2LabelBn = "কার্ডের শেষ ৪ ডিজিট ও মোবাইল নম্বর",
-                    field2LabelEn = "Last 4 Digits & Mobile No",
+                    field2LabelBn = "আধার ও প্যান নম্বর / Aadhaar & PAN",
+                    field2LabelEn = "Aadhaar & PAN Number",
                     bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। অ্যাকাউন্ট নং ${f1.ifBlank { "................" }}। আমার এটিএম কার্ডটি (নম্বর/তথ্য: ${f2.ifBlank { "তথ্য" }}) দুর্ভাগ্যবশত হারিয়ে গেছে। কোনো প্রকার আর্থিক জালিয়াতি রোধে কার্ডটি অবিলম্বে ব্লক করে দেওয়ার বিনীত অনুরোধ জানাচ্ছি।"
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আপনার শাখায় আমার অ্যাকাউন্ট নম্বর ${f1.ifBlank { "................" }}। দীর্ঘদিন কোনো লেনদেন না হওয়ার কারণে অ্যাকাউন্টটি নিষ্ক্রিয় (Dormant) হয়ে পড়েছে। আমি আধার ও প্যান কার্ডের জেরক্স সহ কেওয়াইসি জমা করছি (${f2.ifBlank { "কেওয়াইসি" }})। অবিলম্বে অ্যাকাউন্টটি সক্রিয় করার অনুরোধ জানাচ্ছি।"
                     },
                     bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I, ${name.ifBlank { "................" }}, hold Account No: ${f1.ifBlank { "................" }}. My debit card (Last digits/Ref: ${f2.ifBlank { "Ref info" }}) was unfortunately lost/misplaced today. To prevent unauthorized transactions, kindly block the card immediately."
+                        "I hold Account No: ${f1.ifBlank { "................" }}. Due to lack of transactions, the account has turned dormant. I submit my KYC documents (${f2.ifBlank { "Aadhaar & PAN" }}) and request you to reactivate the account for regular operations."
                     }
                 ),
                 LetterTypeItem(
-                    id = "bank_charge_refund",
-                    titleBn = "ব্যাংক চার্জ ফেরতের আবেদন",
-                    titleEn = "Refund of Inadmissible Bank Charges",
-                    subjectBn = "ভুলবশত কেটে নেওয়া ব্যাংক চার্জ ফেরতের আবেদন",
-                    subjectEn = "Application for waiver / refund of bank service charges",
-                    field1LabelBn = "অ্যাকাউন্ট নম্বর / Account No",
-                    field1LabelEn = "Account Number",
-                    field2LabelBn = "কর্তিত চার্জের পরিমাণ ও তারিখ",
-                    field2LabelEn = "Deducted Amount & Date",
+                    id = "bank_loan_noc",
+                    titleBn = "ব্যাংক লোন এনওসি (NOC) আবেদন",
+                    titleEn = "Loan Closure No Objection Certificate (NOC)",
+                    subjectBn = "লোন পরিশোধ সাপেক্ষে নো অবজেকশন সার্টিফিকেট (NOC) প্রদানের আবেদন",
+                    subjectEn = "Application for issuance of No Objection Certificate (NOC) upon loan closure",
+                    field1LabelBn = "লোন অ্যাকাউন্ট নম্বর / Loan Account No",
+                    field1LabelEn = "Loan Account Number",
+                    field2LabelBn = "সম্পূর্ণ পরিশোধের তারিখ ও রসিদ নং",
+                    field2LabelEn = "Repayment Date & Final Receipt No",
                     bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। অ্যাকাউন্ট নং ${f1.ifBlank { "................" }}। বিগত ${f2.ifBlank { "তারিখে" }} আমার অ্যাকাউন্ট থেকে অপ্রত্যাশিতভাবে অতিরিক্ত চার্জ বাবদ টাকা কেটে নেওয়া হয়েছে। উক্ত চার্জটি মানবিক দিক বিবেচনায় মকুব করে আমার অ্যাকাউন্টে রিফান্ড করার অনুরোধ জানাচ্ছি।"
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। লোন অ্যাকাউন্ট নং: ${f1.ifBlank { "লোন অ্যাকাউন্ট" }}। আমি আমার গৃহীত লোনের সমস্ত আসল ও সুদ সম্পূর্ণরূপে পরিশোধ করেছি (রসিদ: ${f2.ifBlank { "রসিদ তথ্য" }})। বন্ধকী নথিপত্র অবমুক্তকরণ সহ একটি আনুষ্ঠানিক নো অবজেকশন সার্টিফিকেট (NOC) প্রদানের আবেদন জানাচ্ছি।"
                     },
                     bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I maintain Account No: ${f1.ifBlank { "................" }}. On ${f2.ifBlank { "Date & Amount" }}, an unexpected penalty/service charge was debited from my account. Considering my regular banking relationship, I earnestly request you to waive and reverse the charged amount."
+                        "I maintain Loan Account No: ${f1.ifBlank { "Loan Account" }}. I have fully settled all dues and closed the loan on ${f2.ifBlank { "Repayment Date" }}. Kindly issue the formal No Objection Certificate (NOC) and release hypothecation/original documents."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "bank_deceased_claim",
+                    titleBn = "মৃত ব্যক্তির অ্যাকাউন্টের টাকা তোলার আবেদন (Deceased Claim)",
+                    titleEn = "Settlement of Deceased Depositor Claim",
+                    subjectBn = "মৃত অ্যাকাউন্টধারীর গচ্ছিত টাকা উত্তোলনের (Deceased Claim) আবেদন",
+                    subjectEn = "Application for settlement of claim of deceased depositor account",
+                    field1LabelBn = "মৃত ব্যক্তির নাম ও অ্যাকাউন্ট নম্বর",
+                    field1LabelEn = "Deceased Depositor Name & Account No",
+                    field2LabelBn = "মৃত্যুর তারিখ ও উত্তরাধিকারীর সম্পর্ক",
+                    field2LabelEn = "Date of Death & Claimant Relationship",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আপনার শাখার অ্যাকাউন্টধারী স্বর্গীয় ${f1.ifBlank { "মৃত ব্যক্তির নাম ও অ্যাকাউন্ট" }} গত ${f2.ifBlank { "তারিখে" }} পরলোকগমন করেছেন। আমি তাঁর বৈধ উত্তরাধিকারী/নমিনি। প্রয়োজনীয় ডেথ সার্টিফিকেট ও উত্তরাধিকারী প্রমাণপত্র সহ গচ্ছিত অর্থ প্রদানের বিনীত প্রার্থনা জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, resident of ${addr.ifBlank { "................" }}, state that the account holder Late ${f1.ifBlank { "Deceased Details" }} passed away on ${f2.ifBlank { "Date & Relationship" }}. Being the rightful claimant, I submit the death certificate and claim forms for disbursement of balance."
                     }
                 )
             )
         ),
 
-        // 2. স্কুল ও কলেজ (School & College)
+        // 2. রেশন কার্ড ও খাদ্য দপ্তর (Ration Card & Food Supply)
+        LetterCategory(
+            id = "ration_food",
+            titleBn = "২. রেশন কার্ড ও খাদ্য দপ্তর (Ration Card & Food Supply)",
+            titleEn = "2. Ration Card & Food Supply",
+            defaultRecipientBn = "খাদ্য ও সরবরাহ পরিদর্শক (Food & Supplies Inspector / SCF&S)",
+            defaultRecipientEn = "The Sub-Divisional Controller of Food & Supplies",
+            letterTypes = listOf(
+                LetterTypeItem(
+                    id = "ration_non_distribution",
+                    titleBn = "রেশন না পাওয়ার অভিযোগ",
+                    titleEn = "Complaint on Non-Supply of Ration",
+                    subjectBn = "ডিজিটাল রেশন কার্ড থাকা সত্ত্বেও খাদ্যশস্য না পাওয়ার অভিযোগ",
+                    subjectEn = "Complaint regarding refusal / non-distribution of subsidized food grains by dealer",
+                    field1LabelBn = "রেশন কার্ড নম্বর ও ক্যাটাগরি (AAY/PHH/SPHH/RKSY)",
+                    field1LabelEn = "Ration Card No & Category",
+                    field2LabelBn = "ডিলারের নাম ও এফপিএস (FPS) দোকান নম্বর",
+                    field2LabelEn = "Ration Dealer Name & FPS Shop No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "মহাশয়, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমার সক্রিয় ডিজিটাল রেশন কার্ড নং: ${f1.ifBlank { "রেশন কার্ড নং" }}। সংশ্লিষ্ট রেশন ডিলার (${f2.ifBlank { "ডিলারের নাম ও দোকান নং" }}) অন্যায়ভাবে আমাকে বিগত কয়েকমাস ধরে খাদ্যশস্য প্রদান করতে অস্বীকার করছেন। অবিলম্বে তদন্ত করে আমার প্রাপ্য খাদ্যশস্য পাওয়ার ব্যবস্থা করার অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "Sir, I, ${name.ifBlank { "................" }}, resident of ${addr.ifBlank { "................" }}, hold active Digital Ration Card: ${f1.ifBlank { "Card No & Category" }}. The designated fair price shop dealer (${f2.ifBlank { "Dealer Name & FPS Shop" }}) has wrongfully refused to distribute my quota. Kindly intervene and ensure supply."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "ration_name_age_correct",
+                    titleBn = "রেশন কার্ডে নাম ও বয়স সংশোধনের আবেদন",
+                    titleEn = "Correction of Name / Age in Ration Card",
+                    subjectBn = "ডিজিটাল রেশন কার্ডে নাম ও বয়সের ভুল সংশোধনের আবেদন",
+                    subjectEn = "Application for rectification of name spelling and age in Ration Card",
+                    field1LabelBn = "রেশন কার্ড নম্বর ও বর্তমান ভুল তথ্য",
+                    field1LabelEn = "Ration Card No & Existing Error",
+                    field2LabelBn = "আধার অনুযায়ী সঠিক নাম ও জন্মতারিখ",
+                    field2LabelEn = "Correct Name & Date of Birth (as per Aadhaar)",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আমার রেশন কার্ড নং: ${f1.ifBlank { "কার্ড নম্বর" }}। কার্ডটিতে আমার নাম/বয়সে অসাবধানতাবশত ভুল লিপিবদ্ধ হয়েছে। আধার কার্ড অনুযায়ী সঠিক তথ্য: ${f2.ifBlank { "সঠিক নাম ও বয়স" }}। ফর্ম ৫ সহ প্রয়োজনীয় নথিপত্র দাখিল করে সংশোধিত কার্ড প্রদানের অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, hold Ration Card No: ${f1.ifBlank { "Card No" }}. There is a clerical error in my recorded name/age. As per my Aadhaar, the correct detail is: ${f2.ifBlank { "Correct Details" }}. Form 5 and proof are attached. Please issue corrected ration card."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "ration_deceased_surrender",
+                    titleBn = "মৃত ব্যক্তির নাম রেশন কার্ড থেকে বাদ দেওয়ার আবেদন",
+                    titleEn = "Deletion of Deceased Name from Ration Card",
+                    subjectBn = "মৃত পরিবারের সদস্যের রেশন কার্ড সমর্পণ ও বাতিলের আবেদন",
+                    subjectEn = "Application for surrender and cancellation of deceased family member's Ration Card",
+                    field1LabelBn = "মৃত ব্যক্তির নাম ও রেশন কার্ড নম্বর",
+                    field1LabelEn = "Deceased Member Name & Ration Card No",
+                    field2LabelBn = "মৃত্যুর তারিখ ও ডেথ সার্টিফিকেট নম্বর",
+                    field2LabelEn = "Date of Death & Death Certificate No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমার পরিবারের সদস্য স্বর্গীয় ${f1.ifBlank { "মৃত সদস্য ও কার্ড নং" }} গত ${f2.ifBlank { "মৃত্যুর তারিখ" }} পরলোকগমন করেছেন। সরকারি নিয়ম মেনে তাঁর রেশন কার্ডটি প্রত্যাহারের উদ্দেশ্যে ডেথ সার্টিফিকেট সহ সমর্পণ করছি। রেশন তালিকা থেকে নাম বাদ দেওয়ার অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I state that my family member Late ${f1.ifBlank { "Deceased Name & Card No" }} passed away on ${f2.ifBlank { "Date of Death" }}. As per food department regulations, I submit Form 7 along with the official Death Certificate to permanently cancel and delete the card."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "ration_head_change",
+                    titleBn = "পরিবারের প্রধান (Head of Family) পরিবর্তনের আবেদন",
+                    titleEn = "Change of Head of Family (HoF) in Ration Card",
+                    subjectBn = "রেশন কার্ডে পরিবারের নতুন প্রধান (Head of Family) নির্বাচনের আবেদন",
+                    subjectEn = "Application for changing Head of Family (HoF) in Family Ration Card roster",
+                    field1LabelBn = "পূর্বের প্রধানের নাম ও রেশন কার্ড নম্বর",
+                    field1LabelEn = "Previous HoF Name & Card No",
+                    field2LabelBn = "প্রস্তাবিত নতুন প্রধানের নাম ও আধার নম্বর",
+                    field2LabelEn = "Proposed New HoF Name & Aadhaar No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আমাদের পারিবারিক রেশন কার্ডের পূর্বের প্রধান ${f1.ifBlank { "পূর্বের প্রধানের নাম" }} পরলোকগমন/অক্ষম হওয়ায় পরিবারের জ্যেষ্ঠ সদস্য ${f2.ifBlank { "নতুন প্রধানের নাম ও আধার" }}-কে পরিবারের নতুন প্রধান হিসেবে মনোনীত করার আবেদন জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "Due to demise/incapacity of the previous Head of Family ${f1.ifBlank { "Previous HoF" }}, we family members nominate ${f2.ifBlank { "Proposed New HoF" }} as the new Head of Family. Kindly update the food department database accordingly."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "ration_new_covering",
+                    titleBn = "নতুন রেশন কার্ডের কভারিং লেটার",
+                    titleEn = "Covering Letter for New Ration Card Application",
+                    subjectBn = "নতুন ডিজিটাল রেশন কার্ড ইস্যু করার জন্য আবেদনপত্র",
+                    subjectEn = "Forwarding covering application for issuance of new Digital Ration Card (Form 4)",
+                    field1LabelBn = "পরিবারের মোট সদস্য সংখ্যা ও আধার নম্বর",
+                    field1LabelEn = "Total Family Members & Aadhaar Details",
+                    field2LabelBn = "গ্রাম/ওয়ার্ড ও মোবাইল নম্বর",
+                    field2LabelEn = "Village / Ward & Contact Mobile No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমার পরিবারে ইতিপূর্বে কোনো ডিজিটাল রেশন কার্ড নেই (সদস্য বিবরণ: ${f1.ifBlank { "সদস্য তথ্য" }})। যোগাযোগ: ${f2.ifBlank { "মোবাইল নং" }}। বিধিসম্মত ফর্ম ৪ ও সকল সদস্যের আধার জেরক্স দাখিলপূর্বক নতুন রেশন কার্ড মঞ্জুর করার অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, residing at ${addr.ifBlank { "................" }}, apply for new Digital Ration Cards for my family members (${f1.ifBlank { "Family Details" }}). Contact: ${f2.ifBlank { "Mobile" }}. Form 4 and Aadhaar proofs are submitted for favorable sanction."
+                    }
+                )
+            )
+        ),
+
+        // 3. সরকারি প্রকল্প ও সহায়তা (Govt Schemes & Welfare)
+        LetterCategory(
+            id = "govt_schemes",
+            titleBn = "৩. সরকারি প্রকল্প ও সহায়তা (Govt Schemes & Welfare)",
+            titleEn = "3. Govt Schemes & Welfare",
+            defaultRecipientBn = "ব্লক উন্নয়ন আধিকারিক (Block Development Officer - BDO)",
+            defaultRecipientEn = "The Block Development Officer (BDO)",
+            letterTypes = listOf(
+                LetterTypeItem(
+                    id = "scheme_lb_bank",
+                    titleBn = "লক্ষ্মীর ভাণ্ডার ব্যাংক অ্যাকাউন্ট পরিবর্তনের আবেদন",
+                    titleEn = "Bank Account Update for Lakshmir Bhandar",
+                    subjectBn = "লক্ষ্মীর ভাণ্ডার প্রকল্পে নতুন ব্যাংক অ্যাকাউন্ট নম্বর নথিভুক্তির আবেদন",
+                    subjectEn = "Application for updating bank account details in Lakshmir Bhandar Scheme",
+                    field1LabelBn = "লক্ষ্মীর ভাণ্ডার অ্যাপ্লিকেশন আইডি / স্বাস্থ্যসাথী নং",
+                    field1LabelEn = "Lakshmir Bhandar App ID / Swasthya Sathi No",
+                    field2LabelBn = "নতুন ব্যাংক অ্যাকাউন্ট ও IFSC কোড",
+                    field2LabelEn = "New Bank Account No & IFSC Code",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমি লক্ষ্মীর ভাণ্ডার প্রকল্পের একজন উপভোক্তা (আইডি: ${f1.ifBlank { "অ্যাপ্লিকেশন আইডি" }})। আমার পূর্বের অ্যাকাউন্টটি ব্যাংক মার্জারের কারণে অচল হয়েছে। নতুন অ্যাকাউন্ট বিবরণ: ${f2.ifBlank { "অ্যাকাউন্ট ও IFSC" }}। নতুন পাসবুক জেরক্স সহ অ্যাকাউন্টটি আপডেট করার বিনীত অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, resident of ${addr.ifBlank { "................" }}, am a beneficiary under Lakshmir Bhandar Scheme (ID: ${f1.ifBlank { "Beneficiary ID" }}). Due to bank merger, my prior account is closed. Kindly update my new bank account: ${f2.ifBlank { "Account & IFSC" }} to resume payment."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "scheme_lb_restart",
+                    titleBn = "বন্ধ হওয়া লক্ষ্মীর ভাণ্ডার পুনরায় চালু করার আবেদন",
+                    titleEn = "Reactivation of Stopped Lakshmir Bhandar Allowance",
+                    subjectBn = "বন্ধ হয়ে যাওয়া লক্ষ্মীর ভাণ্ডার ভাতা পুনরায় চালু করার আবেদন",
+                    subjectEn = "Application for restoration and resumption of stopped Lakshmir Bhandar assistance",
+                    field1LabelBn = "অ্যাপ্লিকেশন আইডি ও স্বাস্থ্যসাথী নম্বর",
+                    field1LabelEn = "Application ID & Swasthya Sathi No",
+                    field2LabelBn = "কত মাস ধরে বন্ধ ও আধার নম্বর",
+                    field2LabelEn = "Discontinued Since & Aadhaar No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আইডি নং: ${f1.ifBlank { "আইডি নম্বর" }}। গত ${f2.ifBlank { "কয়েকমাস" }} যাবৎ কোনো কারণ ছাড়াই আমার লক্ষ্মীর ভাণ্ডার প্রকল্পের মাসিক ভাতা বন্ধ রয়েছে। আমি ব্যাংক ও আধার ভেরিফিকেশন নথি দাখিল করছি। অবিলম্বে ভাতাটি পুনরায় সচল করার অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, App ID: ${f1.ifBlank { "App ID" }}, bring to your notice that my Lakshmir Bhandar monthly allowance has been stopped for the last ${f2.ifBlank { "months" }}. KYC documents are re-submitted. I request urgent verification and release of arrears."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "scheme_krishak_bandhu",
+                    titleBn = "কৃষক বন্ধু জমির তথ্য আপডেট ও ভেরিফিকেশন আবেদন",
+                    titleEn = "Krishak Bandhu Land Record Update & Verification",
+                    subjectBn = "কৃষক বন্ধু প্রকল্পে নতুন জমির খতিয়ান আপডেট করার আবেদন",
+                    subjectEn = "Application for updating mutated land records under Krishak Bandhu Scheme",
+                    field1LabelBn = "কৃষক বন্ধু আইডি (KB ID) ও ভোটার নম্বর",
+                    field1LabelEn = "Krishak Bandhu ID (KB ID) & Voter No",
+                    field2LabelBn = "নতুন মৌজা, খতিয়ান ও জমির পরিমাণ",
+                    field2LabelEn = "Updated Mouza, Khatian & Cultivated Area",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমার কৃষক বন্ধু আইডি: ${f1.ifBlank { "KB ID" }}। সম্প্রতি আমি নতুন জমি ক্রয়/ওয়ারিশান সূত্রে অর্জন করেছি (${f2.ifBlank { "মৌজা ও খতিয়ান তথ্য" }})। সংশোধিত পর্চা দাখিল করে আমার কৃষক বন্ধু রেকর্ডে জমির পরিমাণ হালনাগাদ করার আবেদন জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, holding Krishak Bandhu ID: ${f1.ifBlank { "KB ID" }}, have mutated additional agricultural land (${f2.ifBlank { "Land Details" }}). I request you to update my cultivated land area in the Krishak Bandhu portal."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "scheme_scholarship",
+                    titleBn = "কন্যাশ্রী / ঐক্যশ্রী / SVMCM স্কলারশিপ আবেদন",
+                    titleEn = "Kanyashree / Aikyashree / SVMCM Scholarship Query",
+                    subjectBn = "স্কলারশিপ আবেদনের অনুমোদন ও ভেরিফিকেশন দ্রুত নিষ্পত্তির আবেদন",
+                    subjectEn = "Application for expediting institutional verification of Kanyashree / SVMCM scholarship",
+                    field1LabelBn = "অ্যাপ্লিকেশন আইডি ও স্কলারশিপের নাম (K2/SVMCM)",
+                    field1LabelEn = "Application ID & Scheme Name (K2/SVMCM)",
+                    field2LabelBn = "শিক্ষাপ্রতিষ্ঠান ও বর্তমান কোর্সের নাম",
+                    field2LabelEn = "Institution Name & Current Course",
+                    bodyTemplateBn = { name, _, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। অ্যাপ্লিকেশন আইডি: ${f1.ifBlank { "আইডি" }}। প্রতিষ্ঠান: ${f2.ifBlank { "প্রতিষ্ঠান" }}। আমার স্কলারশিপ আবেদনটি দীর্ঘ সময় ধরে দাপ্তরিক ভেরিফিকেশনে আটকে রয়েছে। দরিদ্র পরিবারের শিক্ষার্থী হিসেবে পড়াশোনা চালিয়ে যাওয়ার স্বার্থে আবেদনটি দ্রুত অনুমোদনের অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, _, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, student under Scheme ID: ${f1.ifBlank { "App ID" }} at ${f2.ifBlank { "Institution" }}, state that my scholarship verification is pending. Due to financial constraints, I request expedited verification."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "scheme_pension",
+                    titleBn = "বার্ধক্য / বিধবা / মানবিক ভাতার আবেদন",
+                    titleEn = "Old Age / Widow / Disability Pension Application",
+                    subjectBn = "সামাজিক সুরক্ষা বার্ধক্য / বিধবা / মানবিক পেনশন মঞ্জুরের আবেদন",
+                    subjectEn = "Application for sanction of Old Age / Widow / Disability (Manabik) Pension",
+                    field1LabelBn = "ভাতার ধরন (বার্ধক্য / বিধবা / প্রতিবন্ধী)",
+                    field1LabelEn = "Pension Type (Old Age / Widow / Manabik)",
+                    field2LabelBn = "বয়স, আধার নম্বর ও মেডিকেল/ডেথ সার্টিফিকেট",
+                    field2LabelEn = "Age, Aadhaar & Disability/Death Certificate",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমি অত্যন্ত দরিদ্র ও অসহায় ব্যক্তি। সরকারি শর্তানুযায়ী আমি ${f1.ifBlank { "ভাতার ধরন" }} পাওয়ার উপযুক্ত (তথ্য: ${f2.ifBlank { "সার্টিফিকেট ও আধার" }})। মানবিক দিক বিবেচনায় আমার পেনশন ভাতাটি মঞ্জুর করার বিনীত প্রার্থনা জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, residing at ${addr.ifBlank { "................" }}, am an indigent applicant qualifying for ${f1.ifBlank { "Pension Type" }} (Details: ${f2.ifBlank { "Proofs" }}). I earnestly pray for sanction of social security pension."
+                    }
+                )
+            )
+        ),
+
+        // 4. স্বাস্থ্যসাথী ও আয়ুষ্মান ভারত (Health Card & Services)
+        LetterCategory(
+            id = "health_cards",
+            titleBn = "৪. স্বাস্থ্যসাথী ও আয়ুষ্মান ভারত (Health Card & Services)",
+            titleEn = "4. Health Card & Services",
+            defaultRecipientBn = "স্বাস্থ্যসাথী নোডাল অফিসার (Nodal Officer, Swasthya Sathi / Ayushman)",
+            defaultRecipientEn = "The Nodal Officer (Swasthya Sathi / Ayushman Bharat)",
+            letterTypes = listOf(
+                LetterTypeItem(
+                    id = "health_add_member",
+                    titleBn = "স্বাস্থ্যসাথী কার্ডে নতুন সদস্য যোগের আবেদন",
+                    titleEn = "Add Family Member in Swasthya Sathi Card",
+                    subjectBn = "বিদ্যমান স্বাস্থ্যসাথী কার্ডে নতুন সদস্যের নাম অন্তর্ভুক্তির আবেদন",
+                    subjectEn = "Application for addition of new family member in existing Swasthya Sathi Card (Form B)",
+                    field1LabelBn = "স্বাস্থ্যসাথী কার্ডের URN নম্বর ও পরিবারের প্রধানের নাম",
+                    field1LabelEn = "Swasthya Sathi URN No & Primary Cardholder",
+                    field2LabelBn = "নতুন সদস্যের নাম, সম্পর্ক ও আধার নম্বর",
+                    field2LabelEn = "New Member Name, Relation & Aadhaar No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমাদের স্বাস্থ্যসাথী URN নং: ${f1.ifBlank { "URN নম্বর" }}। সম্প্রতি বিবাহ/জন্মসূত্রে পরিবারের নতুন সদস্য (${f2.ifBlank { "নতুন সদস্যের নাম ও আধার" }})-এর নাম কার্ডে যুক্ত করা আবশ্যক। ফর্ম বি সহ নথিপত্র দাখিল করছি। নাম অন্তর্ভুক্ত করার অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, hold Swasthya Sathi URN: ${f1.ifBlank { "URN" }}. I wish to include my newly wedded spouse / newborn child (${f2.ifBlank { "Member Name & Aadhaar" }}) in the smart card. Form B and birth/marriage proofs are enclosed."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "health_duplicate_card",
+                    titleBn = "ডুপ্লিকেট স্বাস্থ্যসাথী কার্ড পাওয়ার আবেদন",
+                    titleEn = "Duplicate Swasthya Sathi Card Request",
+                    subjectBn = "হারিয়ে যাওয়া স্বাস্থ্যসাথী কার্ডের ডুপ্লিকেট স্মার্ট কার্ড পাওয়ার আবেদন",
+                    subjectEn = "Application for issuance of duplicate Swasthya Sathi Smart Card",
+                    field1LabelBn = "স্বাস্থ্যসাথী কার্ডের URN নম্বর ও পরিবারের প্রধানের নাম",
+                    field1LabelEn = "Swasthya Sathi URN No & Head of Family",
+                    field2LabelBn = "থানা জিডি নম্বর ও মোবাইল নম্বর",
+                    field2LabelEn = "Police GD No & Registered Mobile No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আমাদের পরিবারের মূল স্বাস্থ্যসাথী কার্ডটি (URN: ${f1.ifBlank { "URN" }}) দুর্ভাগ্যবশত হারিয়ে গেছে (থানা জিডি নং: ${f2.ifBlank { "জিডি নং" }})। জরুরি চিকিৎসার সুবিধার্থে একটি ডুপ্লিকেট স্বাস্থ্যসাথী স্মার্ট কার্ড প্রিন্ট করে প্রদান করার অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "Our family's Swasthya Sathi Card under URN: ${f1.ifBlank { "URN" }} was unfortunately lost (GD: ${f2.ifBlank { "GD No" }}). For medical treatment continuity, I request issuance of a duplicate smart card."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "health_hospital_refusal",
+                    titleBn = "হাসপাতালে কার্ড গ্রহণ না করার অভিযোগ পত্র",
+                    titleEn = "Complaint on Refusal of Health Card by Hospital",
+                    subjectBn = "হাসপাতাল কর্তৃক স্বাস্থ্যসাথী/আয়ুষ্মান কার্ডে চিকিৎসা দিতে অস্বীকারের অভিযোগ",
+                    subjectEn = "Complaint against empanelled hospital for refusing cashless treatment under Health Scheme",
+                    field1LabelBn = "হাসপাতালের নাম ও ভর্তি রোগীর নাম",
+                    field1LabelEn = "Hospital Name & Patient Name",
+                    field2LabelBn = "স্বাস্থ্যসাথী URN নম্বর ও ঘটনার তারিখ",
+                    field2LabelEn = "URN No, Refusal Date & Demanded Cash",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "মহাশয়, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। নার্সিংহোম/হাসপাতাল: ${f1.ifBlank { "হাসপাতালের নাম" }}-এ জরুরি অবস্থায় রোগী নিয়ে গেলে তারা সক্রিয় কার্ড (URN: ${f2.ifBlank { "URN ও তারিখ" }}) গ্রহণ না করে নগদ টাকা দাবি করে। এই বেআইনি আচরণের বিরুদ্ধে তদন্ত ও ক্ষতিপূরণের দাবি জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "Sir, empanelled facility ${f1.ifBlank { "Hospital Name" }} wrongfully refused cashless admission under Swasthya Sathi/Ayushman card (URN: ${f2.ifBlank { "URN" }}), demanding illegal out-of-pocket cash. I demand strict penal action against the authority."
+                    }
+                )
+            )
+        ),
+
+        // 5. এলপিজি গ্যাস এজেন্সি (LPG Gas Connection)
+        LetterCategory(
+            id = "lpg_gas",
+            titleBn = "৫. এলপিজি গ্যাস এজেন্সি (LPG Gas Connection)",
+            titleEn = "5. LPG Gas Connection",
+            defaultRecipientBn = "ব্যবস্থাপক / ডিস্ট্রিবিউটর (The Manager / Distributor, LPG Agency)",
+            defaultRecipientEn = "The Manager / Distributor (LPG Gas Agency)",
+            letterTypes = listOf(
+                LetterTypeItem(
+                    id = "lpg_transfer",
+                    titleBn = "গ্যাস সংযোগ ঠিকানা পরিবর্তনের আবেদন (Transfer)",
+                    titleEn = "LPG Connection Address Transfer (CTA / SV)",
+                    subjectBn = "বাসস্থান স্থানান্তরের কারণে গ্যাস সংযোগ ট্রান্সফারের আবেদন",
+                    subjectEn = "Application for transfer of LPG gas connection / issuance of Transfer Advice (CTA)",
+                    field1LabelBn = "ভোক্তা নম্বর (Consumer No) ও এজেন্সির নাম",
+                    field1LabelEn = "LPG Consumer Number & Agency Name",
+                    field2LabelBn = "নতুন বাসস্থান ও নতুন ঠিকানার আধার তথ্য",
+                    field2LabelEn = "New Residence Address & Aadhaar Proof",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। গ্রাহক নম্বর: ${f1.ifBlank { "ভোক্তা নং" }}। বাসস্থান স্থানান্তরের কারণে আমার পূর্বের ঠিকানায় সিলিন্ডার সরবরাহ নেওয়া সম্ভব হচ্ছে না। নতুন ঠিকানা: ${f2.ifBlank { "নতুন ঠিকানা" }}। সাবস্ক্রিপশন ভাউচার সহ গ্যাস সংযোগটি নতুন ঠিকানায়/এজেন্সিতে ট্রান্সফারের অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, Consumer No: ${f1.ifBlank { "Consumer No" }}, have relocated my residence to: ${f2.ifBlank { "New Address" }}. I request you to issue a Customer Transfer Advice (CTA) or update delivery address."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "lpg_name_transfer_death",
+                    titleBn = "মালিকের মৃত্যুর পর গ্যাস সংযোগে নাম পরিবর্তনের আবেদন",
+                    titleEn = "Transfer of LPG Connection upon Death of Consumer",
+                    subjectBn = "মূল গ্রাহকের মৃত্যুর পর বৈধ উত্তরাধিকারীর নামে গ্যাস সংযোগ হস্তান্তরের আবেদন",
+                    subjectEn = "Application for transfer of LPG domestic connection to legal heir upon death of original subscriber",
+                    field1LabelBn = "মৃত গ্রাহকের নাম ও উপভোক্তা নম্বর",
+                    field1LabelEn = "Deceased Consumer Name & Consumer No",
+                    field2LabelBn = "মৃত্যুর তারিখ ও নতুন আবেদনকারীর সম্পর্ক",
+                    field2LabelEn = "Date of Death & Relationship to Deceased",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আপনার এজেন্সির মূল গ্রাহক স্বর্গীয় ${f1.ifBlank { "মৃত গ্রাহকের নাম ও নং" }} গত ${f2.ifBlank { "তারিখে" }} মৃত্যুবরণ করেছেন। আমি তাঁর বৈধ উত্তরাধিকারী। ডেথ সার্টিফিকেট ও ওয়ারিশান ডিক্লেয়ারেশন জমা দিয়ে সংযোগটি আমার নামে স্থানান্তরের আবেদন জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "The original subscriber Late ${f1.ifBlank { "Deceased Consumer" }} passed away on ${f2.ifBlank { "Date" }}. As legal heir, I submit the death certificate, KYC, and declaration. Kindly transfer the LPG connection to my name."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "lpg_subsidy_query",
+                    titleBn = "গ্যাস ভর্তুকি (Subsidy) না পাওয়ার অভিযোগ",
+                    titleEn = "Complaint on Non-Credit of LPG DBTL Subsidy",
+                    subjectBn = "সিলিন্ডার ডেলিভারির পরেও ব্যাংক অ্যাকাউন্টে ভর্তুকির টাকা না আসার অভিযোগ",
+                    subjectEn = "Complaint regarding non-credit of PAHAL / DBTL LPG cylinder subsidy in bank account",
+                    field1LabelBn = "ভোক্তা নম্বর (Consumer No) ও এলপিজি আইডি (17 Digits)",
+                    field1LabelEn = "Consumer Number & 17-digit LPG ID",
+                    field2LabelBn = "ব্যাংক অ্যাকাউন্ট নম্বর ও শেষ ডেলিভারির তারিখ",
+                    field2LabelEn = "Bank Account No & Last Refill Delivery Date",
+                    bodyTemplateBn = { name, _, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। কনজিউমার নং: ${f1.ifBlank { "গ্রাহক নং" }}। বিগত বেশ কয়েকটি সিলিন্ডার বুকিংয়ের পরে ভর্তুকির অর্থ আমার ব্যাংক অ্যাকাউন্টে (${f2.ifBlank { "অ্যাকাউন্ট ও তারিখ" }}) জমা পড়েনি। আমার আধার লিঙ্কড ব্যাংক অ্যাকাউন্টে বকেয়া ভর্তুকি ছাড়ের ব্যবস্থা করুন।"
+                    },
+                    bodyTemplateEn = { name, _, _, f1, f2 ->
+                        "I hold Consumer No: ${f1.ifBlank { "Consumer No" }}. For recent refill deliveries (${f2.ifBlank { "Delivery details" }}), DBTL subsidy has not been credited to my bank account. Please check NPCI mapping and disburse subsidy."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "lpg_new_conn",
+                    titleBn = "নতুন গ্যাস কানেকশনের আবেদন",
+                    titleEn = "New Domestic LPG Connection",
+                    subjectBn = "নতুন গার্হস্থ্য এলপিজি গ্যাস সংযোগের জন্য আবেদন",
+                    subjectEn = "Application for release of new domestic LPG connection",
+                    field1LabelBn = "পরিবারের রেশন কার্ড ও আধার নম্বর",
+                    field1LabelEn = "Ration Card & Aadhaar Number",
+                    field2LabelBn = "মোবাইল নম্বর ও সংযোগের ধরন (14.2 কেজি)",
+                    field2LabelEn = "Mobile Number & Package Type (14.2 kg)",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমার পরিবারে ইতিপূর্বে কোনো রান্নার গ্যাস সংযোগ নেই (আধার ও রেশন: ${f1.ifBlank { "নথি" }})। যোগাযোগ: ${f2.ifBlank { "মোবাইল" }}। সরকারি নিয়ম মেনে আমানত ও ফি প্রদান সাপেক্ষে একটি নতুন গ্যাস সংযোগ প্রদানের অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, address: ${addr.ifBlank { "................" }}, do not possess any domestic LPG connection (Proof: ${f1.ifBlank { "Aadhaar/Ration" }}). Contact: ${f2.ifBlank { "Mobile" }}. Kindly release a new domestic connection."
+                    }
+                )
+            )
+        ),
+
+        // 6. জন্ম ও মৃত্যু রেজিস্ট্রেশন (Late Birth / Death Registration)
+        LetterCategory(
+            id = "birth_death_reg",
+            titleBn = "৬. জন্ম ও মৃত্যু রেজিস্ট্রেশন (Late Birth / Death Registration)",
+            titleEn = "6. Late Birth / Death Registration",
+            defaultRecipientBn = "মহকুমা শাসক / এগজিকিউটিভ ম্যাজিস্ট্রেট (SDO / Executive Magistrate)",
+            defaultRecipientEn = "The Sub-Divisional Magistrate / SDO",
+            letterTypes = listOf(
+                LetterTypeItem(
+                    id = "reg_delayed_birth",
+                    titleBn = "দেরিতে জন্ম শংসাপত্রের অনুমতির জন্য এসডিও/ম্যাজিস্ট্রেটের কাছে আবেদন",
+                    titleEn = "Delayed Birth Registration Order (Section 13(3))",
+                    subjectBn = "বিলম্বিত জন্ম রেজিস্ট্রেশনের আদেশের জন্য আবেদন (Application under Section 13(3) RBD Act)",
+                    subjectEn = "Application for delayed registration of birth under Section 13(3) of Registration of Births and Deaths Act 1969",
+                    field1LabelBn = "সন্তানের নাম ও পিতা/মাতার নাম",
+                    field1LabelEn = "Child Name & Parents Name",
+                    field2LabelBn = "জন্মতারিখ, জন্মের স্থান ও বিলম্বের কারণ",
+                    field2LabelEn = "Date of Birth, Place of Birth & Reason for Delay",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমার সন্তান ${f1.ifBlank { "সন্তানের নাম" }} গত ${f2.ifBlank { "জন্মতারিখ ও স্থান" }} জন্মগ্রহণ করে। অজ্ঞতা ও গ্রামীণ দূরত্বের কারণে নির্ধারিত এক বছরের মধ্যে জন্ম নথিবদ্ধ করা সম্ভব হয়নি। বিজ্ঞ আদালতের হলফনামা ও হাসপাতাল রেকর্ড সহ জন্ম শংসাপত্র ইস্যুর নির্দেশ প্রদানের বিনীত প্রার্থনা জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, resident of ${addr.ifBlank { "................" }}, state that my child ${f1.ifBlank { "Child Name" }} was born on ${f2.ifBlank { "DOB & Place" }}. Due to lack of awareness, the birth could not be registered within statutory time. I pray for an order under Section 13(3) of RBD Act 1969."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "reg_birth_rectify",
+                    titleBn = "জন্ম শংসাপত্রে নাম বা অভিভাবকের নামের ভুল সংশোধন",
+                    titleEn = "Rectification in Birth Certificate",
+                    subjectBn = "ইস্যুকৃত ডিজিটাল জন্ম শংসাপত্রে নাম/বানান সংশোধনের আবেদন",
+                    subjectEn = "Application for correction of child name / parents name in Digital Birth Certificate",
+                    field1LabelBn = "জন্ম রেজিস্ট্রেশন নম্বর ও সার্টিফিকেট তারিখ",
+                    field1LabelEn = "Birth Registration No & Issue Date",
+                    field2LabelBn = "বিদ্যমান ভুল বনাম আধার অনুযায়ী সঠিক বানান",
+                    field2LabelEn = "Existing Incorrect vs Correct Name/DOB",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। রেজিস্ট্রেশন নং: ${f1.ifBlank { "রেজিস্ট্রেশন নং" }}। ইস্যুকৃত জন্ম শংসাপত্রে অসাবধানতাবশত নামের বানানে ভুল হয়েছে। প্রাথমিক শিক্ষা ও আধার প্রমাণ অনুযায়ী সঠিক তথ্য: ${f2.ifBlank { "সঠিক বানান" }}। বিধি অনুযায়ী রেকর্ড সংশোধনপূর্বক সংশোধিত শংসাপত্র প্রদানের অনুরোধ জানাচ্ছি।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, bring to your notice that Birth Certificate Reg No: ${f1.ifBlank { "Reg No" }} contains a typographical error. As per primary records, correct entry is: ${f2.ifBlank { "Correct entry" }}. Kindly issue rectified certificate."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "reg_duplicate_death",
+                    titleBn = "ডুপ্লিকেট ডেথ সার্টিফিকেটের আবেদন",
+                    titleEn = "Duplicate Death Certificate Application",
+                    subjectBn = "হারানো মৃত্যু শংসাপত্রের ডুপ্লিকেট ডিজিটাল কপির আবেদন",
+                    subjectEn = "Application for issuance of duplicate Death Certificate",
+                    field1LabelBn = "মৃত ব্যক্তির নাম ও রেজিস্ট্রেশন নম্বর",
+                    field1LabelEn = "Deceased Name & Death Registration No",
+                    field2LabelBn = "মৃত্যুর তারিখ ও থানা জিডি নম্বর",
+                    field2LabelEn = "Date of Death & Police GD No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আমার প্রয়াত অভিভাবক ${f1.ifBlank { "মৃত ব্যক্তির নাম ও নম্বর" }}-এর মূল ডেথ সার্টিফিকেটটি দুর্ভাগ্যবশত হারিয়ে গেছে (থানা জিডি: ${f2.ifBlank { "জিডি নং" }})। ব্যাংক ও জমি হস্তান্তরের কাজের জন্য একটি ডুপ্লিকেট মৃত্যু শংসাপত্র প্রদান করে বাধিত করবেন।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, state that the original Death Certificate of Late ${f1.ifBlank { "Deceased Name & Reg No" }} was lost (Police GD: ${f2.ifBlank { "GD No" }}). Kindly issue a certified duplicate Death Certificate."
+                    }
+                )
+            )
+        ),
+
+        // 7. স্কুল ও কলেজ (School & College)
         LetterCategory(
             id = "school",
-            titleBn = "২. স্কুল ও কলেজ (School & College)",
-            titleEn = "2. School & College",
+            titleBn = "৭. স্কুল ও কলেজ (School & College)",
+            titleEn = "7. School & College",
             defaultRecipientBn = "প্রধান শিক্ষক / অধ্যক্ষ মহাশয় (Headmaster / Principal)",
             defaultRecipientEn = "The Headmaster / Principal",
             letterTypes = listOf(
@@ -358,32 +770,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, _, _, f1, f2 ->
                         "I state that I am ${name.ifBlank { "................" }}, Roll & Reg No: ${f1.ifBlank { "................" }}. There is an inadvertent error in my name in the issued Marksheet/Admit Card. The correct information is: ${f2.ifBlank { name }}. Kindly initiate correction with the Board."
                     }
-                ),
-                LetterTypeItem(
-                    id = "school_recheck",
-                    titleBn = "পুনরায় খাতা মূল্যায়নের আবেদন",
-                    titleEn = "Answer Script Re-evaluation",
-                    subjectBn = "পরীক্ষার উত্তরপত্র পুনরায় মূল্যায়নের (Re-check) আবেদন",
-                    subjectEn = "Application for re-evaluation / scrutiny of answer scripts",
-                    field1LabelBn = "রোল নম্বর ও পরীক্ষার নাম",
-                    field1LabelEn = "Roll No & Exam Name",
-                    field2LabelBn = "বিষয়ের নাম ও প্রাপ্ত নম্বর",
-                    field2LabelEn = "Subject & Awarded Marks",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, রোল নং ${f1.ifBlank { "................" }}। সম্প্রতি প্রকাশিত ফলাফলে আমার ${f2.ifBlank { "নির্দিষ্ট বিষয়ে" }} প্রত্যাশার চেয়ে অনেক কম নম্বর এসেছে। আমি নিশ্চিত উত্তরপত্রটি পুনর্বিবেচনা করলে নম্বর বৃদ্ধি পাবে। অতএব, উত্তরপত্রটি স্ক্রুটিনি করার প্রার্থনা জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I appeared for the examination under Roll No: ${f1.ifBlank { "................" }}. In the subject ${f2.ifBlank { "Subject details" }}, the awarded marks are significantly lower than expected. I request you to kindly permit post-publication scrutiny/re-evaluation of my paper."
-                    }
                 )
             )
         ),
 
-        // 3. বিদ্যুৎ দপ্তর (Electricity / WBSEDCL)
+        // 8. বিদ্যুৎ দপ্তর (Electricity / WBSEDCL)
         LetterCategory(
             id = "electricity",
-            titleBn = "৩. বিদ্যুৎ দপ্তর (Electricity / WBSEDCL)",
-            titleEn = "3. Electricity / WBSEDCL",
+            titleBn = "৮. বিদ্যুৎ দপ্তর (Electricity / WBSEDCL)",
+            titleEn = "8. Electricity / WBSEDCL",
             defaultRecipientBn = "স্টেশন ম্যানেজার (Station Manager / AE, WBSEDCL)",
             defaultRecipientEn = "The Station Manager / AE, WBSEDCL",
             letterTypes = listOf(
@@ -475,11 +870,11 @@ fun getApplicationCategories(): List<LetterCategory> {
             )
         ),
 
-        // 4. পঞ্চায়েত ও পৌরসভা (Panchayat / Municipality)
+        // 9. পঞ্চায়েত ও পৌরসভা (Panchayat / Municipality)
         LetterCategory(
             id = "panchayat",
-            titleBn = "৪. পঞ্চায়েত ও পৌরসভা (Panchayat / Municipality)",
-            titleEn = "4. Panchayat / Municipality",
+            titleBn = "৯. পঞ্চায়েত ও পৌরসভা (Panchayat / Municipality)",
+            titleEn = "9. Panchayat / Municipality",
             defaultRecipientBn = "প্রধান / পৌরপ্রধান মহাশয় (Pradhan / Chairman)",
             defaultRecipientEn = "The Pradhan / Municipal Chairman",
             letterTypes = listOf(
@@ -498,23 +893,6 @@ fun getApplicationCategories(): List<LetterCategory> {
                     },
                     bodyTemplateEn = { name, addr, _, f1, f2 ->
                         "I, ${name.ifBlank { "................" }}, Son/Wife of ${f1.ifBlank { "................" }}, resident of ${addr.ifBlank { "................" }}, am a permanent resident of your jurisdiction. Identification: ${f2.ifBlank { "................" }}. For official submission, I request you to kindly issue a Residential Certificate."
-                    }
-                ),
-                LetterTypeItem(
-                    id = "panch_birth_death",
-                    titleBn = "জন্ম / মৃত্যু শংসাপত্রের আবেদন",
-                    titleEn = "Birth / Death Certificate",
-                    subjectBn = "জন্ম / মৃত্যু শংসাপত্র ইস্যু করার আবেদন",
-                    subjectEn = "Application for issuance of Birth / Death Certificate",
-                    field1LabelBn = "ব্যক্তির নাম ও পিতা/মাতার নাম",
-                    field1LabelEn = "Person Name & Parents Name",
-                    field2LabelBn = "ঘটনার তারিখ ও স্থান",
-                    field2LabelEn = "Date & Place of Occurrence",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আমার পরিবারের সদস্য ${f1.ifBlank { "সদস্যের নাম" }} গত ${f2.ifBlank { "তারিখে" }} জন্মগ্রহণ/মৃত্যুবরণ করেছেন। হাসপাতাল ও সংশ্লিষ্ট প্রমাণের ভিত্তিতে প্রয়োজনীয় সরকারি নথিতে নাম অন্তর্ভুক্তপূর্বক শংসাপত্রটি প্রদান করার অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I state that I am ${name.ifBlank { "................" }}. My family member, ${f1.ifBlank { "Name" }}, was born/passed away on ${f2.ifBlank { "Date & Place" }}. Supporting medical discharge/burial receipts are attached. Kindly issue the certified Certificate."
                     }
                 ),
                 LetterTypeItem(
@@ -588,11 +966,11 @@ fun getApplicationCategories(): List<LetterCategory> {
             )
         ),
 
-        // 5. থানা ও পুলিশ (Police / GD / FIR)
+        // 10. থানা ও পুলিশ (Police / GD / FIR)
         LetterCategory(
             id = "police",
-            titleBn = "৫. থানা ও পুলিশ (Police / GD / FIR)",
-            titleEn = "5. Police / GD / FIR",
+            titleBn = "১০. থানা ও পুলিশ (Police / GD / FIR)",
+            titleEn = "10. Police / GD / FIR",
             defaultRecipientBn = "ভারপ্রাপ্ত আধিকারিক (Officer-in-Charge / Inspector)",
             defaultRecipientEn = "The Officer-in-Charge / Inspector of Police",
             letterTypes = listOf(
@@ -667,29 +1045,29 @@ fun getApplicationCategories(): List<LetterCategory> {
             )
         ),
 
-        // 6. সরকারি দপ্তর ও বিডিও (Govt Office / BDO)
+        // 11. সরকারি দপ্তর ও বিডিও (Govt Office / BDO)
         LetterCategory(
             id = "govt_bdo",
-            titleBn = "৬. সরকারি দপ্তর ও বিডিও (Govt Office / BDO)",
-            titleEn = "6. Govt Office / BDO",
+            titleBn = "১১. সরকারি দপ্তর ও বিডিও (Govt Office / BDO)",
+            titleEn = "11. Govt Office / BDO",
             defaultRecipientBn = "ব্লক উন্নয়ন আধিকারিক (Block Development Officer - BDO)",
             defaultRecipientEn = "The Block Development Officer (BDO)",
             letterTypes = listOf(
                 LetterTypeItem(
-                    id = "bdo_scheme",
-                    titleBn = "সরকারি প্রকল্পে নাম নথিভুক্তকরণ",
-                    titleEn = "Govt Welfare Scheme Enrollment",
-                    subjectBn = "সরকারি কল্যাণমূলক প্রকল্পে নাম অন্তর্ভুক্তির আবেদন",
-                    subjectEn = "Application for enrollment under Government Welfare Scheme",
-                    field1LabelBn = "প্রকল্পের নাম (যেমন: আবাস যোজনা / লক্ষ্মীর ভাণ্ডার)",
-                    field1LabelEn = "Scheme Name (e.g. Awas / Lakshmir Bhandar)",
-                    field2LabelBn = "আধার ও পারিবারিক আয়ের তথ্য",
-                    field2LabelEn = "Aadhaar No & Family Income",
+                    id = "bdo_general_app",
+                    titleBn = "সাধারণ আবেদন পত্র",
+                    titleEn = "General Official Application",
+                    subjectBn = "প্রশাসনিক সহযোগিতা ও প্রয়োজনীয় ব্যবস্থা গ্রহণের আবেদন",
+                    subjectEn = "General representation seeking administrative intervention and action",
+                    field1LabelBn = "আবেদনের মূল বিষয় বা প্রকল্পের নাম",
+                    field1LabelEn = "Main Subject / Scheme Name",
+                    field2LabelBn = "আবেদনকারীর মোবাইল ও ভোটার নম্বর",
+                    field2LabelEn = "Applicant Mobile & Voter Card No",
                     bodyTemplateBn = { name, addr, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আমি অত্যন্ত দরিদ্র পরিবারের সদস্য এবং সরকারি '${f1.ifBlank { "সরকারি প্রকল্প" }}' প্রকল্পের সমস্ত শর্ত পূরণ করি। তথ্যসূত্র: ${f2.ifBlank { "আধার ও আয়" }}। অতএব, মানবিক বিবেচনায় উক্ত প্রকল্পে আমার নাম অন্তর্ভুক্ত করার অনুরোধ জানাচ্ছি।"
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}, সাং- ${addr.ifBlank { "................" }}। আপনার সদয় অবগতির জন্য জানাচ্ছি যে, ${f1.ifBlank { "মূল বিষয়" }} প্রসঙ্গে আপনার দপ্তরের জরুরি হস্তক্ষেপ প্রয়োজন। যোগাযোগ: ${f2.ifBlank { "মোবাইল" }}। অতএব, বিষয়টি গুরুত্ব সহকারে বিবেচনা করে প্রয়োজনীয় পদক্ষেপ গ্রহণে বাধিত করবেন।"
                     },
                     bodyTemplateEn = { name, addr, _, f1, f2 ->
-                        "I, ${name.ifBlank { "................" }}, residing at ${addr.ifBlank { "................" }}, belong to an economically weaker section and fulfill all criteria for '${f1.ifBlank { "Welfare Scheme" }}'. My details: ${f2.ifBlank { "Aadhaar & Income" }}. Kindly register my candidature for the scheme."
+                        "I, ${name.ifBlank { "................" }}, residing at ${addr.ifBlank { "................" }}, submit this representation regarding ${f1.ifBlank { "Subject" }}. Contact: ${f2.ifBlank { "Mobile" }}. I earnestly request your kind intervention and necessary administrative action."
                     }
                 ),
                 LetterTypeItem(
@@ -725,32 +1103,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, addr, _, f1, f2 ->
                         "I, ${name.ifBlank { "................" }}, resident of ${addr.ifBlank { "................" }}, have suffered acute distress due to (${f1.ifBlank { "Disaster/Crisis" }}). Relevant medical/damage proofs are enclosed (${f2.ifBlank { "Enclosures" }}). Kindly sanction emergency relief assistance."
                     }
-                ),
-                LetterTypeItem(
-                    id = "bdo_certificate_correct",
-                    titleBn = "সরকারি নথি বা শংসাপত্র সংশোধন",
-                    titleEn = "Govt Certificate Correction",
-                    subjectBn = "সরকারি শংসাপত্রে ভুল তথ্য সংশোধনের আবেদন",
-                    subjectEn = "Application for rectification of official certificate / roster",
-                    field1LabelBn = "শংসাপত্রের নাম ও সার্টিফিকেট নম্বর",
-                    field1LabelEn = "Certificate Name & Serial No",
-                    field2LabelBn = "সঠিক তথ্য ও সহায়ক প্রমাণপত্র",
-                    field2LabelEn = "Correct Details & Proof",
-                    bodyTemplateBn = { name, addr, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আমার পূর্বে ইস্যুকৃত শংসাপত্রে (${f1.ifBlank { "সার্টিফিকেট তথ্য" }}) নামের বানান/বয়সে অসাবধানতাবশত ভুল লিপিবদ্ধ হয়েছে। সরকারি আধার/ভোটার অনুযায়ী সঠিক তথ্য: ${f2.ifBlank { "সঠিক তথ্য" }}। সংশোধিত শংসাপত্র প্রদানের অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, addr, _, f1, f2 ->
-                        "I bring to your notice that Certificate No: ${f1.ifBlank { "Cert Details" }} contains a clerical error. As per my primary identification documents, the correct entry is: ${f2.ifBlank { "Correct Data" }}. Kindly issue a rectified certificate."
-                    }
                 )
             )
         ),
 
-        // 7. ভূমি ও রেজিস্ট্রি (Land & Registry / BL&LRO)
+        // 12. ভূমি ও রেজিস্ট্রি (Land & Registry / BL&LRO)
         LetterCategory(
             id = "land_bllro",
-            titleBn = "৭. ভূমি ও রেজিস্ট্রি (Land & Registry / BL&LRO)",
-            titleEn = "7. Land & Registry / BL&LRO",
+            titleBn = "১২. ভূমি ও রেজিস্ট্রি (Land & Registry / BL&LRO)",
+            titleEn = "12. Land & Registry / BL&LRO",
             defaultRecipientBn = "ব্লক ভূমি ও ভূমি সংস্কার আধিকারিক (BL&LRO)",
             defaultRecipientEn = "The Block Land & Land Reforms Officer (BL&LRO)",
             letterTypes = listOf(
@@ -825,11 +1186,73 @@ fun getApplicationCategories(): List<LetterCategory> {
             )
         ),
 
-        // 8. হাসপাতাল ও স্বাস্থ্য (Health & Hospital)
+        // 13. আদালত ও নোটারি ঘোষণা (Court / Affidavit / Notary)
+        LetterCategory(
+            id = "court_notary",
+            titleBn = "১৩. আদালত ও নোটারি ঘোষণা (Court / Affidavit / Notary)",
+            titleEn = "13. Court / Affidavit / Notary",
+            defaultRecipientBn = "বিজ্ঞ নোটারি পাবলিক / বিচার বিভাগীয় হাকিম (The Notary Public / Ld. Magistrate)",
+            defaultRecipientEn = "The Ld. Notary Public / Judicial Magistrate",
+            letterTypes = listOf(
+                LetterTypeItem(
+                    id = "notary_same_person",
+                    titleBn = "একই ব্যক্তি প্রমাণের স্ব-ঘোষণা (Same Person Declaration)",
+                    titleEn = "Same Person Affidavit / Declaration",
+                    subjectBn = "নামের ভিন্ন বানানের ক্ষেত্রে একই ব্যক্তি প্রমাণের এফিডেভিট / স্ব-ঘোষণা",
+                    subjectEn = "Self-Declaration / Affidavit declaring that different spelling names pertain to the same identical person",
+                    field1LabelBn = "আধার ও শিক্ষাগত নথিতে থাকা নামের ভিন্ন রূপগুলি",
+                    field1LabelEn = "Name Aliases (e.g. in Aadhaar vs Marksheet)",
+                    field2LabelBn = "পিতার নাম ও স্থায়ী ঠিকানার তথ্য",
+                    field2LabelEn = "Father's Name & Identity Card No",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "বিজ্ঞ আদালত / নোটারি সমীপে বিনীত ঘোষণা এই যে, আমি ${name.ifBlank { "................" }}, পিতা- ${f2.ifBlank { "পিতার নাম" }}, সাং- ${addr.ifBlank { "................" }}। আমার বিভিন্ন সরকারি নথিতে নামের বানান (${f1.ifBlank { "ভিন্ন বানান" }}) সামান্য পৃথকভাবে লিপিবদ্ধ হইয়াছে। আমি শপথপূর্বক ঘোষণা করিতেছি যে, উল্লিখিত সকল নামের ব্যক্তি আমি স্বয়ং এক ও অভিন্ন। এই ঘোষণা সত্য জানিয়া স্বাক্ষর করিলাম।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I, ${name.ifBlank { "................" }}, Son/Daughter of ${f2.ifBlank { "Father Name" }}, resident of ${addr.ifBlank { "................" }}, solemnly declare that my name written as (${f1.ifBlank { "Name variations" }}) in various official records refer to one and the same identical individual, which is myself. This declaration is made under solemn affirmation."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "notary_family_settle",
+                    titleBn = "পারিবারিক সমঝোতা বা সাধারণ আবেদন",
+                    titleEn = "Family Settlement / Consent Statement",
+                    subjectBn = "পারিবারিক সম্পত্তি বা অধিকার বিষয়ক আপসনামা / সমঝোতাপত্র",
+                    subjectEn = "Declaration of mutual family understanding and amicable settlement",
+                    field1LabelBn = "পক্ষগণের নাম ও পারিবারিক সম্পর্ক",
+                    field1LabelEn = "Names of Parties & Relationship",
+                    field2LabelBn = "সমঝোতার মূল শর্ত বা বিষয়বস্তু",
+                    field2LabelEn = "Terms of Amicable Settlement",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "আমরা নিম্নস্বাক্ষরকারী পক্ষগণ: ${name.ifBlank { "পক্ষগণের নাম" }} (${f1.ifBlank { "সম্পর্ক" }})। উভয় পক্ষের সুস্থ মস্তিকে ও পারস্পরিক সম্মতিতে (${f2.ifBlank { "সমঝোতার বিবরণ" }}) এই পারিবারিক নিষ্পত্তি সম্পাদন করিলাম। ভবিষ্যতে কেহ ইহার প্রতিকূলে কোনো আপত্তি বা মামলা করিতে পারিবে না।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "We, the undersigned parties: ${name.ifBlank { "Parties" }} (${f1.ifBlank { "Relations" }}), do hereby execute this family consensus regarding (${f2.ifBlank { "Settlement terms" }}) voluntarily without any coercion or undue influence."
+                    }
+                ),
+                LetterTypeItem(
+                    id = "notary_amin_presence",
+                    titleBn = "জমি পরিমাপে আমিনের উপস্থিতির আবেদন",
+                    titleEn = "Notice for Amin Presence during Land Measurement",
+                    subjectBn = "প্রতিবেশী পক্ষকে জমির সরকারি পরিমাপে উপস্থিত থাকার লিখিত নোটিশ",
+                    subjectEn = "Formal notice requesting presence of boundary holders during land survey by Amin",
+                    field1LabelBn = "মৌজা, দাগ ও খতিয়ান নম্বর",
+                    field1LabelEn = "Mouza, Dag & Khatian No",
+                    field2LabelBn = "পরিমাপের নির্ধারিত তারিখ, বার ও সময়",
+                    field2LabelEn = "Scheduled Date, Day & Time of Survey",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "মহাশয়, আপনাকে জানানো যাইতেছে যে, আমার মালিকানাধীন জমি মৌজা, দাগ ও খতিয়ান নং: ${f1.ifBlank { "দাগ ও খতিয়ান" }}-এর সীমানা আগামী ${f2.ifBlank { "তারিখ ও সময়" }} সরকারি অনুমোদিত আমিন দ্বারা পরিমাপ করা হইবে। আপনি সংশ্লিষ্ট সীমানাদার হিসেবে উক্ত সময়ে স্বশরীরে উপস্থিত থাকিয়া পরিমাপ কার্যে সহায়তা করিবেন।"
+                    },
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "Take notice that boundary measurement of land situated at Mouza, Dag & Khatian: ${f1.ifBlank { "Plot Details" }} will be executed by authorized Amin on ${f2.ifBlank { "Scheduled Date & Time" }}. As adjoining boundary holder, you are requested to remain present."
+                    }
+                )
+            )
+        ),
+
+        // 14. হাসপাতাল ও স্বাস্থ্য (Health & Hospital)
         LetterCategory(
             id = "health",
-            titleBn = "৮. হাসপাতাল ও স্বাস্থ্য (Health & Hospital)",
-            titleEn = "8. Health & Hospital",
+            titleBn = "১৪. হাসপাতাল ও স্বাস্থ্য (Health & Hospital)",
+            titleEn = "14. Health & Hospital",
             defaultRecipientBn = "মেডিকেল সুপারিনটেনডেন্ট (Medical Superintendent / BMOH)",
             defaultRecipientEn = "The Medical Superintendent / BMOH",
             letterTypes = listOf(
@@ -868,47 +1291,30 @@ fun getApplicationCategories(): List<LetterCategory> {
                     }
                 ),
                 LetterTypeItem(
-                    id = "health_birth_rectify",
-                    titleBn = "জন্ম রেকর্ড সংশোধন আবেদন",
-                    titleEn = "Hospital Birth Record Correction",
-                    subjectBn = "হাসপাতালের ডিসচার্জ ফর্মে শিশুর নাম বা জন্মতারিখ সংশোধনের আবেদন",
-                    subjectEn = "Application for correction in Hospital Birth Register",
-                    field1LabelBn = "মাতার নাম ও বেড/ভর্তি নম্বর",
-                    field1LabelEn = "Mother Name & Admission No",
-                    field2LabelBn = "সঠিক নাম, লিঙ্গ ও জন্মতারিখ",
-                    field2LabelEn = "Correct Child Name, Gender & Date",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। মাতা: ${f1.ifBlank { "মাতার নাম ও ভর্তি নং" }}। হাসপাতালে ইস্যুকৃত জন্ম রেজিস্ট্রেশনে শিশুর নাম/বানানে ত্রুটি রয়েছে। সঠিক তথ্য: ${f2.ifBlank { "সঠিক তথ্য" }}। নথিপত্র সংশোধনপূর্বক সঠিক ডিসচার্জ সার্টিফিকেট প্রদান করার অনুরোধ জানাচ্ছি।"
+                    id = "health_service_query",
+                    titleBn = "হাসপাতাল পরিষেবা সংক্রান্ত আবেদন",
+                    titleEn = "Hospital Service Inquiry / Blood Requisition",
+                    subjectBn = "হাসপাতালে জরুরি রক্ত / অ্যাম্বুলেন্স / চিকিৎসা পরিষেবা প্রাপ্তির আবেদন",
+                    subjectEn = "Requisition for urgent hospital ambulance / blood component / diagnostic services",
+                    field1LabelBn = "রোগীর নাম ও রক্ত গ্রুপ / রোগ",
+                    field1LabelEn = "Patient Name & Blood Group / Ailment",
+                    field2LabelBn = "জরুরি সেবার ধরন ও ডাক্তারের রেফারেন্স",
+                    field2LabelEn = "Emergency Service Required & Doctor Ref",
+                    bodyTemplateBn = { name, addr, _, f1, f2 ->
+                        "মহাশয়, আমি ${name.ifBlank { "................" }}। হাসপাতালে চিকিৎসাধীন রোগী ${f1.ifBlank { "রোগীর নাম" }}-এর জন্য জরুরি ভিত্তিতে ${f2.ifBlank { "রক্ত/অ্যাম্বুলেন্স" }} পরিষেবার প্রয়োজন। মানবিক দিক বিবেচনায় দ্রুত পরিষেবাটি মঞ্জুর করার অনুরোধ জানাচ্ছি।"
                     },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I, ${name.ifBlank { "................" }}, state that my child was delivered under Admission No: ${f1.ifBlank { "Mother Details" }}. There is an error in birth recording. Correct details are: ${f2.ifBlank { "Correct Data" }}. Kindly rectify the birth register entry."
-                    }
-                ),
-                LetterTypeItem(
-                    id = "health_card_issue",
-                    titleBn = "সরকারি স্বাস্থ্য কার্ড বা পরিষেবা সংক্রান্ত আবেদন",
-                    titleEn = "Health Scheme (Swasthya Sathi / Ayushman)",
-                    subjectBn = "স্বাস্থ্যসাথী / আয়ুষ্মান কার্ডে চিকিৎসার অনুমতি প্রদানের আবেদন",
-                    subjectEn = "Application for approval of treatment under Swasthya Sathi / Ayushman Bharat",
-                    field1LabelBn = "স্বাস্থ্য কার্ড নম্বর ও রোগীর নাম",
-                    field1LabelEn = "Health Card No & Patient Name",
-                    field2LabelBn = "রোগের নাম ও প্রয়োজনীয় অস্ত্রোপচার",
-                    field2LabelEn = "Ailment & Proposed Treatment",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। স্বাস্থ্য কার্ড নং: ${f1.ifBlank { "কার্ড নং" }}। রোগীর জরুরি চিকিৎসার (${f2.ifBlank { "রোগ ও অপারেশন" }}) জন্য কার্ডের মাধ্যমে প্যাকেজ অনুমোদন আবশ্যক। অবিলম্বে সরকারি সুবিধা প্রদান করার আবেদন জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I hold Government Health Card No: ${f1.ifBlank { "Card No" }} for patient: ${f1.ifBlank { "Patient" }}. The patient requires urgent procedure for ${f2.ifBlank { "Treatment" }}. Kindly authorize the package coverage under cashless scheme."
+                    bodyTemplateEn = { name, addr, _, f1, f2 ->
+                        "I request urgent sanction of ${f2.ifBlank { "Blood / Ambulance service" }} for critical patient: ${f1.ifBlank { "Patient Details" }}. Kindly facilitate the service."
                     }
                 )
             )
         ),
 
-        // 9. রেলওয়ে (Railway)
+        // 15. রেলওয়ে (Railway)
         LetterCategory(
             id = "railway",
-            titleBn = "৯. রেলওয়ে (Railway)",
-            titleEn = "9. Railway",
+            titleBn = "১৫. রেলওয়ে (Railway)",
+            titleEn = "15. Railway",
             defaultRecipientBn = "প্রধান বাণিজ্যিক ব্যবস্থাপক (Chief Commercial Manager / Station Master)",
             defaultRecipientEn = "The Chief Commercial Manager / Station Master",
             letterTypes = listOf(
@@ -962,39 +1368,22 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, addr, _, f1, f2 ->
                         "I, ${name.ifBlank { "................" }}, fall under ${f1.ifBlank { "Concession Category" }}. Valid medical certificate is attached (${f2.ifBlank { "Cert Details" }}). I request you to sanction rail travel concession as per railway guidelines."
                     }
-                ),
-                LetterTypeItem(
-                    id = "rail_parcel",
-                    titleBn = "পার্সেল বা লাগেজ সংক্রান্ত আবেদন",
-                    titleEn = "Railway Parcel Booking / Query",
-                    subjectBn = "রেলওয়ে পার্সেল বিলম্ব বা ক্ষতিপূরণের আবেদন",
-                    subjectEn = "Application regarding delayed railway parcel delivery / claim",
-                    field1LabelBn = "পার্সেল ওয়েবিল (PWB) নম্বর ও তারিখ",
-                    field1LabelEn = "Parcel Way Bill (PWB) No & Date",
-                    field2LabelBn = "বুকিং স্টেশন ও গন্তব্য স্টেশন",
-                    field2LabelEn = "Source & Destination Stations",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। PWB নং: ${f1.ifBlank { "PWB নং" }}। বুকিং রুট: ${f2.ifBlank { "স্টেশন রুট" }}। নির্দিষ্ট সময় অতিক্রান্ত হওয়া সত্ত্বেও বুকিংকৃত পার্সেলটি গন্তব্যে পৌঁছায়নি। অবিলম্বে পার্সেলটি খালাসের ব্যবস্থা করার অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I booked parcel under PWB No: ${f1.ifBlank { "PWB No" }} between stations: ${f2.ifBlank { "Route" }}. The consignment has not arrived within scheduled transit time. Kindly expedite tracing and delivery."
-                    }
                 )
             )
         ),
 
-        // 10. পোস্ট অফিস (Post Office)
+        // 16. পোস্ট অফিস (Post Office)
         LetterCategory(
             id = "post_office",
-            titleBn = "১০. পোস্ট অফিস (Post Office)",
-            titleEn = "10. Post Office",
+            titleBn = "১৬. পোস্ট অফিস (Post Office)",
+            titleEn = "16. Post Office",
             defaultRecipientBn = "পোস্টমাস্টার মহাশয় (The Postmaster)",
             defaultRecipientEn = "The Postmaster",
             letterTypes = listOf(
                 LetterTypeItem(
                     id = "post_parcel_delay",
-                    titleBn = "স্পিড পোস্ট বা রেজিস্ট্রি পার্সেল না পাওয়ার অভিযোগ",
-                    titleEn = "Speed Post / Registered Article Non-Delivery",
+                    titleBn = "স্পিড পোস্ট বা পার্সেল না পাওয়ার অভিযোগ",
+                    titleEn = "Speed Post / Parcel Non-Delivery Complaint",
                     subjectBn = "স্পিড পোস্ট / রেজিস্ট্রি পার্সেল না পাওয়ার অভিযোগ",
                     subjectEn = "Complaint regarding non-delivery / delay of Speed Post article",
                     field1LabelBn = "কনসাইনমেন্ট / ট্র্যাকিং নম্বর (Tracking No)",
@@ -1041,32 +1430,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, _, _, f1, f2 ->
                         "I maintain Postal Scheme Account No: ${f1.ifBlank { "Account No" }}. Having shifted my residence, I request you to update my address to: ${f2.ifBlank { "New Address" }}. KYC proof is enclosed."
                     }
-                ),
-                LetterTypeItem(
-                    id = "post_reissue",
-                    titleBn = "হারানো সার্টিফিকেট বা ড্রাফট রি-ইস্যু",
-                    titleEn = "Re-issue of Lost NSC / KVP Certificate",
-                    subjectBn = "হারানো NSC / KVP সার্টিফিকেটের ডুপ্লিকেট কপির আবেদন",
-                    subjectEn = "Application for issuance of duplicate NSC / KVP / Certificate",
-                    field1LabelBn = "সার্টিফিকেট নম্বর ও ইস্যু তারিখ",
-                    field1LabelEn = "Certificate No & Issue Date",
-                    field2LabelBn = "বিনিয়োগের পরিমাণ ও জিডি নম্বর",
-                    field2LabelEn = "Invested Amount & Police GD No",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। আমার জাতীয় সঞ্চয়পত্র (NSC/KVP) নং: ${f1.ifBlank { "সার্টিফিকেট নং" }} দুর্ভাগ্যবশত হারিয়ে গেছে (থানা জিডি: ${f2.ifBlank { "জিডি নং" }})। বন্ড সম্পাদনপূর্বক ডুপ্লিকেট সার্টিফিকেট ইস্যু করার প্রার্থনা জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I, ${name.ifBlank { "................" }}, lost my original NSC/KVP Certificate: ${f1.ifBlank { "Cert No" }} (GD: ${f2.ifBlank { "GD No" }}). Upon submission of indemnity bond, kindly issue duplicate certificate."
-                    }
                 )
             )
         ),
 
-        // 11. পাসপোর্ট (Passport)
+        // 17. পাসপোর্ট (Passport)
         LetterCategory(
             id = "passport",
-            titleBn = "১১. পাসপোর্ট (Passport)",
-            titleEn = "11. Passport",
+            titleBn = "১৭. পাসপোর্ট (Passport)",
+            titleEn = "17. Passport",
             defaultRecipientBn = "আঞ্চলিক পাসপোর্ট আধিকারিক (Regional Passport Officer - RPO)",
             defaultRecipientEn = "The Regional Passport Officer (RPO)",
             letterTypes = listOf(
@@ -1106,46 +1478,29 @@ fun getApplicationCategories(): List<LetterCategory> {
                 ),
                 LetterTypeItem(
                     id = "pass_rectify",
-                    titleBn = "পাসপোর্টে নাম বা ঠিকানা সংশোধন",
-                    titleEn = "Passport Name / Address Correction",
-                    subjectBn = "বিদ্যমান পাসপোর্টে নাম/ঠিকানা সংশোধনের আবেদন",
-                    subjectEn = "Application for re-issue of passport with changed name / address",
+                    titleBn = "পাসপোর্টে তথ্য সংশোধন আবেদন",
+                    titleEn = "Passport Information Correction",
+                    subjectBn = "বিদ্যমান পাসপোর্টে নাম/ঠিকানা/জন্মতারিখ সংশোধনের আবেদন",
+                    subjectEn = "Application for re-issue of passport with changed details",
                     field1LabelBn = "বর্তমান পাসপোর্ট নম্বর ও মেয়াদ",
                     field1LabelEn = "Existing Passport No & Validity",
-                    field2LabelBn = "সংশোধিত নাম/ঠিকানা ও আধার নম্বর",
-                    field2LabelEn = "Correct Details & Supporting Doc",
+                    field2LabelBn = "সংশোধিত তথ্য ও প্রমাণপত্র",
+                    field2LabelEn = "Correct Details & Proof",
                     bodyTemplateBn = { name, addr, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। বর্তমান পাসপোর্ট নং: ${f1.ifBlank { "পাসপোর্ট নং" }}। ঠিকানার পরিবর্তন ও নামের বানান সংশোধন হেতু (${f2.ifBlank { "সংশোধিত তথ্য" }}) নতুন পাসপোর্ট রি-ইস্যু করা প্রয়োজন। প্রয়োজনীয় গেজেট ও নথি সহ আবেদন দাখিল করছি।"
+                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। বর্তমান পাসপোর্ট নং: ${f1.ifBlank { "পাসপোর্ট নং" }}। প্রয়োজনীয় তথ্য সংশোধনের জন্য (${f2.ifBlank { "সংশোধিত তথ্য" }}) নতুন পাসপোর্ট রি-ইস্যু করা আবশ্যক। আবেদনটি গ্রহণ করে বাধিত করবেন।"
                     },
                     bodyTemplateEn = { name, addr, _, f1, f2 ->
-                        "I hold Passport No: ${f1.ifBlank { "Passport No" }}. Due to relocation and name correction (${f2.ifBlank { "Rectification details" }}), I request re-issuance of passport with updated records."
-                    }
-                ),
-                LetterTypeItem(
-                    id = "pass_hold",
-                    titleBn = "পাসপোর্ট ভেরিফিকেশন সমস্যা সমাধান",
-                    titleEn = "Clearance of Hold / Pending Passport",
-                    subjectBn = "পেন্ডিং বা হোল্ড হয়ে থাকা পাসপোর্ট আবেদন নিষ্পত্তির আবেদন",
-                    subjectEn = "Application for clearance of hold status on passport application",
-                    field1LabelBn = "ফাইল নম্বর ও পিএসকে কেন্দ্রের নাম",
-                    field1LabelEn = "File No & PSK Centre Name",
-                    field2LabelBn = "অতিরিক্ত জমা দেওয়া নথির বিবরণ",
-                    field2LabelEn = "Additional Submitted Documents",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। ফাইল নং: ${f1.ifBlank { "ফাইল নং" }}। নথিপত্র অসম্পূর্ণ থাকার কারণে আমার পাসপোর্ট আবেদনটি হোল্ডে রয়েছে। আমি চাহিত সকল মূল নথি (${f2.ifBlank { "নথির বিবরণ" }}) দাখিল করলাম। আবেদনটি অবিলম্বে নিষ্পত্তি করার অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I, ${name.ifBlank { "................" }}, submitted application under File: ${f1.ifBlank { "File No" }}. The file was kept on hold for documentary clarification. I submit the required records (${f2.ifBlank { "Docs" }}). Kindly release and process the passport."
+                        "I hold Passport No: ${f1.ifBlank { "Passport No" }}. Due to modification in personal records (${f2.ifBlank { "Rectification details" }}), I request re-issuance of passport with updated records."
                     }
                 )
             )
         ),
 
-        // 12. পরিবহণ ও RTO (Transport & RTO)
+        // 18. পরিবহণ ও RTO (Transport & RTO)
         LetterCategory(
             id = "transport_rto",
-            titleBn = "১২. পরিবহণ ও RTO (Transport & RTO)",
-            titleEn = "12. Transport & RTO",
+            titleBn = "১৮. পরিবহণ ও RTO (Transport & RTO)",
+            titleEn = "18. Transport & RTO",
             defaultRecipientBn = "আঞ্চলিক পরিবহণ আধিকারিক (Regional Transport Officer - RTO)",
             defaultRecipientEn = "The Regional Transport Officer (RTO)",
             letterTypes = listOf(
@@ -1199,32 +1554,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, addr, _, f1, f2 ->
                         "I, ${name.ifBlank { "................" }}, state that the original RC of vehicle ${f1.ifBlank { "Vehicle No" }} has been lost (Police GD: ${f2.ifBlank { "GD No" }}). Kindly issue a duplicate Registration Certificate."
                     }
-                ),
-                LetterTypeItem(
-                    id = "rto_address_change",
-                    titleBn = "গাড়ির ঠিকানা পরিবর্তন আবেদন",
-                    titleEn = "Address Change in Vehicle RC",
-                    subjectBn = "গাড়ির আরসিতে ঠিকানার পরিবর্তনের আবেদন",
-                    subjectEn = "Application for recording change of address in Vehicle RC",
-                    field1LabelBn = "গাড়ির নম্বর ও আরসি বুক নম্বর",
-                    field1LabelEn = "Vehicle No & RC Book No",
-                    field2LabelBn = "নতুন ঠিকানা ও আধার কার্ড তথ্য",
-                    field2LabelEn = "New Address & Aadhaar Proof",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। গাড়ি নং: ${f1.ifBlank { "গাড়ির নং" }}। নতুন বাসস্থান গ্রহণের কারণে আমার ঠিকানার পরিবর্তন হয়েছে (${f2.ifBlank { "নতুন ঠিকানা" }})। প্রয়োজনীয় ফর্ম ৩৩ দাখিলপূর্বক আরসিতে নতুন ঠিকানা অন্তর্ভুক্তির আবেদন জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I am ${name.ifBlank { "................" }}, owner of vehicle ${f1.ifBlank { "Vehicle No" }}. Having relocated, my new residential address is: ${f2.ifBlank { "Address" }}. Please update address in RC as per Form 33."
-                    }
                 )
             )
         ),
 
-        // 13. জল ও স্যানিটেশন (Water Supply & Drainage)
+        // 19. জল ও স্যানিটেশন (Water Supply & Drainage)
         LetterCategory(
             id = "water_sanitation",
-            titleBn = "১৩. জল ও স্যানিটেশন (Water Supply & Drainage)",
-            titleEn = "13. Water Supply & Drainage",
+            titleBn = "১৯. জল ও স্যানিটেশন (Water Supply & Drainage)",
+            titleEn = "19. Water Supply & Drainage",
             defaultRecipientBn = "নির্বাহী বাস্তুকার (Executive Engineer, PHE / Water Works)",
             defaultRecipientEn = "The Executive Engineer (PHE / Water Works)",
             letterTypes = listOf(
@@ -1263,25 +1601,8 @@ fun getApplicationCategories(): List<LetterCategory> {
                     }
                 ),
                 LetterTypeItem(
-                    id = "water_bill",
-                    titleBn = "অতিরিক্ত বিল সংশোধনের আবেদন",
-                    titleEn = "Water Tax / Bill Revision",
-                    subjectBn = "অস্বাভাবিক জলের বিল বা কর সংশোধনের আবেদন",
-                    subjectEn = "Application for rectification of disputed water supply charges",
-                    field1LabelBn = "কনজিউমার আইডি / বিল নম্বর",
-                    field1LabelEn = "Consumer ID / Water Bill No",
-                    field2LabelBn = "অতিরিক্ত টাকার পরিমাণ ও বিলের তারিখ",
-                    field2LabelEn = "Disputed Bill Amount & Date",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। গ্রাহক নম্বর: ${f1.ifBlank { "আইডি নং" }}। বিগত ত্রৈমাসিকে আমার স্বাভাবিক ব্যবহারের তুলনায় অতিরিক্ত বিল (${f2.ifBlank { "টাকার পরিমাণ" }}) পাঠানো হয়েছে। মিটার পরীক্ষা করে সঠিক বিল নির্ধারণের অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I hold Water Consumer ID: ${f1.ifBlank { "Consumer ID" }}. An erratic water bill (${f2.ifBlank { "Amount" }}) has been served against my domestic connection. Kindly inspect meter and adjust charges."
-                    }
-                ),
-                LetterTypeItem(
                     id = "water_drain_clean",
-                    titleBn = "নিকাশি নালা বা ড্রেন পরিষ্কারের আবেদন",
+                    titleBn = "ড্রেন পরিষ্কারের আবেদন",
                     titleEn = "Drainage Cleaning / De-silting Request",
                     subjectBn = "নিকাশি নালা জমে থাকা আবর্জনা ও ড্রেন পরিষ্কারের আবেদন",
                     subjectEn = "Application for de-silting and cleaning of choked public drainage",
@@ -1299,11 +1620,11 @@ fun getApplicationCategories(): List<LetterCategory> {
             )
         ),
 
-        // 14. ভোক্তা ও পরিষেবা (Consumer Affairs)
+        // 20. ভোক্তা ও পরিষেবা (Consumer Affairs)
         LetterCategory(
             id = "consumer_affairs",
-            titleBn = "১৪. ভোক্তা ও পরিষেবা (Consumer Affairs)",
-            titleEn = "14. Consumer Affairs",
+            titleBn = "২০. ভোক্তা ও পরিষেবা (Consumer Affairs)",
+            titleEn = "20. Consumer Affairs",
             defaultRecipientBn = "ভোক্তা ফোরাম / কাস্টমার সাপোর্ট ম্যানেজার",
             defaultRecipientEn = "The Consumer Grievance Officer / Support Manager",
             letterTypes = listOf(
@@ -1343,7 +1664,7 @@ fun getApplicationCategories(): List<LetterCategory> {
                 ),
                 LetterTypeItem(
                     id = "consumer_warranty",
-                    titleBn = "বিক্রয়োত্তর ওয়ারেন্টি সার্ভিস না পাওয়ার অভিযোগ",
+                    titleBn = "বিক্রয়োত্তর সার্ভিস না পাওয়ার অভিযোগ",
                     titleEn = "Refusal of Warranty Service Complaint",
                     subjectBn = "বৈধ ওয়ারেন্টি থাকা সত্ত্বেও ফ্রি সার্ভিস দিতে অস্বীকৃতির বিরুদ্ধে অভিযোগ",
                     subjectEn = "Complaint against unauthorized refusal of after-sales warranty service",
@@ -1357,32 +1678,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, _, _, f1, f2 ->
                         "My product (Serial: ${f1.ifBlank { "Serial No" }}) is under active manufacturer warranty. However, Service Centre (${f2.ifBlank { "Centre" }}) wrongfully refuses free repair. I request intervention to honor warranty terms."
                     }
-                ),
-                LetterTypeItem(
-                    id = "consumer_overcharge",
-                    titleBn = "অতিরিক্ত চার্জ কাটার বিরুদ্ধে অভিযোগ",
-                    titleEn = "Excess Charging / Hidden Fees Complaint",
-                    subjectBn = "এমআরপির চেয়ে অতিরিক্ত মূল্য বা অনৈতিক চার্জ নেওয়ার বিরুদ্ধে অভিযোগ",
-                    subjectEn = "Complaint against charging above MRP / undisclosed fees",
-                    field1LabelBn = "বিল নম্বর ও প্রতিষ্ঠানের নাম",
-                    field1LabelEn = "Bill No & Merchant / Entity Name",
-                    field2LabelBn = "প্রকৃত দাম বনাম আদায়কৃত টাকার বিবরণ",
-                    field2LabelEn = "Actual MRP vs Overcharged Amount",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "মহাশয়, আমি ${name.ifBlank { "................" }}। বিল নং: ${f1.ifBlank { "বিল নং" }}। উক্ত প্রতিষ্ঠানটি পণ্যের গায়ে মুদ্রিত সর্বোচ্চ খুচরা মূল্যের (MRP) চেয়ে অন্যায়ভাবে অতিরিক্ত টাকা (${f2.ifBlank { "অতিরিক্ত টাকা" }}) আদায় করেছে। এই অন্যায্য বাণিজ্যিক আচরণের বিরুদ্ধে ব্যবস্থা ও টাকা ফেরতের দাবি করছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I bring to notice that Merchant (${f1.ifBlank { "Merchant" }}) charged above MRP under Bill: ${f1.ifBlank { "Bill" }}. Extra deducted: ${f2.ifBlank { "Amount" }}. This is unfair trade practice. I demand refund and corrective penalty."
-                    }
                 )
             )
         ),
 
-        // 15. চাকরি ও কর্মসংস্থান (Employment / Job)
+        // 21. চাকরি ও কর্মসংস্থান (Employment / Job)
         LetterCategory(
             id = "employment_job",
-            titleBn = "১৫. চাকরি ও কর্মসংস্থান (Employment / Job)",
-            titleEn = "15. Employment / Job",
+            titleBn = "২১. চাকরি ও কর্মসংস্থান (Employment / Job)",
+            titleEn = "21. Employment / Job",
             defaultRecipientBn = "নিয়োগকারী আধিকারিক / এইচআর ম্যানেজার",
             defaultRecipientEn = "The Hiring Authority / HR Manager",
             letterTypes = listOf(
@@ -1457,17 +1761,17 @@ fun getApplicationCategories(): List<LetterCategory> {
             )
         ),
 
-        // 16. বিমা (Insurance / LIC)
+        // 22. বিমা (Insurance / LIC)
         LetterCategory(
             id = "insurance_lic",
-            titleBn = "১৬. বিমা (Insurance / LIC)",
-            titleEn = "16. Insurance / LIC",
+            titleBn = "২২. বিমা (Insurance / LIC)",
+            titleEn = "22. Insurance / LIC",
             defaultRecipientBn = "শাখা ব্যবস্থাপক (Branch Manager, LIC / Insurance)",
             defaultRecipientEn = "The Branch Manager (LIC / Insurance Co.)",
             letterTypes = listOf(
                 LetterTypeItem(
                     id = "ins_claim",
-                    titleBn = "জীবন বা স্বাস্থ্য বিমার ক্লেম (Claim) আবেদন",
+                    titleBn = "জীবন বা স্বাস্থ্য বিমার ক্লেম আবেদন",
                     titleEn = "Insurance Policy Claim Settlement",
                     subjectBn = "বিমা পলিসির দাবি (Claim Settlement) নিষ্পত্তির আবেদন",
                     subjectEn = "Application for settlement of Insurance Policy Claim",
@@ -1501,7 +1805,7 @@ fun getApplicationCategories(): List<LetterCategory> {
                 ),
                 LetterTypeItem(
                     id = "ins_nominee",
-                    titleBn = "পলিসিতে নমিনি বা ঠিকানা পরিবর্তন",
+                    titleBn = "নমিনি বা ঠিকানা পরিবর্তন",
                     titleEn = "Nominee / Address Change in Policy",
                     subjectBn = "পলিসি নথিতে নতুন নমিনি ও যোগাযোগের ঠিকানা আপডেটের আবেদন",
                     subjectEn = "Application for recording change of nominee / address in policy",
@@ -1515,32 +1819,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, _, _, f1, f2 ->
                         "I am ${name.ifBlank { "................" }}, Policyholder under No: ${f1.ifBlank { "Policy No" }}. I wish to alter the nomination to: ${f2.ifBlank { "Nominee Details" }}. Please update records and endorse my policy bond."
                     }
-                ),
-                LetterTypeItem(
-                    id = "ins_receipt",
-                    titleBn = "প্রিমিয়াম রশিদ বা তথ্য আপডেট আবেদন",
-                    titleEn = "Duplicate Premium Receipt / Certificate",
-                    subjectBn = "প্রিমিয়াম পেমেন্ট রশিদ ও আইটি সার্টিফিকেটের আবেদন",
-                    subjectEn = "Application for duplicate premium paid certificate for Income Tax",
-                    field1LabelBn = "পলিসি নম্বর ও আর্থিক বছর",
-                    field1LabelEn = "Policy No & Financial Year",
-                    field2LabelBn = "জমা দেওয়া প্রিমিয়ামের পরিমাণ",
-                    field2LabelEn = "Paid Premium Amount & Mode",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। পলিসি নং: ${f1.ifBlank { "পলিসি নং" }}। আয়কর রিবেট পাওয়ার জন্য বিগত আর্থিক বছরের প্রিমিয়াম পেইড সার্টিফিকেট (IT Certificate) প্রয়োজন। অবিলম্বে শংসাপত্রটি ইস্যু করার অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I hold Policy No: ${f1.ifBlank { "Policy No" }}. For Income Tax rebate under 80C, I require the Premium Paid Certificate for FY: ${f1.ifBlank { "FY" }}. Kindly issue the certificate."
-                    }
                 )
             )
         ),
 
-        // 17. বিশ্ববিদ্যালয় ও পরীক্ষা (University & Examination)
+        // 23. বিশ্ববিদ্যালয় ও পরীক্ষা (University & Examination)
         LetterCategory(
             id = "university_exam",
-            titleBn = "১৭. বিশ্ববিদ্যালয় ও পরীক্ষা (University & Examination)",
-            titleEn = "17. University & Examination",
+            titleBn = "২৩. বিশ্ববিদ্যালয় ও পরীক্ষা (University & Examination)",
+            titleEn = "23. University & Examination",
             defaultRecipientBn = "রেজিস্ট্রার / পরীক্ষা নিয়ন্ত্রক (Registrar / Controller of Exams)",
             defaultRecipientEn = "The Registrar / Controller of Examinations",
             letterTypes = listOf(
@@ -1594,32 +1881,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, _, _, f1, f2 ->
                         "I, ${name.ifBlank { "................" }}, appeared in semester exam under Roll: ${f1.ifBlank { "Roll" }}. I seek review of Paper: ${f2.ifBlank { "Paper Code" }}. Requisite scrutiny fee has been remitted online."
                     }
-                ),
-                LetterTypeItem(
-                    id = "univ_backlog",
-                    titleBn = "ব্যাকলগ বা সাপ্লিমেন্টারি পরীক্ষার আবেদন",
-                    titleEn = "Supplementary / Backlog Examination",
-                    subjectBn = "সাপ্লিমেন্টারি / ব্যাকলগ পরীক্ষায় বসার অনুমতির আবেদন",
-                    subjectEn = "Application for appearing in Backlog / Supplementary Examination",
-                    field1LabelBn = "রোল নম্বর ও ব্যাকলগ সেমিস্টার",
-                    field1LabelEn = "Roll No & Backlog Semester",
-                    field2LabelBn = "বকেয়া পেপারগুলির নাম",
-                    field2LabelEn = "Backlog Paper Codes",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "সবিনয় নিবেদন এই যে, আমি ${name.ifBlank { "................" }}। রোল নং: ${f1.ifBlank { "রোল" }}। অসুস্থতার কারণে পূর্বে উত্তীর্ণ হতে না পারা পেপারগুলিতে (${f2.ifBlank { "পেপার কোড" }}) সাপ্লিমেন্টারি পরীক্ষায় বসার আবেদন মঞ্জুর করার অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I, ${name.ifBlank { "................" }}, Roll: ${f1.ifBlank { "Roll" }}, request permission to clear pending backlogs in Paper: ${f2.ifBlank { "Papers" }}. Application form and fees are submitted."
-                    }
                 )
             )
         ),
 
-        // 18. সাইবার অভিযোগ (Cyber Crime / Complaint)
+        // 24. সাইবার অভিযোগ (Cyber Crime / Complaint)
         LetterCategory(
             id = "cyber_crime",
-            titleBn = "১৮. সাইবার অভিযোগ (Cyber Crime / Complaint)",
-            titleEn = "18. Cyber Crime / Complaint",
+            titleBn = "২৪. সাইবার অভিযোগ (Cyber Crime / Complaint)",
+            titleEn = "24. Cyber Crime / Complaint",
             defaultRecipientBn = "ভারপ্রাপ্ত আধিকারিক (Cyber Crime Police Station / Cell)",
             defaultRecipientEn = "The Officer-in-Charge, Cyber Crime Police Station",
             letterTypes = listOf(
@@ -1642,7 +1912,7 @@ fun getApplicationCategories(): List<LetterCategory> {
                 ),
                 LetterTypeItem(
                     id = "cyber_hacking",
-                    titleBn = "সোশ্যাল মিডিয়া অ্যাকাউন্ট হ্যাকিং অভিযোগ",
+                    titleBn = "সোশ্যাল মিডিয়া হ্যাকিং অভিযোগ",
                     titleEn = "Social Media Account Hacking",
                     subjectBn = "সোশ্যাল মিডিয়া অ্যাকাউন্ট হ্যাকিং ও অপব্যবহারের বিরুদ্ধে অভিযোগ",
                     subjectEn = "Complaint regarding hacking and misuse of personal social media account",
@@ -1673,32 +1943,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, addr, _, f1, f2 ->
                         "I am being subjected to criminal extortion from contact: ${f1.ifBlank { "Number" }}. The perpetrator is threatening to circulate morphed pictures unless ransom is paid (${f2.ifBlank { "Threat" }}). Please register FIR under IT Act."
                     }
-                ),
-                LetterTypeItem(
-                    id = "cyber_sim",
-                    titleBn = "অননুমোদিত সিম কার্ড তোলার অভিযোগ",
-                    titleEn = "Unauthorized SIM Issuance Complaint",
-                    subjectBn = "আমার আধার নম্বর দিয়ে অননুমোদিত সিম কার্ড তোলার বিরুদ্ধে অভিযোগ",
-                    subjectEn = "Complaint regarding unauthorized SIM cards issued using my Aadhaar",
-                    field1LabelBn = "আধার নম্বর ও অননুমোদিত মোবাইল নম্বরগুলি",
-                    field1LabelEn = "Aadhaar No & Unauthorized Numbers",
-                    field2LabelBn = "টেলিকম অপারেটরের নাম",
-                    field2LabelEn = "Telecom Service Provider Name",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "মহাশয়, আমি ${name.ifBlank { "................" }}। পোর্টাল মারফত জানতে পারলাম যে আমার আধার নম্বর দিয়ে অজ্ঞাত ব্যক্তিরা অবৈধভাবে সিম কার্ড (${f1.ifBlank { "সিম নম্বর" }}) তুলেছে। কোনো অপরাধমূলক কাজে ব্যবহারের পূর্বে উক্ত ভুয়া সিমগুলি অবিলম্বে ব্লক করার অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I discovered that multiple mobile numbers (${f1.ifBlank { "Numbers" }}) were fraudulently issued on my Aadhaar through operator ${f2.ifBlank { "Operator" }}. I disown these numbers and request immediate deactivation."
-                    }
                 )
             )
         ),
 
-        // 19. অফিস ও কর্মক্ষেত্র (Office / Workplace)
+        // 25. অফিস ও কর্মক্ষেত্র (Office / Workplace)
         LetterCategory(
             id = "office_workplace",
-            titleBn = "১৯. অফিস ও কর্মক্ষেত্র (Office / Workplace)",
-            titleEn = "19. Office / Workplace",
+            titleBn = "২৫. অফিস ও কর্মক্ষেত্র (Office / Workplace)",
+            titleEn = "25. Office / Workplace",
             defaultRecipientBn = "বিভাগীয় প্রধান / ম্যানেজার (Head of Department / Director)",
             defaultRecipientEn = "The Head of Department / Managing Director",
             letterTypes = listOf(
@@ -1752,32 +2005,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, _, _, f1, f2 ->
                         "For project operations under ${f1.ifBlank { "Project" }}, I request requisition of ${f2.ifBlank { "Laptop / Assets" }}. Kindly approve the equipment requisition."
                     }
-                ),
-                LetterTypeItem(
-                    id = "office_permission",
-                    titleBn = "বিশেষ কাজের অনুমতি পত্র",
-                    titleEn = "Special Permission / Duty Pass",
-                    subjectBn = "বিশেষ অফিশিয়াল দায়িত্ব পালনের অনুমতির আবেদন",
-                    subjectEn = "Application for special duty permission / outstation travel",
-                    field1LabelBn = "কর্মচারী আইডি ও অনুমোদনের ক্ষেত্র",
-                    field1LabelEn = "Employee ID & Duty Nature",
-                    field2LabelBn = "তারিখ ও সময়কাল",
-                    field2LabelEn = "Date & Duration of permission",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "মহাশয়, আমি ${name.ifBlank { "................" }}, আইডি: ${f1.ifBlank { "আইডি" }}। অফিসের বিশেষ প্রয়োজনে (${f2.ifBlank { "সময়কাল" }}) নির্দিষ্ট দায়িত্ব পালনের জন্য আমার দাপ্তরিক অনুমতির প্রয়োজন। প্রয়োজনীয় অনুমতি প্রদানের আবেদন জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I, ${name.ifBlank { "................" }}, seek official permission for special assignment on ${f2.ifBlank { "Dates" }}. Kindly accord the necessary sanction."
-                    }
                 )
             )
         ),
 
-        // 20. আবাসন ও ফ্ল্যাট (Housing / Society)
+        // 26. আবাসন ও ফ্ল্যাট (Housing / Society)
         LetterCategory(
             id = "housing_society",
-            titleBn = "২০. আবাসন ও ফ্ল্যাট (Housing / Society)",
-            titleEn = "20. Housing / Society",
+            titleBn = "২৬. আবাসন ও ফ্ল্যাট (Housing / Society)",
+            titleEn = "26. Housing / Society",
             defaultRecipientBn = "সম্পাদক মহাশয় (The Secretary, Housing Society / RWA)",
             defaultRecipientEn = "The Secretary, Housing Society / RWA",
             letterTypes = listOf(
@@ -1814,32 +2050,15 @@ fun getApplicationCategories(): List<LetterCategory> {
                     bodyTemplateEn = { name, _, _, f1, f2 ->
                         "I am ${name.ifBlank { "................" }}, owner of Flat: ${f1.ifBlank { "Flat" }}. I plan interior renovation from ${f2.ifBlank { "Dates" }}. Society guidelines on noise and debris will be strictly respected. Kindly grant permission."
                     }
-                ),
-                LetterTypeItem(
-                    id = "house_sale_noc",
-                    titleBn = "ফ্ল্যাট বিক্রির জন্য NOC আবেদন",
-                    titleEn = "NOC for Sale / Transfer of Flat",
-                    subjectBn = "ফ্ল্যাট হস্তান্তর বা বিক্রির জন্য অনাপত্তি শংসাপত্র (NOC)",
-                    subjectEn = "Application for No Objection Certificate (NOC) for sale / transfer of flat",
-                    field1LabelBn = "ফ্ল্যাট নম্বর ও ক্রেতার নাম",
-                    field1LabelEn = "Flat No & Prospective Purchaser",
-                    field2LabelBn = "মেইনটেনেন্স নো-ডিউস স্ট্যাটাস",
-                    field2LabelEn = "Society Dues Clearance Status",
-                    bodyTemplateBn = { name, _, _, f1, f2 ->
-                        "মহাশয়, আমি ${name.ifBlank { "................" }}। ফ্ল্যাট নং: ${f1.ifBlank { "ফ্ল্যাট নং" }}। আমি উক্ত ফ্ল্যাটটি বিক্রয় করতে ইচ্ছুক। আমার সমস্ত বকেয়া মেইনটেনেন্স ফি পরিশোধিত রয়েছে। হস্তান্তর প্রক্রিয়ার সুবিধার্থে সোসাইটির পক্ষ থেকে এনওসি (NOC) প্রদানের অনুরোধ জানাচ্ছি।"
-                    },
-                    bodyTemplateEn = { name, _, _, f1, f2 ->
-                        "I own Flat No: ${f1.ifBlank { "Flat No" }} and intend to transfer it to ${f1.ifBlank { "Purchaser" }}. All society dues are cleared. I request you to issue the society No Objection Certificate (NOC)."
-                    }
                 )
             )
         ),
 
-        // 21. অন্যান্য ও সাধারণ দরখাস্ত (Other / General)
+        // 27. অন্যান্য ও সাধারণ দরখাস্ত (Other / General)
         LetterCategory(
             id = "other_general",
-            titleBn = "২১. অন্যান্য ও সাধারণ দরখাস্ত (Other / General)",
-            titleEn = "21. Other / General",
+            titleBn = "২৭. অন্যান্য ও সাধারণ দরখাস্ত (Other / General)",
+            titleEn = "27. Other / General",
             defaultRecipientBn = "যথাযোগ্য কর্তৃপক্ষ (The Competent Authority)",
             defaultRecipientEn = "The Competent Authority",
             letterTypes = listOf(
