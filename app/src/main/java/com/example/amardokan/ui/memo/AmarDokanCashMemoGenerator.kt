@@ -3,16 +3,21 @@ package com.example.amardokan.ui.memo
 import android.content.Context
 import android.content.Intent
 import android.graphics.*
+import android.net.Uri
 import android.print.PrintAttributes
 import android.print.PrintManager
+import android.util.Base64
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.core.content.FileProvider
 import com.example.amardokan.data.Bill
 import com.example.amardokan.data.BillItem
 import com.example.amardokan.data.DraftBillItem
+import com.example.util.QrCodeGenerator
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
+import java.util.Locale
 
 object AmarDokanCashMemoGenerator {
     const val MERCHANT_UPI_ID = "7718489@ybl"
@@ -102,128 +107,159 @@ object AmarDokanCashMemoGenerator {
     }
 
     /**
-     * Renders a crisp receipt bitmap for preview and printing.
+     * Renders a crisp receipt bitmap by overlaying dynamic bill details onto
+     * the pre-designed template image (cash_memo_bengali.png / cash_memo_english.png).
      */
     fun generateMemoBitmap(memoData: MemoData, context: Context): Bitmap {
-        val width = 720
         val isEn = memoData.language.uppercase() == "EN"
-        val rowHeight = 44
-        val baseHeight = 560
-        val totalHeight = (baseHeight + (memoData.items.size * rowHeight)).coerceAtLeast(800)
+        val assetName = if (isEn) "cash_memo_english.png" else "cash_memo_bengali.png"
 
-        val bitmap = Bitmap.createBitmap(width, totalHeight, Bitmap.Config.ARGB_8888)
+        val baseBitmap: Bitmap = try {
+            context.assets.open(assetName).use { inputStream ->
+                BitmapFactory.decodeStream(inputStream)
+            }
+        } catch (e: Exception) {
+            null
+        } ?: Bitmap.createBitmap(1024, 1536, Bitmap.Config.ARGB_8888).apply {
+            eraseColor(android.graphics.Color.WHITE)
+        }
+
+        val bitmap = baseBitmap.copy(Bitmap.Config.ARGB_8888, true)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(android.graphics.Color.WHITE)
 
-        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.BLACK
-            textSize = 28f
-        }
         val boldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.BLACK
-            textSize = 34f
-            typeface = Typeface.DEFAULT_BOLD
-        }
-        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.parseColor("#0F172A")
-            textSize = 42f
-            typeface = Typeface.DEFAULT_BOLD
-            textAlign = Paint.Align.CENTER
-        }
-        val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.DKGRAY
-            textSize = 22f
-            textAlign = Paint.Align.CENTER
-        }
-        val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.LTGRAY
-            strokeWidth = 2f
+            color = android.graphics.Color.parseColor("#111827")
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
         }
 
-        var y = 60f
-        canvas.drawText(if (isEn) SHOP_NAME_EN else SHOP_NAME_BN, width / 2f, y, headerPaint)
-        y += 36f
-        canvas.drawText(if (isEn) SHOP_SUBTITLE_EN else SHOP_SUBTITLE_BN, width / 2f, y, subPaint)
-        y += 30f
-        canvas.drawText(if (isEn) "Phone: $SHOP_PHONE" else "ফোন: $SHOP_PHONE", width / 2f, y, subPaint)
-        y += 30f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
-
-        y += 40f
-        textPaint.textSize = 24f
-        canvas.drawText(if (isEn) "Bill No: ${memoData.billNumber}" else "বিল নং: ${memoData.billNumber}", 36f, y, textPaint)
-        val dateText = if (isEn) "Date: ${memoData.dateStr}" else "তারিখ: ${memoData.dateStr}"
-        val dateWidth = textPaint.measureText(dateText)
-        canvas.drawText(dateText, width - 36f - dateWidth, y, textPaint)
-
-        y += 34f
-        val custText = if (isEn) "Customer: ${memoData.customerName}" else "গ্রাহক: ${memoData.customerName}"
-        canvas.drawText(custText, 36f, y, textPaint)
-
-        val payText = if (isEn) {
-            if (memoData.paymentType == "CASH") "Status: Paid (Cash)" else "Status: Due (Credit)"
-        } else {
-            if (memoData.paymentType == "CASH") "পেমেন্ট: নগদ (পরিশোধিত)" else "পেমেন্ট: বাকি (বকেয়া)"
+        val regularPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#111827")
+            typeface = Typeface.DEFAULT
         }
-        val payWidth = textPaint.measureText(payText)
-        canvas.drawText(payText, width - 36f - payWidth, y, textPaint)
 
-        y += 30f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
+        // 1. Bill No (inside red outline box: x=92..240, y=560..600, center=166f, baseline=588f)
+        boldPaint.textSize = 25f
+        boldPaint.textAlign = Paint.Align.CENTER
+        boldPaint.color = android.graphics.Color.parseColor("#991B1B")
+        canvas.drawText(memoData.billNumber, 166f, 588f, boldPaint)
 
-        // Table Header
-        y += 36f
+        // 2. Date (inside date outline box: x=845..1005, y=565..600, center=925f, baseline=588f)
         boldPaint.textSize = 22f
-        canvas.drawText(if (isEn) "Item Description" else "বিবরণ", 36f, y, boldPaint)
-        canvas.drawText(if (isEn) "Qty x Rate" else "পরিমাণ × দর", 400f, y, boldPaint)
-        val totalHeader = if (isEn) "Total" else "মোট"
-        val thWidth = boldPaint.measureText(totalHeader)
-        canvas.drawText(totalHeader, width - 36f - thWidth, y, boldPaint)
+        boldPaint.textAlign = Paint.Align.CENTER
+        boldPaint.color = android.graphics.Color.parseColor("#1E3A8A")
+        canvas.drawText(memoData.dateStr, 925f, 588f, boldPaint)
 
-        y += 18f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
+        // 3. Customer Name & Mobile No (baseline: 638f)
+        boldPaint.textSize = 23f
+        boldPaint.textAlign = Paint.Align.LEFT
+        boldPaint.color = android.graphics.Color.parseColor("#0F172A")
+        val maxCustWidth = 345f
+        var custName = memoData.customerName.ifBlank { if (isEn) "Cash Customer" else "নগদ গ্রাহক" }
+        if (boldPaint.measureText(custName) > maxCustWidth) {
+            while (custName.length > 3 && boldPaint.measureText("$custName...") > maxCustWidth) {
+                custName = custName.dropLast(1)
+            }
+            custName = "$custName..."
+        }
+        canvas.drawText(custName, 215f, 638f, boldPaint)
 
-        // Items
-        textPaint.textSize = 22f
-        for (item in memoData.items) {
-            y += 36f
-            canvas.drawText(item.serviceName, 36f, y, textPaint)
-            val qtyStr = "${item.quantity.toInt()} x ₹${item.unitRate.toInt()}"
-            canvas.drawText(qtyStr, 400f, y, textPaint)
-            val lineTotalStr = "₹${item.lineTotal.toInt()}"
-            val ltWidth = textPaint.measureText(lineTotalStr)
-            canvas.drawText(lineTotalStr, width - 36f - ltWidth, y, textPaint)
+        if (memoData.customerPhone.isNotBlank()) {
+            boldPaint.textSize = 23f
+            boldPaint.textAlign = Paint.Align.LEFT
+            boldPaint.color = android.graphics.Color.parseColor("#0F172A")
+            canvas.drawText(memoData.customerPhone, 770f, 638f, boldPaint)
         }
 
-        y += 26f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
+        // 4. Item Table Rows (up to 15 items, row 0 baseline = 770f, step = 32f)
+        val rowBaseY = 770f
+        val rowHeight = 32f
+        val maxItems = minOf(memoData.items.size, 15)
 
+        val itemBoldPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#0F172A")
+            textSize = 21f
+            typeface = Typeface.DEFAULT_BOLD
+        }
+
+        val itemRegularPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.parseColor("#111827")
+            textSize = 20f
+            typeface = Typeface.DEFAULT
+        }
+
+        for (i in 0 until maxItems) {
+            val item = memoData.items[i]
+            val currentY = rowBaseY + (i * rowHeight)
+
+            // Column 2: Description (x: 115f..510f, max width = 395f)
+            itemBoldPaint.textAlign = Paint.Align.LEFT
+            var desc = item.serviceName
+            val maxDescWidth = 395f
+            if (itemBoldPaint.measureText(desc) > maxDescWidth) {
+                while (desc.length > 3 && itemBoldPaint.measureText("$desc...") > maxDescWidth) {
+                    desc = desc.dropLast(1)
+                }
+                desc = "$desc..."
+            }
+            canvas.drawText(desc, 115f, currentY, itemBoldPaint)
+
+            // Column 3: Quantity (center: 592f)
+            itemRegularPaint.textAlign = Paint.Align.CENTER
+            val qtyStr = if (item.quantity % 1.0 == 0.0) item.quantity.toInt().toString() else item.quantity.toString()
+            canvas.drawText(qtyStr, 592f, currentY, itemRegularPaint)
+
+            // Column 4: Rate (right align: 812f)
+            itemRegularPaint.textAlign = Paint.Align.RIGHT
+            val rateStr = if (item.unitRate % 1.0 == 0.0) item.unitRate.toInt().toString() else String.format(Locale.US, "%.2f", item.unitRate)
+            canvas.drawText(rateStr, 812f, currentY, itemRegularPaint)
+
+            // Column 5: Amount (right align: 990f)
+            itemBoldPaint.textAlign = Paint.Align.RIGHT
+            val totalStr = if (item.lineTotal % 1.0 == 0.0) item.lineTotal.toInt().toString() else String.format(Locale.US, "%.2f", item.lineTotal)
+            canvas.drawText(totalStr, 990f, currentY, itemBoldPaint)
+        }
+
+        // 5. Payment Summary (Right Bottom Boxes)
+        val summaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+            textAlign = Paint.Align.RIGHT
+        }
+
+        // Subtotal (baseline: 1276f, right align: 985f)
+        summaryPaint.textSize = 25f
+        summaryPaint.color = android.graphics.Color.parseColor("#0F172A")
+        val subtotalFormatted = if (memoData.subtotal % 1.0 == 0.0) memoData.subtotal.toInt().toString() else String.format(Locale.US, "%.2f", memoData.subtotal)
+        canvas.drawText("₹$subtotalFormatted", 985f, 1276f, summaryPaint)
+
+        // Discount (baseline: 1335f, right align: 985f)
+        summaryPaint.textSize = 25f
         if (memoData.discount > 0.0) {
-            y += 34f
-            canvas.drawText(if (isEn) "Subtotal:" else "সাবটোটাল:", 400f, y, textPaint)
-            val subStr = "₹${memoData.subtotal.toInt()}"
-            canvas.drawText(subStr, width - 36f - textPaint.measureText(subStr), y, textPaint)
-
-            y += 30f
-            canvas.drawText(if (isEn) "Discount:" else "ছাড়:", 400f, y, textPaint)
-            val discStr = "-₹${memoData.discount.toInt()}"
-            canvas.drawText(discStr, width - 36f - textPaint.measureText(discStr), y, textPaint)
-            y += 18f
-            canvas.drawLine(400f, y, width - 30f, y, linePaint)
+            summaryPaint.color = android.graphics.Color.parseColor("#DC2626")
+            val discountFormatted = if (memoData.discount % 1.0 == 0.0) memoData.discount.toInt().toString() else String.format(Locale.US, "%.2f", memoData.discount)
+            canvas.drawText("-₹$discountFormatted", 985f, 1335f, summaryPaint)
+        } else {
+            summaryPaint.color = android.graphics.Color.parseColor("#0F172A")
+            canvas.drawText("₹0", 985f, 1335f, summaryPaint)
         }
 
-        y += 42f
-        boldPaint.textSize = 26f
-        canvas.drawText(if (isEn) "Grand Total:" else "সর্বমোট প্রদেয়:", 340f, y, boldPaint)
-        val grandStr = "₹${memoData.grandTotal.toInt()}"
-        boldPaint.textSize = 30f
-        canvas.drawText(grandStr, width - 36f - boldPaint.measureText(grandStr), y, boldPaint)
+        // Grand Total (baseline: 1405f, right align: 985f)
+        summaryPaint.textSize = 28f
+        summaryPaint.color = android.graphics.Color.parseColor("#047857")
+        val grandTotalFormatted = if (memoData.grandTotal % 1.0 == 0.0) memoData.grandTotal.toInt().toString() else String.format(Locale.US, "%.2f", memoData.grandTotal)
+        canvas.drawText("₹$grandTotalFormatted", 985f, 1405f, summaryPaint)
 
-        y += 40f
-        canvas.drawLine(30f, y, width - 30f, y, linePaint)
-        y += 40f
-        subPaint.textSize = 20f
-        canvas.drawText(if (isEn) "Thank you for visiting! Please visit again." else "ধন্যবাদ! আবার আসবেন।", width / 2f, y, subPaint)
+        // 6. Dynamic UPI QR Code in bottom-left white box (x: 35..246, y: 1249..1449)
+        try {
+            val upiAmount = String.format(Locale.US, "%.2f", memoData.grandTotal)
+            val shopNameForUpi = if (isEn) SHOP_NAME_EN else SHOP_NAME_BN
+            val upiUri = "upi://pay?pa=$MERCHANT_UPI_ID&pn=${Uri.encode(shopNameForUpi)}&am=$upiAmount&cu=INR&tn=${Uri.encode("Bill #" + memoData.billNumber)}"
+            val qrBitmap = QrCodeGenerator.generateUpiQr(upiUri, size = 180)
+            if (qrBitmap != null) {
+                canvas.drawBitmap(qrBitmap, 48f, 1256f, null)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
 
         return bitmap
     }
@@ -238,17 +274,20 @@ object AmarDokanCashMemoGenerator {
         val file = File(dir, "${cleanName}_${cleanBillNo}.pdf")
 
         val document = android.graphics.pdf.PdfDocument()
-        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create() // A4
+        val pageInfo = android.graphics.pdf.PdfDocument.PageInfo.Builder(595, 842, 1).create() // Standard A4
         val page = document.startPage(pageInfo)
 
         val bmp = generateMemoBitmap(memoData, context)
         val canvas = page.canvas
-        val scale = 540f / bmp.width.toFloat()
-        val matrix = Matrix().apply {
-            postScale(scale, scale)
-            postTranslate(28f, 30f)
-        }
-        canvas.drawBitmap(bmp, matrix, null)
+
+        val targetWidth = 555f
+        val targetHeight = targetWidth * (bmp.height.toFloat() / bmp.width.toFloat())
+        val left = (595f - targetWidth) / 2f
+        val top = (842f - targetHeight) / 2f
+
+        val destRect = RectF(left, top, left + targetWidth, top + targetHeight)
+        val paint = Paint(Paint.FILTER_BITMAP_FLAG)
+        canvas.drawBitmap(bmp, null, destRect, paint)
         document.finishPage(page)
 
         FileOutputStream(file).use { out ->
@@ -260,51 +299,57 @@ object AmarDokanCashMemoGenerator {
 
     fun printMemo(context: Context, memoData: MemoData) {
         val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager ?: return
-        val isEn = memoData.language.uppercase() == "EN"
 
-        val html = StringBuilder().apply {
-            append("<!DOCTYPE html><html><head><meta charset='utf-8'>")
-            append("<style>")
-            append("body { font-family: monospace; width: 280px; margin: 0 auto; padding: 10px; color: #000; font-size: 12px; }")
-            append(".center { text-align: center; }")
-            append(".bold { font-weight: bold; }")
-            append(".line { border-top: 1px dashed #000; margin: 6px 0; }")
-            append(".row { display: flex; justify-content: space-between; margin: 3px 0; }")
-            append(".title { font-size: 16px; font-weight: bold; }")
-            append("</style></head><body>")
-            append("<div class='center title'>${if (isEn) SHOP_NAME_EN else SHOP_NAME_BN}</div>")
-            append("<div class='center'>${if (isEn) SHOP_SUBTITLE_EN else SHOP_SUBTITLE_BN}</div>")
-            append("<div class='center'>Phone: $SHOP_PHONE</div>")
-            append("<div class='line'></div>")
-            append("<div class='row'><span>${if (isEn) "Bill:" else "বিল নং:"} ${memoData.billNumber}</span><span>${memoData.dateStr}</span></div>")
-            append("<div class='row'><span>${if (isEn) "Cust:" else "গ্রাহক:"} ${memoData.customerName}</span></div>")
-            append("<div class='row'><span>${if (isEn) "Status: " + memoData.paymentType else "পেমেন্ট: " + if (memoData.paymentType == "CASH") "নগদ" else "বাকি"}</span></div>")
-            append("<div class='line'></div>")
-            append("<div class='row bold'><span>${if (isEn) "Item" else "বিবরণ"}</span><span>Qty x Rate</span><span>${if (isEn) "Total" else "মোট"}</span></div>")
-            append("<div class='line'></div>")
-            memoData.items.forEach {
-                append("<div class='row'>")
-                append("<span>${it.serviceName}</span>")
-                append("<span>${it.quantity.toInt()} × ₹${it.unitRate.toInt()}</span>")
-                append("<span>₹${it.lineTotal.toInt()}</span>")
-                append("</div>")
-            }
-            append("<div class='line'></div>")
-            if (memoData.discount > 0.0) {
-                append("<div class='row'><span>Subtotal:</span><span>₹${memoData.subtotal.toInt()}</span></div>")
-                append("<div class='row'><span>Discount:</span><span>-₹${memoData.discount.toInt()}</span></div>")
-            }
-            append("<div class='row bold' style='font-size: 14px;'><span>Grand Total:</span><span>₹${memoData.grandTotal.toInt()}</span></div>")
-            append("<div class='line'></div>")
-            append("<div class='center'>${if (isEn) "Thank you! Visit again." else "ধন্যবাদ! আবার আসবেন।"}</div>")
-            append("</body></html>")
-        }.toString()
+        val bitmap = generateMemoBitmap(memoData, context)
+        val baos = ByteArrayOutputStream()
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, baos)
+        val base64Img = Base64.encodeToString(baos.toByteArray(), Base64.NO_WRAP)
+
+        val html = """
+            <!DOCTYPE html>
+            <html>
+            <head>
+                <meta charset="utf-8">
+                <style>
+                    @page {
+                        size: A4 portrait;
+                        margin: 0;
+                    }
+                    html, body {
+                        margin: 0;
+                        padding: 0;
+                        width: 100%;
+                        height: 100%;
+                        background: #ffffff;
+                        display: flex;
+                        justify-content: center;
+                        align-items: flex-start;
+                    }
+                    img {
+                        width: 100%;
+                        max-width: 100%;
+                        height: auto;
+                        display: block;
+                        page-break-inside: avoid;
+                    }
+                </style>
+            </head>
+            <body>
+                <img src="data:image/png;base64,$base64Img" alt="Cash Memo" />
+            </body>
+            </html>
+        """.trimIndent()
 
         val webView = WebView(context)
         webView.webViewClient = object : WebViewClient() {
             override fun onPageFinished(view: WebView?, url: String?) {
                 val printAdapter = webView.createPrintDocumentAdapter("CashMemo_${memoData.billNumber}")
-                printManager.print("CashMemo_${memoData.billNumber}", printAdapter, PrintAttributes.Builder().build())
+                val printAttributes = PrintAttributes.Builder()
+                    .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                    .setColorMode(PrintAttributes.COLOR_MODE_COLOR)
+                    .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                    .build()
+                printManager.print("CashMemo_${memoData.billNumber}", printAdapter, printAttributes)
             }
         }
         webView.loadDataWithBaseURL(null, html, "text/html", "utf-8", null)

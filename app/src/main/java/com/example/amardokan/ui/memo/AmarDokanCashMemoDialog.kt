@@ -16,6 +16,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
@@ -79,12 +80,13 @@ fun AmarDokanCashMemoDialog(
                         .background(Color(0xFFF1F5F9), RoundedCornerShape(8.dp))
                         .padding(8.dp)
                         .verticalScroll(rememberScrollState()),
-                    contentAlignment = Alignment.Center
+                    contentAlignment = Alignment.TopCenter
                 ) {
                     Image(
                         bitmap = memoBitmap.asImageBitmap(),
                         contentDescription = "ক্যাশ মেমো",
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth
                     )
                 }
 
