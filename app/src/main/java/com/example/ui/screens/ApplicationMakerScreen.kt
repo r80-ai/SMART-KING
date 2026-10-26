@@ -63,9 +63,7 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
     var selectedLetterTypeIndex by remember { mutableIntStateOf(0) }
     val currentLetterType = currentCategory.letterTypes.getOrElse(selectedLetterTypeIndex) { currentCategory.letterTypes.first() }
 
-    val isAadhaarCategory = currentCategory.id == "aadhaar_affidavit"
-
-    // Dynamic Form States (General)
+    // Dynamic Form States
     var applicantName by remember { mutableStateOf("") }
     val currentDate = remember { SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date()) }
     var date by remember { mutableStateOf(currentDate) }
@@ -77,19 +75,6 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
     var place by remember { mutableStateOf("") }
     var dynamicField1 by remember { mutableStateOf("") }
     var dynamicField2 by remember { mutableStateOf("") }
-
-    // Dynamic Form States for Aadhaar Affidavits & Declarations
-    var guardianName by remember { mutableStateOf("") }
-    var aadhaarNo by remember { mutableStateOf("") }
-    var childName by remember { mutableStateOf("") }
-    var childAadhaarNo by remember { mutableStateOf("") }
-    var correctDob by remember { mutableStateOf("") }
-    var oldDob by remember { mutableStateOf("") }
-    var docName by remember { mutableStateOf("") }
-    var docNumber by remember { mutableStateOf("") }
-    var eidNumber by remember { mutableStateOf("") }
-    var updateCount by remember { mutableStateOf("never") }
-    var stampValue by remember { mutableStateOf("₹ 10") }
 
     // Signature State
     var signatureBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -104,20 +89,11 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
             if (spokenText.isNotBlank()) {
                 when (activeVoiceTarget) {
                     "name" -> applicantName = spokenText
-                    "guardian" -> guardianName = spokenText
                     "office" -> officeName = spokenText
                     "address" -> applicantAddress = spokenText
                     "place" -> place = spokenText
                     "field1" -> dynamicField1 = spokenText
                     "field2" -> dynamicField2 = spokenText
-                    "aadhaar" -> aadhaarNo = spokenText
-                    "child" -> childName = spokenText
-                    "childAadhaar" -> childAadhaarNo = spokenText
-                    "correctDob" -> correctDob = spokenText
-                    "oldDob" -> oldDob = spokenText
-                    "docName" -> docName = spokenText
-                    "docNumber" -> docNumber = spokenText
-                    "eid" -> eidNumber = spokenText
                 }
             }
         }
@@ -139,38 +115,15 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
 
     // Dynamic Live Preview Generator
     val generatedLetter = remember(
-        isAadhaarCategory, isBengali, currentCategory, currentLetterType,
-        applicantName, guardianName, date, recipientTitle, officeName, applicantAddress, place,
-        dynamicField1, dynamicField2, aadhaarNo, childName, childAadhaarNo, correctDob, oldDob,
-        docName, docNumber, eidNumber, updateCount, stampValue, signatureBitmap
+        isBengali, currentCategory, currentLetterType,
+        applicantName, date, recipientTitle, officeName, applicantAddress, place, dynamicField1, dynamicField2, signatureBitmap
     ) {
-        if (isAadhaarCategory) {
-            generateAadhaarAffidavitPreview(
-                annexureId = currentLetterType.id,
-                deponentName = applicantName,
-                guardianName = guardianName,
-                address = applicantAddress,
-                aadhaarNo = aadhaarNo,
-                childName = childName,
-                childAadhaarNo = childAadhaarNo,
-                correctDob = correctDob,
-                oldDob = oldDob,
-                docName = docName,
-                docNumber = docNumber,
-                eidNumber = eidNumber,
-                updateCount = updateCount,
-                stampValue = stampValue,
-                date = date,
-                place = place,
-                hasSignature = signatureBitmap != null
+        val sigLine = if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"
+        if (isBengali) {
+            val body = currentLetterType.bodyTemplateBn(
+                applicantName, applicantAddress, officeName, dynamicField1, dynamicField2
             )
-        } else {
-            val sigLine = if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"
-            if (isBengali) {
-                val body = currentLetterType.bodyTemplateBn(
-                    applicantName, applicantAddress, officeName, dynamicField1, dynamicField2
-                )
-                """
+            """
 প্রতি,
 ${recipientTitle.ifBlank { currentCategory.defaultRecipientBn }}
 ${officeName.ifBlank { "...................................." }}
@@ -189,12 +142,12 @@ $body
 $sigLine
 ${applicantName.ifBlank { "................" }}
 ${if (applicantAddress.isNotBlank()) "ঠিকানা: $applicantAddress\n" else ""}
-                """.trimIndent()
-            } else {
-                val body = currentLetterType.bodyTemplateEn(
-                    applicantName, applicantAddress, officeName, dynamicField1, dynamicField2
-                )
-                """
+            """.trimIndent()
+        } else {
+            val body = currentLetterType.bodyTemplateEn(
+                applicantName, applicantAddress, officeName, dynamicField1, dynamicField2
+            )
+            """
 To,
 ${recipientTitle.ifBlank { currentCategory.defaultRecipientEn }}
 ${officeName.ifBlank { "...................................." }}
@@ -213,8 +166,7 @@ Yours faithfully,
 $sigLine
 ${applicantName.ifBlank { "................" }}
 ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
-                """.trimIndent()
-            }
+            """.trimIndent()
         }
     }
 
@@ -423,362 +375,125 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            if (isAadhaarCategory) {
-                // Info Banner for UIDAI Legal Format
-                Card(
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E293B)),
-                    shape = RoundedCornerShape(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text("⚖️", fontSize = 16.sp)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = if (isBengali) "UIDAI অফিশিয়াল ফরম্যাট: ${currentLetterType.titleBn}" else "UIDAI Official Format: ${currentLetterType.titleEn}",
-                            color = Color(0xFF38BDF8),
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
+            // Applicant Name
+            OutlinedTextField(
+                value = applicantName,
+                onValueChange = { applicantName = it },
+                label = { Text(if (isBengali) "আবেদনকারীর নাম (Applicant Name)" else "Applicant Name", color = Color.Gray) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                trailingIcon = {
+                    IconButton(onClick = { startVoiceInput("name") }) {
+                        Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
                     }
-                }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF3B82F6),
+                    unfocusedBorderColor = Color(0xFF334155)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
 
-                // Deponent Name
-                OutlinedTextField(
-                    value = applicantName,
-                    onValueChange = { applicantName = it },
-                    label = { Text(if (isBengali) "আবেদনকারী / ঘোষণাকারীর নাম (Deponent Name)" else "Deponent Name", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("name") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
+            // Date
+            OutlinedTextField(
+                value = date,
+                onValueChange = { date = it },
+                label = { Text(if (isBengali) "তারিখ (Date)" else "Date", color = Color.Gray) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF3B82F6),
+                    unfocusedBorderColor = Color(0xFF334155)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
 
-                // Father / Husband Name (Guardian)
-                OutlinedTextField(
-                    value = guardianName,
-                    onValueChange = { guardianName = it },
-                    label = { Text(if (isBengali) "পিতা / স্বামীর নাম (S/D/W/o Guardian Name)" else "Father / Husband Name (S/D/W/o)", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("guardian") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
+            // Recipient Title
+            OutlinedTextField(
+                value = recipientTitle,
+                onValueChange = { recipientTitle = it },
+                label = { Text(if (isBengali) "প্রাপকের পদ (Recipient Title)" else "Recipient Title", color = Color.Gray) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF3B82F6),
+                    unfocusedBorderColor = Color(0xFF334155)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
 
-                // Full Address
-                OutlinedTextField(
-                    value = applicantAddress,
-                    onValueChange = { applicantAddress = it },
-                    label = { Text(if (isBengali) "সম্পূর্ণ ঠিকানা (Full Residential Address)" else "Full Residential Address", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("address") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                // Aadhaar Number
-                OutlinedTextField(
-                    value = aadhaarNo,
-                    onValueChange = { aadhaarNo = it },
-                    label = { Text(if (isBengali) "আধার নম্বর (Deponent 12-digit Aadhaar No)" else "Deponent 12-digit Aadhaar No", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("aadhaar") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                val isChildForm = currentLetterType.id == "aadhaar_annexure_1a" ||
-                        currentLetterType.id == "aadhaar_annexure_2a" ||
-                        currentLetterType.id == "aadhaar_annexure_3a"
-
-                if (isChildForm) {
-                    // Child Name
-                    OutlinedTextField(
-                        value = childName,
-                        onValueChange = { childName = it },
-                        label = { Text(if (isBengali) "নাবালক সন্তানের নাম (Minor Child Name)" else "Minor Child Name", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("child") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-
-                    // Child Aadhaar Number
-                    OutlinedTextField(
-                        value = childAadhaarNo,
-                        onValueChange = { childAadhaarNo = it },
-                        label = { Text(if (isBengali) "সন্তানের আধার নম্বর (Child Aadhaar No)" else "Child Aadhaar No", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("childAadhaar") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-
-                val isDobForm = currentLetterType.id == "aadhaar_annexure_1" ||
-                        currentLetterType.id == "aadhaar_annexure_1a" ||
-                        currentLetterType.id == "aadhaar_annexure_2" ||
-                        currentLetterType.id == "aadhaar_annexure_2a"
-
-                if (isDobForm) {
-                    // Correct DoB
-                    OutlinedTextField(
-                        value = correctDob,
-                        onValueChange = { correctDob = it },
-                        label = { Text(if (isBengali) "সঠিক জন্ম তারিখ (Correct Date of Birth - DD/MM/YYYY)" else "Correct Date of Birth (DD/MM/YYYY)", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("correctDob") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-
-                    // Old Recorded DoB
-                    OutlinedTextField(
-                        value = oldDob,
-                        onValueChange = { oldDob = it },
-                        label = { Text(if (isBengali) "আধার কার্ডে আগের ভুল জন্ম তারিখ (Earlier Recorded DoB)" else "Earlier Recorded DoB in Aadhaar", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("oldDob") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-
-                // Proof Document Name
-                OutlinedTextField(
-                    value = docName,
-                    onValueChange = { docName = it },
-                    label = { Text(if (isBengali) "দাখিলকৃত প্রমাণ্য নথির নাম (Document Name, e.g. Birth Certificate)" else "Proof Document Name (e.g. Birth Certificate)", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("docName") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                // Document Number (if typo or reactivation)
-                val needsDocNumber = currentLetterType.id == "aadhaar_annexure_2" ||
-                        currentLetterType.id == "aadhaar_annexure_2a" ||
-                        currentLetterType.id == "aadhaar_annexure_3" ||
-                        currentLetterType.id == "aadhaar_annexure_3a"
-
-                if (needsDocNumber) {
-                    OutlinedTextField(
-                        value = docNumber,
-                        onValueChange = { docNumber = it },
-                        label = { Text(if (isBengali) "নথির নম্বর (Document Number)" else "Document Number", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("docNumber") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-
-                // EID Number
-                val needsEid = currentLetterType.id == "aadhaar_annexure_2" ||
-                        currentLetterType.id == "aadhaar_annexure_2a" ||
-                        currentLetterType.id == "aadhaar_annexure_3" ||
-                        currentLetterType.id == "aadhaar_annexure_3a"
-
-                if (needsEid) {
-                    OutlinedTextField(
-                        value = eidNumber,
-                        onValueChange = { eidNumber = it },
-                        label = { Text(if (isBengali) "নথিভুক্তিকরণ / আপডেট (EID) নম্বর (EID Number)" else "Enrolment / Update (EID) Number", color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("eid") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-
-                // Update Frequency Choice (for Annexure-I and Annexure-IA)
-                if (currentLetterType.id == "aadhaar_annexure_1" || currentLetterType.id == "aadhaar_annexure_1a") {
-                    Text(
-                        text = if (isBengali) "পূর্বে জন্মতারিখ সংশোধনের সংখ্যা (Past DoB Updates):" else "Past DoB Updates in Aadhaar:",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(top = 6.dp, bottom = 4.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf("never" to "কখনও নয় (Never)", "once" to "১ বার (Once)", "more than once" to "১ বারের বেশি (>1)").forEach { (optVal, optLabel) ->
-                            val isSel = updateCount == optVal
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { updateCount = optVal }
-                                    .background(if (isSel) Color(0xFF2563EB) else Color(0xFF1E293B))
-                                    .border(1.dp, if (isSel) Color(0xFF60A5FA) else Color(0xFF334155), RoundedCornerShape(8.dp))
-                                    .padding(vertical = 8.dp),
-                                color = Color.Transparent
-                            ) {
-                                Text(
-                                    text = optLabel,
-                                    color = if (isSel) Color.White else Color(0xFFCBD5E1),
-                                    fontSize = 10.5.sp,
-                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                            }
-                        }
+            // Office / Branch Name
+            OutlinedTextField(
+                value = officeName,
+                onValueChange = { officeName = it },
+                label = { Text(if (isBengali) "দপ্তর বা শাখার নাম ও ঠিকানা (Office Name & Branch)" else "Office Name & Address", color = Color.Gray) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                trailingIcon = {
+                    IconButton(onClick = { startVoiceInput("office") }) {
+                        Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
                     }
-                }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF3B82F6),
+                    unfocusedBorderColor = Color(0xFF334155)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
 
-                // Stamp Paper Value (For Affidavits: Annexure I, IA, III, IIIA)
-                val isAffidavit = currentLetterType.id == "aadhaar_annexure_1" ||
-                        currentLetterType.id == "aadhaar_annexure_1a" ||
-                        currentLetterType.id == "aadhaar_annexure_3" ||
-                        currentLetterType.id == "aadhaar_annexure_3a"
-
-                if (isAffidavit) {
-                    Text(
-                        text = if (isBengali) "নন-জুডিশিয়াল স্ট্যাম্প পেপারের মূল্য (Stamp Paper Value):" else "Non-Judicial Stamp Paper Value:",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        listOf("₹ 10", "₹ 20", "₹ 50", "₹ 100").forEach { sVal ->
-                            val isSel = stampValue == sVal
-                            Surface(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { stampValue = sVal }
-                                    .background(if (isSel) Color(0xFF059669) else Color(0xFF1E293B))
-                                    .border(1.dp, if (isSel) Color(0xFF34D399) else Color(0xFF334155), RoundedCornerShape(8.dp))
-                                    .padding(vertical = 8.dp),
-                                color = Color.Transparent
-                            ) {
-                                Text(
-                                    text = sVal,
-                                    color = if (isSel) Color.White else Color(0xFFCBD5E1),
-                                    fontSize = 12.sp,
-                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Normal,
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                                )
-                            }
-                        }
+            // Applicant Address
+            OutlinedTextField(
+                value = applicantAddress,
+                onValueChange = { applicantAddress = it },
+                label = { Text(if (isBengali) "আবেদনকারীর ঠিকানা (Applicant Address)" else "Applicant Address", color = Color.Gray) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                trailingIcon = {
+                    IconButton(onClick = { startVoiceInput("address") }) {
+                        Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
                     }
-                }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF3B82F6),
+                    unfocusedBorderColor = Color(0xFF334155)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
 
-                // Place
+            // Place
+            OutlinedTextField(
+                value = place,
+                onValueChange = { place = it },
+                label = { Text(if (isBengali) "স্থান (Place)" else "Place", color = Color.Gray) },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+                trailingIcon = {
+                    IconButton(onClick = { startVoiceInput("place") }) {
+                        Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
+                    }
+                },
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = Color.White,
+                    unfocusedTextColor = Color.White,
+                    focusedBorderColor = Color(0xFF3B82F6),
+                    unfocusedBorderColor = Color(0xFF334155)
+                ),
+                shape = RoundedCornerShape(8.dp)
+            )
+
+            // Dynamic Context Field 1
+            if (currentLetterType.field1LabelBn.isNotBlank()) {
                 OutlinedTextField(
-                    value = place,
-                    onValueChange = { place = it },
-                    label = { Text(if (isBengali) "স্থান (Place)" else "Place", color = Color.Gray) },
+                    value = dynamicField1,
+                    onValueChange = { dynamicField1 = it },
+                    label = { Text(if (isBengali) currentLetterType.field1LabelBn else currentLetterType.field1LabelEn, color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                     trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("place") }) {
+                        IconButton(onClick = { startVoiceInput("field1") }) {
                             Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
                         }
                     },
@@ -790,30 +505,17 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
                     ),
                     shape = RoundedCornerShape(8.dp)
                 )
+            }
 
-                // Date
+            // Dynamic Context Field 2
+            if (currentLetterType.field2LabelBn.isNotBlank()) {
                 OutlinedTextField(
-                    value = date,
-                    onValueChange = { date = it },
-                    label = { Text(if (isBengali) "তারিখ (Date)" else "Date", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-            } else {
-                // Applicant Name
-                OutlinedTextField(
-                    value = applicantName,
-                    onValueChange = { applicantName = it },
-                    label = { Text(if (isBengali) "আবেদনকারীর নাম (Applicant Name)" else "Applicant Name", color = Color.Gray) },
+                    value = dynamicField2,
+                    onValueChange = { dynamicField2 = it },
+                    label = { Text(if (isBengali) currentLetterType.field2LabelBn else currentLetterType.field2LabelEn, color = Color.Gray) },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
                     trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("name") }) {
+                        IconButton(onClick = { startVoiceInput("field2") }) {
                             Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
                         }
                     },
@@ -825,140 +527,6 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
                     ),
                     shape = RoundedCornerShape(8.dp)
                 )
-
-                // Date
-                OutlinedTextField(
-                    value = date,
-                    onValueChange = { date = it },
-                    label = { Text(if (isBengali) "তারিখ (Date)" else "Date", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                // Recipient Title
-                OutlinedTextField(
-                    value = recipientTitle,
-                    onValueChange = { recipientTitle = it },
-                    label = { Text(if (isBengali) "প্রাপকের পদ (Recipient Title)" else "Recipient Title", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                // Office / Branch Name
-                OutlinedTextField(
-                    value = officeName,
-                    onValueChange = { officeName = it },
-                    label = { Text(if (isBengali) "দপ্তর বা শাখার নাম ও ঠিকানা (Office Name & Branch)" else "Office Name & Address", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("office") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                // Applicant Address
-                OutlinedTextField(
-                    value = applicantAddress,
-                    onValueChange = { applicantAddress = it },
-                    label = { Text(if (isBengali) "আবেদনকারীর ঠিকানা (Applicant Address)" else "Applicant Address", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("address") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                // Place
-                OutlinedTextField(
-                    value = place,
-                    onValueChange = { place = it },
-                    label = { Text(if (isBengali) "স্থান (Place)" else "Place", color = Color.Gray) },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                    trailingIcon = {
-                        IconButton(onClick = { startVoiceInput("place") }) {
-                            Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                        }
-                    },
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF3B82F6),
-                        unfocusedBorderColor = Color(0xFF334155)
-                    ),
-                    shape = RoundedCornerShape(8.dp)
-                )
-
-                // Dynamic Context Field 1
-                if (currentLetterType.field1LabelBn.isNotBlank()) {
-                    OutlinedTextField(
-                        value = dynamicField1,
-                        onValueChange = { dynamicField1 = it },
-                        label = { Text(if (isBengali) currentLetterType.field1LabelBn else currentLetterType.field1LabelEn, color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("field1") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
-
-                // Dynamic Context Field 2
-                if (currentLetterType.field2LabelBn.isNotBlank()) {
-                    OutlinedTextField(
-                        value = dynamicField2,
-                        onValueChange = { dynamicField2 = it },
-                        label = { Text(if (isBengali) currentLetterType.field2LabelBn else currentLetterType.field2LabelEn, color = Color.Gray) },
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
-                        trailingIcon = {
-                            IconButton(onClick = { startVoiceInput("field2") }) {
-                                Icon(Icons.Default.Mic, contentDescription = "Voice", tint = Color(0xFF38BDF8))
-                            }
-                        },
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = Color.White,
-                            unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF3B82F6),
-                            unfocusedBorderColor = Color(0xFF334155)
-                        ),
-                        shape = RoundedCornerShape(8.dp)
-                    )
-                }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
@@ -982,40 +550,19 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
                 Button(
                     onClick = {
                         val webView = WebView(context)
-                        val htmlContent = if (isAadhaarCategory) {
-                            generateAadhaarAffidavitHtml(
-                                annexureId = currentLetterType.id,
-                                deponentName = applicantName,
-                                guardianName = guardianName,
-                                address = applicantAddress,
-                                aadhaarNo = aadhaarNo,
-                                childName = childName,
-                                childAadhaarNo = childAadhaarNo,
-                                correctDob = correctDob,
-                                oldDob = oldDob,
-                                docName = docName,
-                                docNumber = docNumber,
-                                eidNumber = eidNumber,
-                                updateCount = updateCount,
-                                stampValue = stampValue,
-                                date = date,
-                                place = place,
-                                signatureBase64 = signatureBitmap?.toBase64Png()
-                            )
+                        val bodyText = if (isBengali) {
+                            currentLetterType.bodyTemplateBn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
                         } else {
-                            val bodyText = if (isBengali) {
-                                currentLetterType.bodyTemplateBn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
-                            } else {
-                                currentLetterType.bodyTemplateEn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
-                            }
+                            currentLetterType.bodyTemplateEn(applicantName, applicantAddress, officeName, dynamicField1, dynamicField2)
+                        }
 
-                            val signatureHtml = if (signatureBitmap != null) {
-                                """<img src="data:image/png;base64,${signatureBitmap!!.toBase64Png()}" class="sig-img" alt="Signature" />"""
-                            } else {
-                                """<div class="sig-dots">................................</div>"""
-                            }
+                        val signatureHtml = if (signatureBitmap != null) {
+                            """<img src="data:image/png;base64,${signatureBitmap!!.toBase64Png()}" class="sig-img" alt="Signature" />"""
+                        } else {
+                            """<div class="sig-dots">................................</div>"""
+                        }
 
-                            """
+                        val htmlContent = """
                             <!DOCTYPE html>
                             <html>
                             <head>
@@ -1129,18 +676,16 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
                                 </table>
                             </body>
                             </html>
-                            """.trimIndent()
-                        }
+                        """.trimIndent()
 
                         webView.webViewClient = object : WebViewClient() {
                             override fun onPageFinished(view: WebView?, url: String?) {
                                 val printManager = context.getSystemService(Context.PRINT_SERVICE) as PrintManager
-                                val docName = if (isAadhaarCategory) currentLetterType.id else "Application_Letter"
-                                val printAdapter = webView.createPrintDocumentAdapter(docName)
+                                val printAdapter = webView.createPrintDocumentAdapter("Application_Letter")
                                 val printAttributes = PrintAttributes.Builder()
                                     .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
                                     .build()
-                                printManager.print(docName, printAdapter, printAttributes)
+                                printManager.print("Application_Letter", printAdapter, printAttributes)
                             }
                         }
                         webView.loadDataWithBaseURL(null, htmlContent, "text/html", "utf-8", null)
@@ -1179,15 +724,6 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}
                         place = ""
                         dynamicField1 = ""
                         dynamicField2 = ""
-                        guardianName = ""
-                        aadhaarNo = ""
-                        childName = ""
-                        childAadhaarNo = ""
-                        correctDob = ""
-                        oldDob = ""
-                        docName = ""
-                        docNumber = ""
-                        eidNumber = ""
                         signatureBitmap = null
                     },
                     modifier = Modifier.weight(1f),
