@@ -34,11 +34,14 @@ data class LetterTypeItem(
  */
 fun getApplicationCategories(): List<LetterCategory> {
     return listOf(
-        // 1. ব্যাংক (Bank)
+        // 1. আধার এফিডেভিট ও স্ব-ঘোষণা (Aadhaar Affidavit & Declarations)
+        getAadhaarAffidavitCategory(),
+
+        // 2. ব্যাংক (Bank)
         LetterCategory(
             id = "bank",
-            titleBn = "১. ব্যাংক (Bank)",
-            titleEn = "1. Bank",
+            titleBn = "২. ব্যাংক (Bank)",
+            titleEn = "2. Bank",
             defaultRecipientBn = "শাখা ব্যবস্থাপক (Branch Manager)",
             defaultRecipientEn = "The Branch Manager",
             letterTypes = listOf(
