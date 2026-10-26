@@ -184,8 +184,6 @@ ${panchayatArea.ifBlank { "................" }} পঞ্চায়েতে�
 আইডি নম্বর: ${idNo.ifBlank { "................" }}
 আধার নম্বর: ${aadhaarNo.ifBlank { "................" }}
 ভোটার নম্বর: ${voterNo.ifBlank { "................" }}
-এর সাথে আমার পরিবারের সকল সদস্যর নথি সংযোগ করলাম
-আধার কার্ড ও ভোটার স্লিপের জেরক্স।
 
 বিনীত-
 ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"}
@@ -1088,8 +1086,6 @@ ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]
                             Text("আইডি নম্বর: ${idNo.ifBlank { "................" }}", color = Color.Black, fontSize = 11.sp)
                             Text("আধার নম্বর: ${aadhaarNo.ifBlank { "................" }}", color = Color.Black, fontSize = 11.sp)
                             Text("ভোটার নম্বর: ${voterNo.ifBlank { "................" }}", color = Color.Black, fontSize = 11.sp)
-                            Text("এর সাথে আমার পরিবারের সকল সদস্যর নথি সংযোগ করলাম", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Medium)
-                            Text("আধার কার্ড ও ভোটার স্লিপের জেরক্স।", color = Color.Black, fontSize = 10.sp)
                         }
 
                         Column(
@@ -1108,7 +1104,6 @@ ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]
                             } else {
                                 Text("....................................", color = Color.Black, fontSize = 11.sp)
                             }
-                            Text("(আবেদনকারীর স্বাক্ষর)", color = Color.Gray, fontSize = 9.sp)
                         }
                     }
                 }
@@ -1144,9 +1139,9 @@ private fun buildAnnapurnaHtml(
     signatureBitmap: Bitmap?
 ): String {
     val signatureHtml = if (signatureBitmap != null) {
-        """<img src="data:image/png;base64,${signatureBitmap.toBase64Png()}" class="sig-img" alt="Signature" /><br><span style="font-size: 9pt; color: #444;">(আবেদনকারীর স্বাক্ষর)</span>"""
+        """<img src="data:image/png;base64,${signatureBitmap.toBase64Png()}" class="sig-img" alt="Signature" />"""
     } else {
-        """................................................<br><span style="font-size: 9pt; color: #444;">(আবেদনকারীর স্বাক্ষর)</span>"""
+        """................................................"""
     }
 
     val optionsHtml = buildString {
@@ -1163,7 +1158,7 @@ private fun buildAnnapurnaHtml(
                     <td style="width: 28px; vertical-align: middle;">
                         <div class="box ${if (isChecked) "checked" else ""}">$boxContent</div>
                     </td>
-                    <td style="vertical-align: middle; font-size: 10.5pt; ${if (isChecked) "font-weight: bold;" else ""}">
+                    <td style="vertical-align: middle; font-size: 10pt; ${if (isChecked) "font-weight: bold;" else ""}">
                         $optText
                     </td>
                 </tr>
@@ -1180,29 +1175,29 @@ private fun buildAnnapurnaHtml(
             <style>
                 @page {
                     size: A4 portrait;
-                    margin: 14mm 16mm 14mm 16mm;
+                    margin: 10mm 15mm 10mm 15mm;
                 }
                 body {
                     font-family: 'Noto Sans Bengali', sans-serif, 'Segoe UI', Arial, sans-serif;
-                    font-size: 11pt;
-                    line-height: 1.55;
+                    font-size: 10.5pt;
+                    line-height: 1.5;
                     color: #000;
                     margin: 0;
                     padding: 0;
                 }
                 .title {
                     text-align: center;
-                    font-size: 15pt;
+                    font-size: 14pt;
                     font-weight: bold;
                     text-decoration: underline;
-                    margin-bottom: 12px;
+                    margin-bottom: 10px;
                 }
                 .salutation {
                     font-weight: bold;
-                    margin-bottom: 6px;
+                    margin-bottom: 4px;
                 }
                 .line {
-                    margin-bottom: 4px;
+                    margin-bottom: 3px;
                     text-align: justify;
                 }
                 .bold-val {
@@ -1212,26 +1207,26 @@ private fun buildAnnapurnaHtml(
                 .box-tag {
                     display: inline-block;
                     border: 1.5px solid #000;
-                    padding: 1px 8px;
+                    padding: 1px 7px;
                     font-weight: bold;
-                    font-size: 10pt;
-                    margin: 6px 0;
+                    font-size: 9.5pt;
+                    margin: 4px 0;
                 }
                 .options-table {
                     width: 100%;
                     border-collapse: collapse;
-                    margin: 4px 0 8px 0;
+                    margin: 3px 0 6px 0;
                 }
                 .options-table td {
-                    padding: 2.5px 0;
+                    padding: 1.8px 0;
                 }
                 .box {
-                    width: 16px;
-                    height: 16px;
+                    width: 14px;
+                    height: 14px;
                     border: 1.5px solid #000;
                     text-align: center;
-                    line-height: 14px;
-                    font-size: 11pt;
+                    line-height: 12px;
+                    font-size: 10pt;
                     font-weight: bold;
                 }
                 .box.checked {
@@ -1239,19 +1234,20 @@ private fun buildAnnapurnaHtml(
                 }
                 .closing {
                     text-align: justify;
-                    margin: 8px 0 12px 0;
-                    font-size: 10.5pt;
+                    margin: 6px 0 10px 0;
+                    font-size: 10pt;
+                    line-height: 1.45;
                 }
                 .footer-table {
                     width: 100%;
-                    margin-top: 10px;
+                    margin-top: 8px;
                     border-collapse: collapse;
                 }
                 .footer-table td {
-                    vertical-align: top;
+                    vertical-align: bottom;
                 }
                 .sig-img {
-                    max-height: 48px;
+                    max-height: 44px;
                     max-width: 130px;
                     object-fit: contain;
                     display: block;
@@ -1283,14 +1279,14 @@ private fun buildAnnapurnaHtml(
                 <span class="bold-val">${panchayatArea.ifBlank { "...................................." }}</span> পঞ্চায়েতের স্থানীয় বাসিন্দা।
             </div>
             
-            <div style="margin: 6px 0;">
+            <div style="margin: 5px 0;">
                 <div>আমার স্বামী/ পিতা-র কাজ/ পেশার বিবরণ: <span class="bold-val">${guardianProfession.ifBlank { "...................................." }}</span></div>
                 <div>মাসিক আয়: <span class="bold-val">${monthlyIncome.ifBlank { "...................." }}</span></div>
                 <div>গৃহের বিবরণ: <span class="bold-val">${houseDescription.ifBlank { "...................................." }}</span></div>
                 <div>জমির পরিমান: <span class="bold-val">${landAmount.ifBlank { "...................." }}</span></div>
             </div>
             
-            <div style="margin-top: 8px; font-weight: 500;">
+            <div style="margin-top: 6px; font-weight: 500;">
                 মহাশয়, আমি অন্নপূর্ণা টাকা পাওয়ার যোগ্য, কিন্তু আমার অন্নপূর্ণা স্ট্যাটাস নিম্নরূপ দেখাচ্ছে
             </div>
             
@@ -1306,17 +1302,15 @@ private fun buildAnnapurnaHtml(
             
             <table class="footer-table">
                 <tr>
-                    <td style="width: 60%; font-size: 10pt; line-height: 1.6;">
+                    <td style="width: 60%; font-size: 10pt; line-height: 1.55;">
                         <div>তারিখ: <span class="bold-val">$formDate</span></div>
                         <div>ফোন নম্বর: <span class="bold-val">${mobileNo.ifBlank { "...................." }}</span></div>
                         <div>আইডি নম্বর: <span class="bold-val">${idNo.ifBlank { "...................." }}</span></div>
                         <div>আধার নম্বর: <span class="bold-val">${aadhaarNo.ifBlank { "...................." }}</span></div>
                         <div>ভোটার নম্বর: <span class="bold-val">${voterNo.ifBlank { "...................." }}</span></div>
-                        <div style="font-weight: 500; margin-top: 3px;">এর সাথে আমার পরিবারের সকল সদস্যর নথি সংযোগ করলাম</div>
-                        <div>আধার কার্ড ও ভোটার স্লিপের জেরক্স।</div>
                     </td>
-                    <td style="width: 40%; text-align: center;">
-                        <div style="font-weight: bold; margin-bottom: 8px;">বিনীত-</div>
+                    <td style="width: 40%; text-align: center; vertical-align: bottom;">
+                        <div style="font-weight: bold; margin-bottom: 6px;">বিনীত-</div>
                         $signatureHtml
                     </td>
                 </tr>

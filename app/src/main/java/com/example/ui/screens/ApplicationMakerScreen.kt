@@ -530,7 +530,7 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
         isBengali, currentCategory, currentLetterType,
         applicantName, date, recipientTitle, officeName, applicantAddress, place, dynamicField1, dynamicField2, signatureBitmap
     ) {
-        val sigPlaceholder = if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত / Attached]" else "................................"
+        val sigPlaceholder = if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]" else "................................"
         if (isBengali) {
             val body = currentLetterType.bodyTemplateBn(
                 applicantName, applicantAddress, officeName, dynamicField1, dynamicField2
@@ -552,7 +552,7 @@ $body
 
 ধন্যবাদান্তে,
 ${applicantName.ifBlank { "................" }}
-${if (applicantAddress.isNotBlank()) "ঠিকানা: $applicantAddress\n" else ""}স্বাক্ষর: $sigPlaceholder
+${if (applicantAddress.isNotBlank()) "ঠিকানা: $applicantAddress\n" else ""}${if (signatureBitmap != null) "" else "স্বাক্ষর: ................................"}
             """.trimIndent()
         } else {
             val body = currentLetterType.bodyTemplateEn(
@@ -575,7 +575,7 @@ Place: ${place.ifBlank { "................" }}
 
 Yours faithfully,
 ${applicantName.ifBlank { "................" }}
-${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}Signature: $sigPlaceholder
+${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}${if (signatureBitmap != null) "" else "Signature: ................................"}
             """.trimIndent()
         }
     }
@@ -961,9 +961,9 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}Sign
                         }
 
                         val signatureHtml = if (signatureBitmap != null) {
-                            """<img src="data:image/png;base64,${signatureBitmap!!.toBase64Png()}" class="sig-img" alt="Signature" /><span style="font-size: 9pt; color: #555;">(${if (isBengali) "স্বাক্ষর" else "Signature"})</span>"""
+                            """<img src="data:image/png;base64,${signatureBitmap!!.toBase64Png()}" class="sig-img" alt="Signature" />"""
                         } else {
-                            """................................<br><span style="font-size: 9pt; color: #555;">(${if (isBengali) "স্বাক্ষর" else "Signature"})</span>"""
+                            """................................"""
                         }
 
                         val htmlContent = """
@@ -1238,9 +1238,8 @@ ${if (applicantAddress.isNotBlank()) "Address: $applicantAddress\n" else ""}Sign
                                         .background(Color.White.copy(alpha = 0.9f), RoundedCornerShape(4.dp))
                                         .padding(2.dp)
                                 )
-                                Text("(স্বাক্ষর)", color = Color(0xFF94A3B8), fontSize = 9.sp)
                             } else {
-                                Text("স্বাক্ষর: ................................", color = Color(0xFF94A3B8), fontSize = 11.sp)
+                                Text("................................", color = Color(0xFF94A3B8), fontSize = 11.sp)
                             }
                         }
                     }
