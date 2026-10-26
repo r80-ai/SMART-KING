@@ -1,13 +1,28 @@
 package com.example.ui.screens
 
+import android.content.ContentValues
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Paint
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.os.Build
+import android.os.Environment
 import android.print.PrintAttributes
 import android.print.PrintManager
+import android.provider.MediaStore
 import android.speech.RecognizerIntent
+import android.text.Layout
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.StaticLayout
+import android.text.TextPaint
+import android.text.style.StyleSpan
+import android.text.style.UnderlineSpan
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
@@ -27,6 +42,7 @@ import androidx.compose.material.icons.filled.Assignment
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material3.*
@@ -44,6 +60,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ui.components.SignatureUploadSection
 import com.example.ui.components.toBase64Png
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -53,6 +75,8 @@ import java.util.Locale
 fun AnnapurnaDeclarationScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val coroutineScope = rememberCoroutineScope()
+    var isSavingPdf by remember { mutableStateOf(false) }
 
     // 1. Form Inputs State
     val currentDate = remember { SimpleDateFormat("dd-MM-yyyy", Locale.getDefault()).format(Date()) }
@@ -824,12 +848,85 @@ ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            // ACTION BUTTONS: A4 Print / Save PDF, Copy Text, Clear
+            // ACTION BUTTONS: Strict 180-190 KB PDF Save, A4 Print, Copy, Clear
+            // 1. Prominent Primary Button: Save PDF (180 KB - 190 KB)
+            Button(
+                onClick = {
+                    if (isSavingPdf) return@Button
+                    isSavingPdf = true
+                    coroutineScope.launch(Dispatchers.IO) {
+                        try {
+                            val bitmap = buildAnnapurnaBitmap(
+                                applicantName = applicantName,
+                                guardianName = guardianName,
+                                guardianType = guardianType,
+                                address = address,
+                                postOffice = postOffice,
+                                policeStation = policeStation,
+                                pinCode = pinCode,
+                                panchayatArea = panchayatArea,
+                                guardianProfession = guardianProfession,
+                                monthlyIncome = monthlyIncome,
+                                houseDescription = houseDescription,
+                                landAmount = landAmount,
+                                statusOptions = statusOptions,
+                                selectedOptionIndex = selectedOptionIndex,
+                                customOptionText = customOptionText,
+                                formDate = formDate,
+                                mobileNo = mobileNo,
+                                idNo = idNo,
+                                aadhaarNo = aadhaarNo,
+                                voterNo = voterNo,
+                                signatureBitmap = signatureBitmap
+                            )
+                            val pdfBytes = generateStrictSizedPdf(bitmap, targetKb = 185)
+                            val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())
+                            val fileName = "Annapurna_Declaration_$timestamp.pdf"
+                            val saved = savePdfToDownloads(context, pdfBytes, fileName)
+                            
+                            withContext(Dispatchers.Main) {
+                                isSavingPdf = false
+                                if (saved) {
+                                    val sizeKb = pdfBytes.size / 1024
+                                    Toast.makeText(context, "PDF Saved Successfully ($sizeKb KB)", Toast.LENGTH_LONG).show()
+                                } else {
+                                    Toast.makeText(context, "PDF সংরক্ষণ করতে ব্যর্থ হয়েছে!", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        } catch (e: Exception) {
+                            withContext(Dispatchers.Main) {
+                                isSavingPdf = false
+                                Toast.makeText(context, "Error: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag("btn_annapurna_save_pdf"),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A)),
+                shape = RoundedCornerShape(8.dp),
+                enabled = !isSavingPdf
+            ) {
+                if (isSavingPdf) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("PDF তৈরি হচ্ছে (Strict 180-190 KB)...", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                } else {
+                    Icon(Icons.Default.Download, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Save PDF (180 KB - 190 KB)", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 2. Secondary Row: A4 Print, Copy, Clear
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                // A4 Print / Save PDF
+                // A4 Print
                 Button(
                     onClick = {
                         val webView = WebView(context)
@@ -870,14 +967,14 @@ ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]
                         webView.loadDataWithBaseURL(null, htmlContent, "text/html", "utf-8", null)
                     },
                     modifier = Modifier
-                        .weight(1.3f)
+                        .weight(1.2f)
                         .testTag("btn_annapurna_print"),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Default.Print, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text("A4 Print / PDF", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text("A4 Print", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                 }
 
                 // Copy Text
@@ -888,7 +985,7 @@ ${if (signatureBitmap != null) "[স্বাক্ষর সংযুক্ত]
                         Toast.makeText(context, "ফর্মের লেখা কপি করা হয়েছে!", Toast.LENGTH_SHORT).show()
                     },
                     modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3B82F6)),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF475569)),
                     shape = RoundedCornerShape(8.dp)
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
@@ -1318,4 +1415,455 @@ private fun buildAnnapurnaHtml(
         </body>
         </html>
     """.trimIndent()
+}
+
+/**
+ * Renders the Annapurna Self-Declaration form directly to a crisp A4 Bitmap (1240 x 1754 px)
+ */
+private fun buildAnnapurnaBitmap(
+    applicantName: String,
+    guardianName: String,
+    guardianType: String,
+    address: String,
+    postOffice: String,
+    policeStation: String,
+    pinCode: String,
+    panchayatArea: String,
+    guardianProfession: String,
+    monthlyIncome: String,
+    houseDescription: String,
+    landAmount: String,
+    statusOptions: List<String>,
+    selectedOptionIndex: Int,
+    customOptionText: String,
+    formDate: String,
+    mobileNo: String,
+    idNo: String,
+    aadhaarNo: String,
+    voterNo: String,
+    signatureBitmap: Bitmap?
+): Bitmap {
+    val width = 1240
+    val height = 1754
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = Canvas(bitmap)
+    canvas.drawColor(android.graphics.Color.WHITE)
+
+    val titlePaint = Paint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 33f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+    val regularPaint = TextPaint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 21f
+        isAntiAlias = true
+        typeface = Typeface.DEFAULT
+    }
+    val borderPaint = Paint().apply {
+        color = android.graphics.Color.BLACK
+        style = Paint.Style.STROKE
+        strokeWidth = 2f
+        isAntiAlias = true
+    }
+    val checkPaint = Paint().apply {
+        color = android.graphics.Color.rgb(21, 128, 61)
+        textSize = 20f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+
+    val marginX = 75f
+    val contentWidth = (width - 150).toInt()
+    var currentY = 75f
+
+    // 1. Header Title
+    canvas.drawText("স্ব-ঘোষণা পত্র (Self-Declaration)", width / 2f, currentY, titlePaint)
+    canvas.drawLine(width / 2f - 240f, currentY + 8f, width / 2f + 240f, currentY + 8f, borderPaint)
+    currentY += 50f
+
+    // 2. Salutation
+    val salutationPaint = Paint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 24f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    canvas.drawText("মহাশয়,", marginX, currentY, salutationPaint)
+    currentY += 40f
+
+    // 3. Line 1: আমি [নাম] স্বামী/পিতা [অভিভাবক]
+    val line1Ssb = SpannableStringBuilder()
+    line1Ssb.append("আমি ")
+    appendBoldUnderline(line1Ssb, applicantName.ifBlank { "...................................." })
+    line1Ssb.append(" $guardianType ")
+    appendBoldUnderline(line1Ssb, guardianName.ifBlank { "...................................." })
+    currentY = drawSpannableText(canvas, line1Ssb, marginX, currentY, contentWidth, regularPaint) + 12f
+
+    // 4. Line 2: ঠিকানা ... পোস্ট ... থানা- ...
+    val line2Ssb = SpannableStringBuilder()
+    line2Ssb.append("ঠিকানা ")
+    appendBoldUnderline(line2Ssb, address.ifBlank { "...................................." })
+    line2Ssb.append(" পোস্ট ")
+    appendBoldUnderline(line2Ssb, postOffice.ifBlank { "...................." })
+    line2Ssb.append(" থানা- ")
+    appendBoldUnderline(line2Ssb, policeStation.ifBlank { "...................." })
+    currentY = drawSpannableText(canvas, line2Ssb, marginX, currentY, contentWidth, regularPaint) + 12f
+
+    // 5. Line 3: পিন-
+    val line3Ssb = SpannableStringBuilder()
+    line3Ssb.append("পিন- ")
+    appendBoldUnderline(line3Ssb, pinCode.ifBlank { "............" })
+    currentY = drawSpannableText(canvas, line3Ssb, marginX, currentY, contentWidth, regularPaint) + 12f
+
+    // 6. Line 4: [এলাকা] পঞ্চায়েতের স্থানীয় বাসিন্দা।
+    val line4Ssb = SpannableStringBuilder()
+    appendBoldUnderline(line4Ssb, panchayatArea.ifBlank { "...................................." })
+    line4Ssb.append(" পঞ্চায়েতের স্থানীয় বাসিন্দা।")
+    currentY = drawSpannableText(canvas, line4Ssb, marginX, currentY, contentWidth, regularPaint) + 20f
+
+    // 7. Family & Property Details
+    val fam1Ssb = SpannableStringBuilder().apply {
+        append("আমার স্বামী/ পিতা-র কাজ/ পেশার বিবরণ: ")
+        appendBoldUnderline(this, guardianProfession.ifBlank { "...................................." })
+    }
+    currentY = drawSpannableText(canvas, fam1Ssb, marginX, currentY, contentWidth, regularPaint) + 10f
+
+    val fam2Ssb = SpannableStringBuilder().apply {
+        append("মাসিক আয়: ")
+        appendBoldUnderline(this, monthlyIncome.ifBlank { "...................." })
+    }
+    currentY = drawSpannableText(canvas, fam2Ssb, marginX, currentY, contentWidth, regularPaint) + 10f
+
+    val fam3Ssb = SpannableStringBuilder().apply {
+        append("গৃহের বিবরণ: ")
+        appendBoldUnderline(this, houseDescription.ifBlank { "...................................." })
+    }
+    currentY = drawSpannableText(canvas, fam3Ssb, marginX, currentY, contentWidth, regularPaint) + 10f
+
+    val fam4Ssb = SpannableStringBuilder().apply {
+        append("জমির পরিমান: ")
+        appendBoldUnderline(this, landAmount.ifBlank { "...................." })
+    }
+    currentY = drawSpannableText(canvas, fam4Ssb, marginX, currentY, contentWidth, regularPaint) + 24f
+
+    // 8. Status intro
+    val statusIntroPaint = TextPaint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 21f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    val introSsb = SpannableStringBuilder("মহাশয়, আমি অন্নপূর্ণা টাকা পাওয়ার যোগ্য, কিন্তু আমার অন্নপূর্ণা স্ট্যাটাস নিম্নরূপ দেখাচ্ছে")
+    currentY = drawSpannableText(canvas, introSsb, marginX, currentY, contentWidth, statusIntroPaint) + 14f
+
+    // 9. Box Tag: "সঠিক জায়গায় টিক দিন:"
+    val tagText = "সঠিক জায়গায় টিক দিন:"
+    val tagPaint = TextPaint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 19f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+    val tagWidth = tagPaint.measureText(tagText) + 24f
+    val tagHeight = 30f
+    canvas.drawRect(marginX, currentY, marginX + tagWidth, currentY + tagHeight, borderPaint)
+    canvas.drawText(tagText, marginX + 12f, currentY + 22f, tagPaint)
+    currentY += tagHeight + 16f
+
+    // 10. Status Options
+    val optionPaint = TextPaint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 19f
+        isAntiAlias = true
+    }
+    val optionBoldPaint = TextPaint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 19.5f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+    }
+
+    statusOptions.forEachIndexed { idx, opt ->
+        val isChecked = selectedOptionIndex == idx
+        val boxSize = 22f
+        val boxY = currentY - 17f
+        canvas.drawRect(marginX, boxY, marginX + boxSize, boxY + boxSize, borderPaint)
+        if (isChecked) {
+            canvas.drawText("✔", marginX + boxSize / 2f, boxY + 17f, checkPaint)
+        }
+
+        val label = if (idx == 8) {
+            "9. ${customOptionText.ifBlank { "................................................" }}"
+        } else {
+            "${idx + 1}. $opt"
+        }
+        val p = if (isChecked) optionBoldPaint else optionPaint
+        canvas.drawText(label, marginX + boxSize + 14f, currentY, p)
+        currentY += 34f
+    }
+
+    currentY += 12f
+
+    // 11. Closing paragraph
+    val closingSsb = SpannableStringBuilder("অতএব, মহাশয় আমি অন্নপূর্ণা টাকা পাওয়ার যোগ্য, তাই আপনার নিকট আমার বিনীত নিবেদন, এই যে, আমাকে অন্নপূর্ণা যোজনার অন্তর্গত সুবিধা টি প্রদান করলে খুব উপকৃত হব। উপরোক্ত তথ্য আমার জ্ঞান ও বিশ্বাস মতে সত্য।")
+    currentY = drawSpannableText(canvas, closingSsb, marginX, currentY, contentWidth, regularPaint) + 30f
+
+    // 12. Footer Section
+    val footerPaint = TextPaint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 20f
+        isAntiAlias = true
+    }
+    val leftFooterSsb = SpannableStringBuilder().apply {
+        append("তারিখ: ")
+        appendBoldUnderline(this, formDate)
+        append("\nফোন নম্বর: ")
+        appendBoldUnderline(this, mobileNo.ifBlank { "...................." })
+        append("\nআইডি নম্বর: ")
+        appendBoldUnderline(this, idNo.ifBlank { "...................." })
+        append("\nআধার নম্বর: ")
+        appendBoldUnderline(this, aadhaarNo.ifBlank { "...................." })
+        append("\nভোটার নম্বর: ")
+        appendBoldUnderline(this, voterNo.ifBlank { "...................." })
+    }
+
+    val leftFooterLayout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        StaticLayout.Builder.obtain(leftFooterSsb, 0, leftFooterSsb.length, footerPaint, (contentWidth * 0.6f).toInt())
+            .setLineSpacing(0f, 1.4f)
+            .build()
+    } else {
+        @Suppress("DEPRECATION")
+        StaticLayout(leftFooterSsb, footerPaint, (contentWidth * 0.6f).toInt(), Layout.Alignment.ALIGN_NORMAL, 1.4f, 0f, false)
+    }
+
+    canvas.save()
+    canvas.translate(marginX, currentY)
+    leftFooterLayout.draw(canvas)
+    canvas.restore()
+
+    // Right Footer: বিনীত- and Signature
+    val rightX = width - marginX - 220f
+    val binitPaint = Paint().apply {
+        color = android.graphics.Color.BLACK
+        textSize = 22f
+        isAntiAlias = true
+        typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+        textAlign = Paint.Align.CENTER
+    }
+    canvas.drawText("বিনীত-", rightX + 110f, currentY + 22f, binitPaint)
+
+    if (signatureBitmap != null) {
+        val sigDest = RectF(rightX + 10f, currentY + 36f, rightX + 210f, currentY + 110f)
+        canvas.drawBitmap(signatureBitmap, null, sigDest, null)
+    } else {
+        val dotsPaint = Paint().apply {
+            color = android.graphics.Color.BLACK
+            textSize = 19f
+            isAntiAlias = true
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("....................................", rightX + 110f, currentY + 70f, dotsPaint)
+    }
+
+    return bitmap
+}
+
+private fun drawSpannableText(
+    canvas: Canvas,
+    ssb: CharSequence,
+    x: Float,
+    y: Float,
+    width: Int,
+    paint: TextPaint
+): Float {
+    val layout = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        StaticLayout.Builder.obtain(ssb, 0, ssb.length, paint, width)
+            .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+            .setLineSpacing(0f, 1.35f)
+            .build()
+    } else {
+        @Suppress("DEPRECATION")
+        StaticLayout(ssb, paint, width, Layout.Alignment.ALIGN_NORMAL, 1.35f, 0f, false)
+    }
+    canvas.save()
+    canvas.translate(x, y)
+    layout.draw(canvas)
+    canvas.restore()
+    return y + layout.height
+}
+
+private fun appendBoldUnderline(builder: SpannableStringBuilder, text: String) {
+    val start = builder.length
+    builder.append(text)
+    builder.setSpan(StyleSpan(Typeface.BOLD), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+    builder.setSpan(UnderlineSpan(), start, builder.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+}
+
+/**
+ * Strict PDF Compression & Clamping Engine:
+ * Guarantees the PDF file size is strictly between 180 KB and 190 KB (Default target: 185 KB = 189,440 bytes)
+ */
+private fun generateStrictSizedPdf(bitmap: Bitmap, targetKb: Int = 185): ByteArray {
+    val targetBytes = targetKb * 1024 // 189,440 bytes (Strictly in 180 KB - 190 KB range)
+    var currentBitmap = bitmap
+    var quality = 85
+    var jpegBytes: ByteArray
+
+    while (true) {
+        val stream = ByteArrayOutputStream()
+        currentBitmap.compress(Bitmap.CompressFormat.JPEG, quality, stream)
+        jpegBytes = stream.toByteArray()
+
+        // Base PDF overhead is ~650 bytes.
+        // If JPEG + overhead exceeds targetBytes, reduce quality
+        if (jpegBytes.size + 700 <= targetBytes) {
+            break
+        }
+
+        if (quality > 35) {
+            quality -= 6
+        } else {
+            val newWidth = (currentBitmap.width * 0.9f).toInt()
+            val newHeight = (currentBitmap.height * 0.9f).toInt()
+            currentBitmap = Bitmap.createScaledBitmap(currentBitmap, newWidth, newHeight, true)
+            quality = 70
+        }
+    }
+
+    return buildPdfWithExactSize(jpegBytes, currentBitmap.width, currentBitmap.height, targetBytes)
+}
+
+/**
+ * Constructs a fully compliant PDF 1.4 document containing the A4 page image
+ * and precision metadata/comment padding block to clamp the file size to the target byte range.
+ */
+private fun buildPdfWithExactSize(
+    jpegBytes: ByteArray,
+    imgWidth: Int,
+    imgHeight: Int,
+    exactTotalBytes: Int
+): ByteArray {
+    val out = ByteArrayOutputStream()
+    val offsets = LongArray(6)
+
+    // PDF Header (Binary)
+    out.write("%PDF-1.4\n%\u00E2\u00E3\u00CF\u00D3\n".toByteArray(Charsets.ISO_8859_1))
+
+    // Object 1: Catalog
+    offsets[1] = out.size().toLong()
+    out.write("1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n".toByteArray(Charsets.US_ASCII))
+
+    // Object 2: Pages
+    offsets[2] = out.size().toLong()
+    out.write("2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n".toByteArray(Charsets.US_ASCII))
+
+    // Object 3: Page (A4 MediaBox: 595.28 x 841.89 pt)
+    offsets[3] = out.size().toLong()
+    val pageObj = "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Resources << /ProcSet [/PDF /ImageC] /XObject << /Im1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n"
+    out.write(pageObj.toByteArray(Charsets.US_ASCII))
+
+    // Object 4: Image XObject with JPEG stream
+    offsets[4] = out.size().toLong()
+    val imgHeader = "4 0 obj\n<< /Type /XObject /Subtype /Image /Width $imgWidth /Height $imgHeight /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${jpegBytes.size} >>\nstream\n"
+    out.write(imgHeader.toByteArray(Charsets.US_ASCII))
+    out.write(jpegBytes)
+    out.write("\nendstream\nendobj\n".toByteArray(Charsets.US_ASCII))
+
+    // Object 5: Contents stream
+    offsets[5] = out.size().toLong()
+    val contentStream = "q\n595.28 0 0 841.89 0 0 cm\n/Im1 Do\nQ\n"
+    val contentObj = "5 0 obj\n<< /Length ${contentStream.length} >>\nstream\n$contentStream\nendstream\nendobj\n"
+    out.write(contentObj.toByteArray(Charsets.US_ASCII))
+
+    // Calculate trailer length with an estimated 6-digit startXref (around exactTotalBytes - 170L)
+    val estimatedStartXref = exactTotalBytes - 170L
+    val sampleTrailer = buildTrailerString(offsets, estimatedStartXref).toByteArray(Charsets.US_ASCII)
+
+    val currentTotal = out.size() + sampleTrailer.size
+    val neededPadding = exactTotalBytes - currentTotal
+
+    if (neededPadding > 0) {
+        val commentHeader = "%PADDING_STREAM_"
+        val padLength = neededPadding - commentHeader.length - 1 // for '\n'
+        if (padLength >= 0) {
+            val padChars = CharArray(padLength) { 'X' }
+            val comment = commentHeader + String(padChars) + "\n"
+            out.write(comment.toByteArray(Charsets.US_ASCII))
+        } else {
+            val padChars = CharArray(maxOf(0, neededPadding - 2)) { ' ' }
+            val comment = "%" + String(padChars) + "\n"
+            out.write(comment.toByteArray(Charsets.US_ASCII))
+        }
+    }
+
+    // Real startXref byte offset
+    val realStartXref = out.size().toLong()
+    val finalTrailer = buildTrailerString(offsets, realStartXref)
+    out.write(finalTrailer.toByteArray(Charsets.US_ASCII))
+
+    var resultBytes = out.toByteArray()
+
+    // Safety check to ensure size is strictly within 180 KB - 190 KB range
+    if (resultBytes.size < 180 * 1024) {
+        val extraNeeded = (185 * 1024) - resultBytes.size
+        val extraComment = "\n%PAD_" + "X".repeat(maxOf(0, extraNeeded - 7)) + "\n"
+        resultBytes = (resultBytes.toString(Charsets.ISO_8859_1) + extraComment).toByteArray(Charsets.ISO_8859_1)
+    }
+
+    return resultBytes
+}
+
+private fun buildTrailerString(offsets: LongArray, startXref: Long): String {
+    val sb = StringBuilder()
+    sb.append("xref\n")
+    sb.append("0 6\n")
+    sb.append("0000000000 65535 f \n")
+    for (i in 1..5) {
+        sb.append(String.format(Locale.US, "%010d 00000 n \n", offsets[i]))
+    }
+    sb.append("trailer\n")
+    sb.append("<< /Size 6 /Root 1 0 R >>\n")
+    sb.append("startxref\n")
+    sb.append(startXref).append("\n")
+    sb.append("%%EOF\n")
+    return sb.toString()
+}
+
+/**
+ * Direct file save to Downloads folder
+ */
+private fun savePdfToDownloads(context: Context, pdfBytes: ByteArray, fileName: String): Boolean {
+    return try {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val contentValues = ContentValues().apply {
+                put(MediaStore.MediaColumns.DISPLAY_NAME, fileName)
+                put(MediaStore.MediaColumns.MIME_TYPE, "application/pdf")
+                put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = context.contentResolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues)
+            if (uri != null) {
+                context.contentResolver.openOutputStream(uri)?.use { os ->
+                    os.write(pdfBytes)
+                    os.flush()
+                }
+                true
+            } else false
+        } else {
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) downloadsDir.mkdirs()
+            val file = File(downloadsDir, fileName)
+            FileOutputStream(file).use { os ->
+                os.write(pdfBytes)
+                os.flush()
+            }
+            true
+        }
+    } catch (e: Exception) {
+        e.printStackTrace()
+        false
+    }
 }
