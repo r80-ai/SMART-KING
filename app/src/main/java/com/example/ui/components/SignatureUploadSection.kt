@@ -8,9 +8,13 @@ import android.util.Base64
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -18,50 +22,60 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Crop
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.example.photo.birefnet.BiRefNetLiteEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.util.Locale
+import kotlin.math.roundToInt
 
 /**
  * Signature ink color mode options.
  */
-enum class SignatureInkColor(val labelBn: String, val labelEn: String, val previewColor: Color) {
-    BLACK("কালো (Black)", "Black", Color(0xFF111827)),
-    BLUE("নীল (Blue)", "Blue", Color(0xFF1D4ED8)),
-    ORIGINAL("মূল রং (Original)", "Original", Color(0xFFF59E0B))
+enum class SignatureInkColor(val labelBn: String, val shortLabel: String, val previewColor: Color) {
+    BLACK("কালো", "কালো (Black)", Color(0xFF111827)),
+    BLUE("নীল", "নীল (Blue)", Color(0xFF1D4ED8)),
+    ORIGINAL("আসল", "আসল (Orig)", Color(0xFFF59E0B))
 }
 
 /**
  * Reusable Signature Studio component.
  * Features:
  * 1. Image selection from gallery
- * 2. Visual interactive crop tool dialog (Top, Bottom, Sides sliders + Presets)
- * 3. AI Background Removal (BiRefNet Lite ONNX) + Manual Threshold fallback
- * 4. Ink Color Choice: Black, Blue, Original
- * 5. Cutoff (Threshold) and Contrast (Sharpness) sliders
- * 6. Live transparent preview
+ * 2. Real touch-interactive draggable and resizable green crop box dialog
+ * 3. Compact line-by-line controls (Ink Color, Cutoff, Contrast) with no wasted space
+ * 4. AI Background Removal (BiRefNet Lite ONNX) + Manual Threshold fallback
+ * 5. Natural aspect ratio preview box with transparency checkerboard
  */
 @Composable
 fun SignatureUploadSection(
@@ -131,7 +145,6 @@ fun SignatureUploadSection(
             } catch (e: Throwable) {
                 withContext(Dispatchers.Main) {
                     isProcessing = false
-                    // Fallback to simple manual ink threshold
                     val fallback = applyInkAndContrastToBitmap(sourceBmp, color, cont, thresh, false)
                     onSignatureChanged(fallback)
                 }
@@ -169,9 +182,9 @@ fun SignatureUploadSection(
             .fillMaxWidth()
             .background(Color(0xFF1E293B), RoundedCornerShape(12.dp))
             .border(1.dp, Color(0xFF334155), RoundedCornerShape(12.dp))
-            .padding(14.dp)
+            .padding(12.dp)
     ) {
-        // Header
+        // Top Header Row
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -182,34 +195,36 @@ fun SignatureUploadSection(
                     text = title,
                     color = Color(0xFFFBBF24),
                     fontWeight = FontWeight.Bold,
-                    fontSize = 13.5.sp
+                    fontSize = 13.sp
                 )
                 Text(
                     text = subtitle,
                     color = Color(0xFF94A3B8),
-                    fontSize = 11.sp,
-                    lineHeight = 15.sp
+                    fontSize = 10.5.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             Button(
                 onClick = { photoPickerLauncher.launch("image/*") },
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2563EB)),
-                shape = RoundedCornerShape(8.dp),
-                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp)
+                shape = RoundedCornerShape(6.dp),
+                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                modifier = Modifier.height(32.dp)
             ) {
                 Icon(
                     imageVector = Icons.Default.UploadFile,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(14.dp)
                 )
                 Spacer(modifier = Modifier.width(4.dp))
                 Text(
-                    text = if (signatureBitmap == null && croppedBitmap == null) "গ্যালারি থেকে বাছুন" else "ছবি পরিবর্তন",
-                    fontSize = 11.5.sp,
+                    text = if (signatureBitmap == null && croppedBitmap == null) "গ্যালারি" else "পরিবর্তন",
+                    fontSize = 11.sp,
                     color = Color.White,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -218,26 +233,26 @@ fun SignatureUploadSection(
 
         // Action Toolbar & Settings (when image loaded)
         if (signatureBitmap != null || croppedBitmap != null) {
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Tool actions: [Crop] [AI BG Remove / Manual] [Clear]
+            // Row 0: Action Toolbar [ক্রপ] [AI BG ON/OFF] [মুছে ফেলুন]
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     // Crop button
-                    Button(
+                    OutlinedButton(
                         onClick = { showCropDialog = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0F172A)),
-                        border = borderStrokeSafe(Color(0xFF38BDF8)),
-                        shape = RoundedCornerShape(8.dp),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                        shape = RoundedCornerShape(6.dp),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                        border = BorderStroke(1.dp, Color(0xFF38BDF8)),
+                        modifier = Modifier.height(28.dp)
                     ) {
-                        Icon(Icons.Default.Crop, contentDescription = "Crop", tint = Color(0xFF38BDF8), modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Crop, contentDescription = "Crop", tint = Color(0xFF38BDF8), modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text("ক্রপ", color = Color(0xFF38BDF8), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Text("ক্রপ", color = Color(0xFF38BDF8), fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
                     }
 
                     // AI BG Remove toggle
@@ -249,10 +264,11 @@ fun SignatureUploadSection(
                                 executeProcessing(bmp, isAiBgRemove, inkColor, thresholdValue, contrastValue)
                             }
                         },
-                        label = { Text(if (isAiBgRemove) "AI BG ON" else "AI BG OFF", fontSize = 11.sp) },
+                        label = { Text(if (isAiBgRemove) "AI BG ON" else "AI BG OFF", fontSize = 10.sp) },
                         leadingIcon = {
-                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(13.dp))
+                            Icon(Icons.Default.AutoAwesome, contentDescription = null, modifier = Modifier.size(12.dp))
                         },
+                        modifier = Modifier.height(28.dp),
                         colors = FilterChipDefaults.filterChipColors(
                             selectedContainerColor = Color(0xFF22C55E),
                             selectedLabelColor = Color.White,
@@ -269,120 +285,91 @@ fun SignatureUploadSection(
                         croppedBitmap = null
                         onSignatureChanged(null)
                     },
-                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFEF4444)),
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp),
+                    modifier = Modifier.height(28.dp)
                 ) {
-                    Icon(imageVector = Icons.Default.Close, contentDescription = "Remove", modifier = Modifier.size(15.dp))
+                    Icon(imageVector = Icons.Default.Close, contentDescription = "Remove", tint = Color(0xFFEF4444), modifier = Modifier.size(14.dp))
                     Spacer(modifier = Modifier.width(3.dp))
-                    Text("মুছে ফেলুন", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    Text("মুছে ফেলুন", color = Color(0xFFEF4444), fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Signature Ink Color Picker / Toggle
-            Column(
+            // Row 1: কালির রং (Ink Color) Segmented Buttons
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                    .padding(10.dp)
+                    .padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
+                Text(
+                    text = "কালির রং:",
+                    color = Color(0xFFE2E8F0),
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.width(62.dp)
+                )
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    Text(
-                        text = "কালির রং (Ink Color):",
-                        color = Color.White,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        SignatureInkColor.values().forEach { colorOption ->
-                            val isSelected = (inkColor == colorOption)
-                            Surface(
-                                shape = RoundedCornerShape(6.dp),
-                                color = if (isSelected) colorOption.previewColor else Color(0xFF1E293B),
-                                border = if (isSelected) borderStrokeSafe(Color.White) else borderStrokeSafe(Color(0xFF334155)),
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .padding(horizontal = 8.dp, vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(8.dp)
-                                            .clip(CircleShape)
-                                            .background(colorOption.previewColor)
-                                            .border(1.dp, Color.White, CircleShape)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = colorOption.labelEn,
-                                        fontSize = 10.5.sp,
-                                        color = if (isSelected) Color.White else Color(0xFFCBD5E1),
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
+                    SignatureInkColor.values().forEach { option ->
+                        val isSelected = (inkColor == option)
+                        Surface(
+                            shape = RoundedCornerShape(6.dp),
+                            color = if (isSelected) option.previewColor else Color(0xFF0F172A),
+                            border = BorderStroke(1.dp, if (isSelected) Color.White else Color(0xFF334155)),
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(28.dp)
+                                .clickable {
+                                    inkColor = option
+                                    croppedBitmap?.let { bmp ->
+                                        executeProcessing(bmp, isAiBgRemove, option, thresholdValue, contrastValue)
+                                    }
                                 }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 4.dp),
+                                horizontalArrangement = Arrangement.Center,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(7.dp)
+                                        .clip(CircleShape)
+                                        .background(option.previewColor)
+                                        .border(1.dp, Color.White, CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = option.shortLabel,
+                                    fontSize = 10.sp,
+                                    color = if (isSelected) Color.White else Color(0xFFCBD5E1),
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
                             }
                         }
                     }
                 }
+            }
 
-                // Ink options click handler
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    SignatureInkColor.values().forEach { option ->
-                        Button(
-                            onClick = {
-                                inkColor = option
-                                croppedBitmap?.let { bmp ->
-                                    executeProcessing(bmp, isAiBgRemove, option, thresholdValue, contrastValue)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = if (inkColor == option) Color(0xFF2563EB) else Color(0xFF1E293B)
-                            ),
-                            shape = RoundedCornerShape(6.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            Text(
-                                text = option.labelBn,
-                                fontSize = 10.5.sp,
-                                color = if (inkColor == option) Color.White else Color(0xFF94A3B8)
-                            )
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                // Cutoff / Threshold Slider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "সাদা কাগজ কাটঅফ (Threshold): $thresholdValue",
-                        color = Color(0xFFE2E8F0),
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = if (thresholdValue < 150) "কড়া ব্যাকগ্রাউন্ড সাফ" else "হালকা কাট",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 10.sp
-                    )
-                }
+            // Row 2: সাদা কাগজ কাটঅফ (Threshold) Slider
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "কাগজ কাটঅফ:",
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 10.5.sp,
+                    modifier = Modifier.width(72.dp)
+                )
                 Slider(
                     value = thresholdValue.toFloat(),
                     onValueChange = { newVal ->
@@ -391,34 +378,39 @@ fun SignatureUploadSection(
                             executeProcessing(bmp, isAiBgRemove, inkColor, thresholdValue, contrastValue)
                         }
                     },
-                    valueRange = 100f..230f,
+                    valueRange = 80f..240f,
                     colors = SliderDefaults.colors(
                         thumbColor = Color(0xFF38BDF8),
                         activeTrackColor = Color(0xFF38BDF8),
                         inactiveTrackColor = Color(0xFF334155)
                     ),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(24.dp)
                 )
+                Text(
+                    text = "$thresholdValue",
+                    color = Color(0xFF38BDF8),
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.width(28.dp),
+                    textAlign = TextAlign.End
+                )
+            }
 
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Ink Contrast / Sharpness Slider
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "কালির গাঢ়ত্ব (Contrast): ${String.format(Locale.US, "%.1f", contrastValue)}x",
-                        color = Color(0xFFE2E8F0),
-                        fontSize = 11.sp
-                    )
-                    Text(
-                        text = if (contrastValue > 1.4f) "অতিরিক্ত স্পষ্ট" else "স্বাভাবিক",
-                        color = Color(0xFF94A3B8),
-                        fontSize = 10.sp
-                    )
-                }
+            // Row 3: কালির গাঢ়ত্ব (Contrast) Slider
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 2.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "কালির গাঢ়ত্ব:",
+                    color = Color(0xFFCBD5E1),
+                    fontSize = 10.5.sp,
+                    modifier = Modifier.width(72.dp)
+                )
                 Slider(
                     value = contrastValue,
                     onValueChange = { newVal ->
@@ -427,62 +419,81 @@ fun SignatureUploadSection(
                             executeProcessing(bmp, isAiBgRemove, inkColor, thresholdValue, contrastValue)
                         }
                     },
-                    valueRange = 0.8f..2.2f,
+                    valueRange = 1.0f..3.0f,
                     colors = SliderDefaults.colors(
                         thumbColor = Color(0xFF22C55E),
                         activeTrackColor = Color(0xFF22C55E),
                         inactiveTrackColor = Color(0xFF334155)
                     ),
-                    modifier = Modifier.height(30.dp)
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(24.dp)
+                )
+                Text(
+                    text = "${String.format(Locale.US, "%.1f", contrastValue)}x",
+                    color = Color(0xFF22C55E),
+                    fontSize = 10.5.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.width(28.dp),
+                    textAlign = TextAlign.End
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Signature Live Transparent Canvas Preview
+            // Natural Aspect Ratio Preview Box with Transparent Checkerboard
+            Spacer(modifier = Modifier.height(6.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(72.dp)
-                    .background(Color.White, RoundedCornerShape(8.dp))
-                    .border(1.dp, Color(0xFFCBD5E1), RoundedCornerShape(8.dp)),
+                    .height(58.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .border(1.dp, Color(0xFF334155), RoundedCornerShape(8.dp)),
                 contentAlignment = Alignment.Center
             ) {
+                CheckerboardPattern(modifier = Modifier.fillMaxSize(), squareSize = 10f)
+
+                val displayBitmap = signatureBitmap ?: croppedBitmap
+                if (displayBitmap != null) {
+                    Image(
+                        bitmap = displayBitmap.asImageBitmap(),
+                        contentDescription = "Signature Preview",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .padding(4.dp)
+                    )
+                }
+
                 if (isProcessing) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            color = Color(0xFF2563EB),
-                            strokeWidth = 2.dp
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "স্বাক্ষর প্রসেসিং হচ্ছে...",
-                            color = Color.Black,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Medium
-                        )
-                    }
-                } else {
-                    val displayBitmap = signatureBitmap ?: croppedBitmap
-                    if (displayBitmap != null) {
-                        Image(
-                            bitmap = displayBitmap.asImageBitmap(),
-                            contentDescription = "Processed Signature",
-                            modifier = Modifier
-                                .fillMaxHeight()
-                                .padding(6.dp)
-                        )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.5f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(15.dp),
+                                color = Color(0xFF38BDF8),
+                                strokeWidth = 2.dp
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "প্রসেসিং হচ্ছে...",
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
                     }
                 }
             }
         }
     }
 
-    // Interactive Crop Dialog
+    // Real Touch-Interactive Draggable & Resizable Crop Dialog
     if (showCropDialog && (rawOriginalBitmap != null || croppedBitmap != null)) {
         val targetCropSource = rawOriginalBitmap ?: croppedBitmap!!
-        SignatureCropDialog(
+        InteractiveCropDialog(
             sourceBitmap = targetCropSource,
             onCropConfirmed = { newCropped ->
                 croppedBitmap = newCropped
@@ -501,208 +512,469 @@ fun SignatureUploadSection(
 }
 
 /**
- * Visual interactive crop dialog with margin sliders and quick presets.
+ * Real Touch-Interactive Draggable & Resizable Green Crop Box Dialog.
+ * User can drag corners/edges to resize and drag the box to move anywhere.
  */
 @Composable
-fun SignatureCropDialog(
+fun InteractiveCropDialog(
     sourceBitmap: Bitmap,
     onCropConfirmed: (Bitmap) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var cropTopPercent by remember { mutableFloatStateOf(0f) }
-    var cropBottomPercent by remember { mutableFloatStateOf(0f) }
-    var cropLeftPercent by remember { mutableFloatStateOf(0f) }
-    var cropRightPercent by remember { mutableFloatStateOf(0f) }
+    val density = LocalDensity.current
 
-    AlertDialog(
+    // State for crop rect in image coordinate pixels
+    var imageDisplayWidth by remember { mutableFloatStateOf(0f) }
+    var imageDisplayHeight by remember { mutableFloatStateOf(0f) }
+
+    var cropLeft by remember { mutableFloatStateOf(0f) }
+    var cropTop by remember { mutableFloatStateOf(0f) }
+    var cropRight by remember { mutableFloatStateOf(0f) }
+    var cropBottom by remember { mutableFloatStateOf(0f) }
+    var isInitialized by remember { mutableStateOf(false) }
+
+    Dialog(
         onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.Crop,
-                        contentDescription = null,
-                        tint = Color(0xFF38BDF8),
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "স্বাক্ষর ক্রপ করুন (Crop)",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(28.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(18.dp))
-                }
-            }
-        },
-        text = {
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth(0.95f)
+                .wrapContentHeight(),
+            shape = RoundedCornerShape(14.dp),
+            color = Color(0xFF0F172A),
+            border = BorderStroke(1.dp, Color(0xFF334155))
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .padding(14.dp)
             ) {
-                Text(
-                    text = "কাগজের অতিরিক্ত বর্ডার কেটে শুধু স্বাক্ষরের অংশটি বাছুন:",
-                    color = Color(0xFF94A3B8),
-                    fontSize = 11.5.sp
-                )
-                Spacer(modifier = Modifier.height(10.dp))
+                // Header
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Crop,
+                            contentDescription = null,
+                            tint = Color(0xFF22C55E),
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "স্বাক্ষর ক্রপ করুন (Interactive Crop)",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp
+                        )
+                    }
+                    IconButton(onClick = onDismiss, modifier = Modifier.size(26.dp)) {
+                        Icon(Icons.Default.Close, contentDescription = "Close", tint = Color.Gray, modifier = Modifier.size(18.dp))
+                    }
+                }
 
-                // Crop Preview Area with visual green box boundary
-                Box(
+                Text(
+                    text = "সবুজ বক্সটি টেনে বা কোণা ধরে টেনে সই-এর অংশটুকু নির্বাচন করুন:",
+                    color = Color(0xFF94A3B8),
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Interactive Crop Area
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
-                        .background(Color(0xFF0F172A), RoundedCornerShape(8.dp))
-                        .border(1.dp, Color(0xFF334155), RoundedCornerShape(8.dp)),
+                        .height(280.dp)
+                        .background(Color(0xFF020617), RoundedCornerShape(8.dp))
+                        .border(1.dp, Color(0xFF1E293B), RoundedCornerShape(8.dp)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Image(
-                        bitmap = sourceBitmap.asImageBitmap(),
-                        contentDescription = "Crop Source",
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(8.dp)
-                    )
+                    val availableW = constraints.maxWidth.toFloat()
+                    val availableH = constraints.maxHeight.toFloat()
+                    val bmpW = sourceBitmap.width.toFloat()
+                    val bmpH = sourceBitmap.height.toFloat()
+                    val bmpAspect = bmpW / bmpH
+                    val contAspect = availableW / availableH
 
-                    // Overlay boundary showing cropped area
+                    val dispW: Float
+                    val dispH: Float
+                    if (bmpAspect > contAspect) {
+                        dispW = availableW
+                        dispH = availableW / bmpAspect
+                    } else {
+                        dispH = availableH
+                        dispW = availableH * bmpAspect
+                    }
+
+                    LaunchedEffect(dispW, dispH) {
+                        imageDisplayWidth = dispW
+                        imageDisplayHeight = dispH
+                        if (!isInitialized && dispW > 0f && dispH > 0f) {
+                            cropLeft = dispW * 0.05f
+                            cropTop = dispH * 0.05f
+                            cropRight = dispW * 0.95f
+                            cropBottom = dispH * 0.95f
+                            isInitialized = true
+                        }
+                    }
+
+                    val dispWDp = with(density) { dispW.toDp() }
+                    val dispHDp = with(density) { dispH.toDp() }
+
+                    val minSizePx = with(density) { 36.dp.toPx() }
+
                     Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(8.dp)
-                            .padding(
-                                start = (cropLeftPercent * 180).dp,
-                                top = (cropTopPercent * 130).dp,
-                                end = (cropRightPercent * 180).dp,
-                                bottom = (cropBottomPercent * 130).dp
+                            .size(dispWDp, dispHDp)
+                    ) {
+                        // Background image
+                        Image(
+                            bitmap = sourceBitmap.asImageBitmap(),
+                            contentDescription = "Crop Target",
+                            contentScale = ContentScale.FillBounds,
+                            modifier = Modifier.fillMaxSize()
+                        )
+
+                        // Canvas: Dimmed dark overlay outside crop box + Grid lines
+                        Canvas(modifier = Modifier.fillMaxSize()) {
+                            // Dark semi-transparent dimming outside crop rect
+                            // Top
+                            drawRect(Color(0x99000000), topLeft = Offset(0f, 0f), size = Size(size.width, cropTop))
+                            // Bottom
+                            drawRect(Color(0x99000000), topLeft = Offset(0f, cropBottom), size = Size(size.width, size.height - cropBottom))
+                            // Left
+                            drawRect(Color(0x99000000), topLeft = Offset(0f, cropTop), size = Size(cropLeft, cropBottom - cropTop))
+                            // Right
+                            drawRect(Color(0x99000000), topLeft = Offset(cropRight, cropTop), size = Size(size.width - cropRight, cropBottom - cropTop))
+
+                            val boxW = cropRight - cropLeft
+                            val boxH = cropBottom - cropTop
+
+                            // Green crop boundary stroke
+                            drawRect(
+                                color = Color(0xFF22C55E),
+                                topLeft = Offset(cropLeft, cropTop),
+                                size = Size(boxW, boxH),
+                                style = Stroke(width = 2.dp.toPx())
                             )
-                            .border(2.dp, Color(0xFF22C55E), RoundedCornerShape(4.dp))
-                            .background(Color(0x3322C55E))
-                    )
+
+                            // Rule of thirds faint grid lines inside
+                            val oneThirdW = boxW / 3f
+                            val oneThirdH = boxH / 3f
+                            val gridColor = Color(0x6622C55E)
+                            drawLine(gridColor, Offset(cropLeft + oneThirdW, cropTop), Offset(cropLeft + oneThirdW, cropBottom), strokeWidth = 1f)
+                            drawLine(gridColor, Offset(cropLeft + 2 * oneThirdW, cropTop), Offset(cropLeft + 2 * oneThirdW, cropBottom), strokeWidth = 1f)
+                            drawLine(gridColor, Offset(cropLeft, cropTop + oneThirdH), Offset(cropRight, cropTop + oneThirdH), strokeWidth = 1f)
+                            drawLine(gridColor, Offset(cropLeft, cropTop + 2 * oneThirdH), Offset(cropRight, cropTop + 2 * oneThirdH), strokeWidth = 1f)
+                        }
+
+                        // Draggable Center Body (Moves the entire crop box)
+                        val cropLeftDp = with(density) { cropLeft.toDp() }
+                        val cropTopDp = with(density) { cropTop.toDp() }
+                        val cropWDp = with(density) { (cropRight - cropLeft).coerceAtLeast(0f).toDp() }
+                        val cropHDp = with(density) { (cropBottom - cropTop).coerceAtLeast(0f).toDp() }
+
+                        Box(
+                            modifier = Modifier
+                                .offset(x = cropLeftDp, y = cropTopDp)
+                                .size(cropWDp, cropHDp)
+                                .pointerInput(dispW, dispH) {
+                                    detectDragGestures { change, dragAmount ->
+                                        change.consume()
+                                        val curW = cropRight - cropLeft
+                                        val curH = cropBottom - cropTop
+                                        val newLeft = (cropLeft + dragAmount.x).coerceIn(0f, dispW - curW)
+                                        val newTop = (cropTop + dragAmount.y).coerceIn(0f, dispH - curH)
+                                        cropLeft = newLeft
+                                        cropRight = newLeft + curW
+                                        cropTop = newTop
+                                        cropBottom = newTop + curH
+                                    }
+                                }
+                        )
+
+                        // Corner & Edge Drag Handles (Touch Targets)
+                        val handleRadiusPx = with(density) { 14.dp.toPx() }
+
+                        // 1. Top-Left Corner Handle
+                        CropHandleCircle(
+                            xPx = cropLeft,
+                            yPx = cropTop,
+                            radiusPx = handleRadiusPx,
+                            onDrag = { dx, dy ->
+                                cropLeft = (cropLeft + dx).coerceIn(0f, cropRight - minSizePx)
+                                cropTop = (cropTop + dy).coerceIn(0f, cropBottom - minSizePx)
+                            }
+                        )
+
+                        // 2. Top-Right Corner Handle
+                        CropHandleCircle(
+                            xPx = cropRight,
+                            yPx = cropTop,
+                            radiusPx = handleRadiusPx,
+                            onDrag = { dx, dy ->
+                                cropRight = (cropRight + dx).coerceIn(cropLeft + minSizePx, dispW)
+                                cropTop = (cropTop + dy).coerceIn(0f, cropBottom - minSizePx)
+                            }
+                        )
+
+                        // 3. Bottom-Left Corner Handle
+                        CropHandleCircle(
+                            xPx = cropLeft,
+                            yPx = cropBottom,
+                            radiusPx = handleRadiusPx,
+                            onDrag = { dx, dy ->
+                                cropLeft = (cropLeft + dx).coerceIn(0f, cropRight - minSizePx)
+                                cropBottom = (cropBottom + dy).coerceIn(cropTop + minSizePx, dispH)
+                            }
+                        )
+
+                        // 4. Bottom-Right Corner Handle
+                        CropHandleCircle(
+                            xPx = cropRight,
+                            yPx = cropBottom,
+                            radiusPx = handleRadiusPx,
+                            onDrag = { dx, dy ->
+                                cropRight = (cropRight + dx).coerceIn(cropLeft + minSizePx, dispW)
+                                cropBottom = (cropBottom + dy).coerceIn(cropTop + minSizePx, dispH)
+                            }
+                        )
+
+                        // 5. Top Center Edge Handle
+                        CropHandleBar(
+                            xPx = (cropLeft + cropRight) / 2f,
+                            yPx = cropTop,
+                            isHorizontal = true,
+                            onDrag = { _, dy ->
+                                cropTop = (cropTop + dy).coerceIn(0f, cropBottom - minSizePx)
+                            }
+                        )
+
+                        // 6. Bottom Center Edge Handle
+                        CropHandleBar(
+                            xPx = (cropLeft + cropRight) / 2f,
+                            yPx = cropBottom,
+                            isHorizontal = true,
+                            onDrag = { _, dy ->
+                                cropBottom = (cropBottom + dy).coerceIn(cropTop + minSizePx, dispH)
+                            }
+                        )
+
+                        // 7. Left Center Edge Handle
+                        CropHandleBar(
+                            xPx = cropLeft,
+                            yPx = (cropTop + cropBottom) / 2f,
+                            isHorizontal = false,
+                            onDrag = { dx, _ ->
+                                cropLeft = (cropLeft + dx).coerceIn(0f, cropRight - minSizePx)
+                            }
+                        )
+
+                        // 8. Right Center Edge Handle
+                        CropHandleBar(
+                            xPx = cropRight,
+                            yPx = (cropTop + cropBottom) / 2f,
+                            isHorizontal = false,
+                            onDrag = { dx, _ ->
+                                cropRight = (cropRight + dx).coerceIn(cropLeft + minSizePx, dispW)
+                            }
+                        )
+                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Quick Presets
+                // Presets (Full, Center, Tight)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    FilterChip(
-                        selected = cropTopPercent == 0f && cropBottomPercent == 0f && cropLeftPercent == 0f && cropRightPercent == 0f,
+                    AssistChip(
                         onClick = {
-                            cropTopPercent = 0f
-                            cropBottomPercent = 0f
-                            cropLeftPercent = 0f
-                            cropRightPercent = 0f
+                            cropLeft = 0f
+                            cropTop = 0f
+                            cropRight = imageDisplayWidth
+                            cropBottom = imageDisplayHeight
                         },
-                        label = { Text("পুরো ছবি", fontSize = 10.5.sp) }
+                        label = { Text("পুরো ছবি", fontSize = 10.5.sp) },
+                        modifier = Modifier.height(28.dp)
                     )
-                    FilterChip(
-                        selected = cropTopPercent == 0.12f,
+                    AssistChip(
                         onClick = {
-                            cropTopPercent = 0.12f
-                            cropBottomPercent = 0.12f
-                            cropLeftPercent = 0.08f
-                            cropRightPercent = 0.08f
+                            val padX = imageDisplayWidth * 0.12f
+                            val padY = imageDisplayHeight * 0.15f
+                            cropLeft = padX
+                            cropTop = padY
+                            cropRight = imageDisplayWidth - padX
+                            cropBottom = imageDisplayHeight - padY
                         },
-                        label = { Text("মাঝারি ক্রপ", fontSize = 10.5.sp) }
+                        label = { Text("মাঝারি ক্রপ", fontSize = 10.5.sp) },
+                        modifier = Modifier.height(28.dp)
                     )
-                    FilterChip(
-                        selected = cropTopPercent == 0.22f,
+                    AssistChip(
                         onClick = {
-                            cropTopPercent = 0.22f
-                            cropBottomPercent = 0.22f
-                            cropLeftPercent = 0.15f
-                            cropRightPercent = 0.15f
+                            val padX = imageDisplayWidth * 0.22f
+                            val padY = imageDisplayHeight * 0.25f
+                            cropLeft = padX
+                            cropTop = padY
+                            cropRight = imageDisplayWidth - padX
+                            cropBottom = imageDisplayHeight - padY
                         },
-                        label = { Text("টাইট ক্রপ", fontSize = 10.5.sp) }
+                        label = { Text("টাইট সই", fontSize = 10.5.sp) },
+                        modifier = Modifier.height(28.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Sliders
-                Text(
-                    text = "মার্জিন অ্যাডজাস্ট (Sliders):",
-                    color = Color(0xFFFBBF24),
-                    fontSize = 11.5.sp,
-                    fontWeight = FontWeight.Bold
+                // Action Buttons
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("বাতিল", color = Color(0xFF94A3B8), fontSize = 12.sp)
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    Button(
+                        onClick = {
+                            if (imageDisplayWidth > 0f && imageDisplayHeight > 0f) {
+                                val scaleX = sourceBitmap.width.toFloat() / imageDisplayWidth
+                                val scaleY = sourceBitmap.height.toFloat() / imageDisplayHeight
+
+                                val pixelLeft = (cropLeft * scaleX).roundToInt().coerceIn(0, sourceBitmap.width - 2)
+                                val pixelTop = (cropTop * scaleY).roundToInt().coerceIn(0, sourceBitmap.height - 2)
+                                val pixelRight = (cropRight * scaleX).roundToInt().coerceIn(pixelLeft + 2, sourceBitmap.width)
+                                val pixelBottom = (cropBottom * scaleY).roundToInt().coerceIn(pixelTop + 2, sourceBitmap.height)
+                                val cropW = (pixelRight - pixelLeft).coerceAtLeast(1)
+                                val cropH = (pixelBottom - pixelTop).coerceAtLeast(1)
+
+                                val cropped = Bitmap.createBitmap(sourceBitmap, pixelLeft, pixelTop, cropW, cropH)
+                                onCropConfirmed(cropped)
+                            } else {
+                                onDismiss()
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
+                        shape = RoundedCornerShape(8.dp),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 6.dp)
+                    ) {
+                        Icon(Icons.Default.Check, contentDescription = null, tint = Color.White, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text("ক্রপ নিশ্চিত করুন", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Touch handle circle for 4 corners of crop box.
+ */
+@Composable
+private fun CropHandleCircle(
+    xPx: Float,
+    yPx: Float,
+    radiusPx: Float,
+    onDrag: (Float, Float) -> Unit
+) {
+    val density = LocalDensity.current
+    val sizeDp = with(density) { (radiusPx * 2).toDp() }
+    val offsetX = with(density) { (xPx - radiusPx).toDp() }
+    val offsetY = with(density) { (yPx - radiusPx).toDp() }
+
+    Box(
+        modifier = Modifier
+            .offset(x = offsetX, y = offsetY)
+            .size(sizeDp)
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onDrag(dragAmount.x, dragAmount.y)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(16.dp)
+                .shadow(3.dp, CircleShape)
+                .background(Color.White, CircleShape)
+                .border(2.5.dp, Color(0xFF22C55E), CircleShape)
+        )
+    }
+}
+
+/**
+ * Touch handle bar for 4 edges of crop box.
+ */
+@Composable
+private fun CropHandleBar(
+    xPx: Float,
+    yPx: Float,
+    isHorizontal: Boolean,
+    onDrag: (Float, Float) -> Unit
+) {
+    val density = LocalDensity.current
+    val wDp = with(density) { if (isHorizontal) 28.dp else 18.dp }
+    val hDp = with(density) { if (isHorizontal) 18.dp else 28.dp }
+    val offsetX = with(density) { (xPx - if (isHorizontal) 14.dp.toPx() else 9.dp.toPx()).toDp() }
+    val offsetY = with(density) { (yPx - if (isHorizontal) 9.dp.toPx() else 14.dp.toPx()).toDp() }
+
+    Box(
+        modifier = Modifier
+            .offset(x = offsetX, y = offsetY)
+            .size(wDp, hDp)
+            .pointerInput(Unit) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onDrag(dragAmount.x, dragAmount.y)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .size(if (isHorizontal) 20.dp else 6.dp, if (isHorizontal) 6.dp else 20.dp)
+                .background(Color.White, RoundedCornerShape(3.dp))
+                .border(1.5.dp, Color(0xFF22C55E), RoundedCornerShape(3.dp))
+        )
+    }
+}
+
+/**
+ * Checkerboard pattern canvas to display transparent PNG signatures authentically.
+ */
+@Composable
+private fun CheckerboardPattern(
+    modifier: Modifier = Modifier,
+    squareSize: Float = 10f,
+    color1: Color = Color(0xFFF1F5F9),
+    color2: Color = Color(0xFFE2E8F0)
+) {
+    Canvas(modifier = modifier) {
+        val cols = (size.width / squareSize).toInt() + 1
+        val rows = (size.height / squareSize).toInt() + 1
+        for (i in 0 until cols) {
+            for (j in 0 until rows) {
+                val color = if ((i + j) % 2 == 0) color1 else color2
+                drawRect(
+                    color = color,
+                    topLeft = Offset(i * squareSize, j * squareSize),
+                    size = Size(squareSize, squareSize)
                 )
-
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("উপর (Top):", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(68.dp))
-                    Slider(
-                        value = cropTopPercent,
-                        onValueChange = { cropTopPercent = it },
-                        valueRange = 0f..0.45f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("${(cropTopPercent * 100).toInt()}%", color = Color(0xFF94A3B8), fontSize = 11.sp, modifier = Modifier.width(36.dp))
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("নিচ (Bottom):", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(68.dp))
-                    Slider(
-                        value = cropBottomPercent,
-                        onValueChange = { cropBottomPercent = it },
-                        valueRange = 0f..0.45f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("${(cropBottomPercent * 100).toInt()}%", color = Color(0xFF94A3B8), fontSize = 11.sp, modifier = Modifier.width(36.dp))
-                }
-
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Text("পাশ (Sides):", color = Color.White, fontSize = 11.sp, modifier = Modifier.width(68.dp))
-                    Slider(
-                        value = cropLeftPercent,
-                        onValueChange = {
-                            cropLeftPercent = it
-                            cropRightPercent = it
-                        },
-                        valueRange = 0f..0.45f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("${(cropLeftPercent * 100).toInt()}%", color = Color(0xFF94A3B8), fontSize = 11.sp, modifier = Modifier.width(36.dp))
-                }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    val w = sourceBitmap.width
-                    val h = sourceBitmap.height
-                    val left = (cropLeftPercent * w).toInt().coerceIn(0, (w - 10).coerceAtLeast(0))
-                    val top = (cropTopPercent * h).toInt().coerceIn(0, (h - 10).coerceAtLeast(0))
-                    val right = (w - cropRightPercent * w).toInt().coerceIn((left + 10).coerceAtMost(w), w)
-                    val bottom = (h - cropBottomPercent * h).toInt().coerceIn((top + 10).coerceAtMost(h), h)
-                    val cropW = (right - left).coerceAtLeast(1)
-                    val cropH = (bottom - top).coerceAtLeast(1)
-                    val cropped = Bitmap.createBitmap(sourceBitmap, left, top, cropW, cropH)
-                    onCropConfirmed(cropped)
-                },
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF22C55E)),
-                shape = RoundedCornerShape(8.dp)
-            ) {
-                Icon(Icons.Default.Crop, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("ক্রপ নিশ্চিত করুন", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("বাতিল", color = Color(0xFF94A3B8), fontSize = 12.sp)
-            }
-        },
-        containerColor = Color(0xFF1E293B)
-    )
+        }
+    }
 }
 
 /**
@@ -784,10 +1056,6 @@ fun applyInkAndContrastToBitmap(
     }
     outBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
     return outBitmap
-}
-
-private fun borderStrokeSafe(color: Color): androidx.compose.foundation.BorderStroke {
-    return androidx.compose.foundation.BorderStroke(1.dp, color)
 }
 
 /**
