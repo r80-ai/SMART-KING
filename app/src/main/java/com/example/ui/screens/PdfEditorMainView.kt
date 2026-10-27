@@ -138,6 +138,24 @@ fun PdfEditorMainView(
     val pageRotations = remember { mutableStateMapOf<Int, Int>() }
     var selectedAnnotationId by remember { mutableStateOf<String?>(null) }
     var pageBackgroundColor by remember { mutableStateOf(Color.White) }
+    var pageContentScale by remember { mutableFloatStateOf(1.0f) }
+
+    fun getScaledPageBitmap(original: Bitmap, scale: Float): Bitmap {
+        if (scale == 1.0f) return original
+        val w = original.width
+        val h = original.height
+        val scaled = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(scaled)
+        canvas.drawColor(android.graphics.Color.WHITE)
+        val matrix = android.graphics.Matrix().apply {
+            postScale(scale, scale, w / 2f, h / 2f)
+        }
+        val paint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG or android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+            isDither = true
+        }
+        canvas.drawBitmap(original, matrix, paint)
+        return scaled
+    }
 
     // Undo / Redo history
     val undoStack = remember { mutableStateListOf<List<PdfEngine.EditItem>>() }
@@ -232,7 +250,8 @@ fun PdfEditorMainView(
                 items = editItems.toList(),
                 deletedPages = deletedPages.toSet(),
                 pageRotations = pageRotations.toMap(),
-                outputName = outputName
+                outputName = outputName,
+                pageScale = pageContentScale
             ) { newRec ->
                 currentFile = newRec
                 onComplete?.invoke(newRec)
@@ -1209,7 +1228,12 @@ fun PdfEditorMainView(
                                             val annotOverlay = root.findViewById<AnnotationCanvasOverlayView>(R.id.annotation_canvas_overlay_view)
                                             val overlay = root.findViewById<TextOverlayView>(R.id.text_overlay_view)
 
-                                            imgView.setImageBitmap(currentBmp)
+                                            val scaledInitialBmp = if (pageContentScale != 1.0f && currentBmp != null) {
+                                                getScaledPageBitmap(currentBmp, pageContentScale)
+                                            } else {
+                                                currentBmp
+                                            }
+                                            imgView.setImageBitmap(scaledInitialBmp)
 
                                             annotOverlay.visibility = View.VISIBLE
                                             annotOverlay.onHistoryPush = { pushHistory() }
@@ -1264,7 +1288,12 @@ fun PdfEditorMainView(
                                         },
                                         update = { root ->
                                             val imgView = root.findViewById<ImageView>(R.id.pdf_renderer_view)
-                                            imgView.setImageBitmap(currentBmp)
+                                            val displayBmp = if (pageContentScale != 1.0f && currentBmp != null) {
+                                                getScaledPageBitmap(currentBmp, pageContentScale)
+                                            } else {
+                                                currentBmp
+                                            }
+                                            imgView.setImageBitmap(displayBmp)
 
                                             val annotOverlay = root.findViewById<AnnotationCanvasOverlayView>(R.id.annotation_canvas_overlay_view)
                                             annotationCanvasRef = annotOverlay
@@ -1337,35 +1366,39 @@ fun PdfEditorMainView(
                                                     .graphicsLayer {
                                                         rotationZ = imgItem.imageRotation
                                                     }
-                                                    .pointerInput(imgItem.id) {
-                                                        detectTapGestures(
-                                                            onTap = {
-                                                                selectedAnnotationId = imgItem.id
-                                                                activeTab = EditorTopTab.IMAGE
-                                                            }
-                                                        )
-                                                    }
-                                                    .pointerInput(imgItem.id) {
-                                                        detectDragGestures(
-                                                            onDragStart = {
-                                                                pushHistory()
-                                                                selectedAnnotationId = imgItem.id
-                                                                activeTab = EditorTopTab.IMAGE
-                                                            },
-                                                            onDrag = { change, dragAmount ->
-                                                                change.consume()
-                                                                val scale = zoomScale.coerceAtLeast(0.1f)
-                                                                val dX = dragAmount.x / scale
-                                                                val dY = dragAmount.y / scale
-                                                                val idx = editItems.indexOfFirst { it.id == imgItem.id }
-                                                                if (idx != -1) {
-                                                                    val cur = editItems[idx]
-                                                                    val newX = (cur.posX + dX).coerceIn(-cur.imageWidth * 0.4f, pageWidthPx - cur.imageWidth * 0.6f)
-                                                                    val newY = (cur.posY + dY).coerceIn(-cur.imageHeight * 0.4f, pageHeightPx - cur.imageHeight * 0.6f)
-                                                                    editItems[idx] = cur.copy(posX = newX, posY = newY)
+                                                    .pointerInput(imgItem.id, isPenActive) {
+                                                        if (!isPenActive) {
+                                                            detectTapGestures(
+                                                                onTap = {
+                                                                    selectedAnnotationId = imgItem.id
+                                                                    activeTab = EditorTopTab.IMAGE
                                                                 }
-                                                            }
-                                                        )
+                                                            )
+                                                        }
+                                                    }
+                                                    .pointerInput(imgItem.id, isPenActive) {
+                                                        if (!isPenActive) {
+                                                            detectDragGestures(
+                                                                onDragStart = {
+                                                                    pushHistory()
+                                                                    selectedAnnotationId = imgItem.id
+                                                                    activeTab = EditorTopTab.IMAGE
+                                                                },
+                                                                onDrag = { change, dragAmount ->
+                                                                    change.consume()
+                                                                    val scale = zoomScale.coerceAtLeast(0.1f)
+                                                                    val dX = dragAmount.x / scale
+                                                                    val dY = dragAmount.y / scale
+                                                                    val idx = editItems.indexOfFirst { it.id == imgItem.id }
+                                                                    if (idx != -1) {
+                                                                        val cur = editItems[idx]
+                                                                        val newX = (cur.posX + dX).coerceIn(-cur.imageWidth * 0.4f, pageWidthPx - cur.imageWidth * 0.6f)
+                                                                        val newY = (cur.posY + dY).coerceIn(-cur.imageHeight * 0.4f, pageHeightPx - cur.imageHeight * 0.6f)
+                                                                        editItems[idx] = cur.copy(posX = newX, posY = newY)
+                                                                    }
+                                                                }
+                                                            )
+                                                        }
                                                     }
                                             ) {
                                                 // 1. Image Bitmap
@@ -1801,6 +1834,8 @@ fun PdfEditorMainView(
             confirmButton = {
                 Button(
                     onClick = {
+                        val newScale = selectedScale / 100f
+                        pageContentScale = newScale
                         showResizePagesDialog = false
                         Toast.makeText(context, "Pages scaled to $selectedScale%", Toast.LENGTH_SHORT).show()
                     },
@@ -2334,7 +2369,8 @@ fun PdfEditorMainView(
                                 items = editItems.toList(),
                                 deletedPages = deletedPages.toSet(),
                                 pageRotations = pageRotations.toMap(),
-                                outputName = name
+                                outputName = name,
+                                pageScale = pageContentScale
                             ) { newRec ->
                                 currentFile = newRec
                                 pendingSaveSuccessCallback?.invoke(newRec)

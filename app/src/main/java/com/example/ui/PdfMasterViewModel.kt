@@ -732,6 +732,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
         deletedPages: Set<Int>,
         pageRotations: Map<Int, Int>,
         outputName: String,
+        pageScale: Float = 1.0f,
         onSuccess: ((PdfFileRecord) -> Unit)? = null
     ) {
         viewModelScope.launch {
@@ -762,7 +763,8 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
                     items,
                     deletedPages,
                     pageRotations,
-                    outputName
+                    outputName,
+                    pageScale
                 )
                 val newRecord = commitAndShowResult(
                     sourceOutputFile = outFile,
@@ -793,7 +795,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
         outputName: String = "${sourceRecord.nameWithoutExtension()}_edited.pdf",
         onSuccess: ((PdfFileRecord) -> Unit)? = null
     ) {
-        saveEditedPdf(sourceRecord, items, deletedPages, pageRotations, outputName, onSuccess)
+        saveEditedPdf(sourceRecord, items, deletedPages, pageRotations, outputName, pageScale = 1.0f, onSuccess = onSuccess)
     }
 
     fun mergePdfs(

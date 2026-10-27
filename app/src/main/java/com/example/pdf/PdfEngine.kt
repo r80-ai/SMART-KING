@@ -585,24 +585,66 @@ object PdfEngine {
     ): File = withContext(Dispatchers.IO) {
         val dir = getPdfsDirectory(context)
         val outFile = generateUniquePdfFile(dir, outputFileName)
-        val doc = PdfDocument()
 
+        // 1. Lossless PDF stream extraction via PDFBox (preserves all vectors, fonts, forms, and metadata)
+        try {
+            com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
+            val srcDoc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(sourceFile)
+            val newDoc = com.tom_roush.pdfbox.pdmodel.PDDocument()
+            val totalSrcPages = srcDoc.numberOfPages
+            var addedCount = 0
+            for (idx in pageIndices) {
+                if (idx in 0 until totalSrcPages) {
+                    newDoc.addPage(srcDoc.getPage(idx))
+                    addedCount++
+                }
+            }
+            if (addedCount > 0) {
+                newDoc.save(outFile)
+                newDoc.close()
+                srcDoc.close()
+                return@withContext outFile
+            }
+            newDoc.close()
+            srcDoc.close()
+        } catch (t: Throwable) {
+            android.util.Log.w("PdfEngine", "Lossless PDFBox split failed; falling back to 300 DPI rendering: ${t.message}")
+        }
+
+        // 2. High-Resolution Fallback (Full 300+ DPI Printable Resolution with ARGB_8888)
+        val doc = PdfDocument()
         val pfd = ParcelFileDescriptor.open(sourceFile, ParcelFileDescriptor.MODE_READ_ONLY)
         val renderer = PdfRenderer(pfd)
         var newPageIndex = 1
 
+        val filterPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply {
+            isDither = true
+        }
+
         for (idx in pageIndices) {
             if (idx in 0 until renderer.pageCount) {
                 val page = renderer.openPage(idx)
-                val width = page.width
-                val height = page.height
-                val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-                page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
+                val widthPt = page.width
+                val heightPt = page.height
+
+                // Render at full 300 DPI (300f / 72f scale factor) with ARGB_8888
+                val scale = 300f / 72f
+                val renderW = (widthPt * scale).toInt().coerceAtLeast(1)
+                val renderH = (heightPt * scale).toInt().coerceAtLeast(1)
+
+                val bitmap = Bitmap.createBitmap(renderW, renderH, Bitmap.Config.ARGB_8888)
+                bitmap.eraseColor(android.graphics.Color.WHITE)
+                val matrix = android.graphics.Matrix().apply {
+                    postScale(scale, scale)
+                }
+                page.render(bitmap, null, matrix, PdfRenderer.Page.RENDER_MODE_FOR_PRINT)
                 page.close()
 
-                val pageInfo = PdfDocument.PageInfo.Builder(width, height, newPageIndex++).create()
+                val pageInfo = PdfDocument.PageInfo.Builder(widthPt, heightPt, newPageIndex++).create()
                 val docPage = doc.startPage(pageInfo)
-                docPage.canvas.drawBitmap(bitmap, 0f, 0f, null)
+                val srcRect = Rect(0, 0, renderW, renderH)
+                val dstRect = Rect(0, 0, widthPt, heightPt)
+                docPage.canvas.drawBitmap(bitmap, srcRect, dstRect, filterPaint)
                 doc.finishPage(docPage)
                 bitmap.recycle()
             }
@@ -845,13 +887,14 @@ object PdfEngine {
         items: List<EditItem>,
         deletedPages: Set<Int> = emptySet(),
         pageRotations: Map<Int, Int> = emptyMap(),
-        outputFileName: String
+        outputFileName: String,
+        pageScale: Float = 1.0f
     ): File = withContext(Dispatchers.IO) {
         val dir = getPdfsDirectory(context)
         val outFile = generateUniquePdfFile(dir, outputFileName)
         
         // If NO modifications, just copy original file to preserve everything!
-        if (items.isEmpty() && deletedPages.isEmpty() && pageRotations.isEmpty()) {
+        if (items.isEmpty() && deletedPages.isEmpty() && pageRotations.isEmpty() && pageScale == 1.0f) {
             val safeOutFile = try {
                 sourceFile.copyTo(outFile, overwrite = true)
                 outFile
@@ -896,12 +939,16 @@ object PdfEngine {
             if (rot != 0) {
                 canvas.rotate(rot.toFloat(), finalW / 2f, finalH / 2f)
             }
+            if (pageScale != 1.0f) {
+                canvas.scale(pageScale, pageScale, finalW / 2f, finalH / 2f)
+            }
             val renderRect = if (isSideways) {
                 Rect((finalW - origW) / 2, (finalH - origH) / 2, (finalW + origW) / 2, (finalH + origH) / 2)
             } else {
                 Rect(0, 0, finalW, finalH)
             }
-            canvas.drawBitmap(bitmap, null, renderRect, null)
+            val filterPaint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG).apply { isDither = true }
+            canvas.drawBitmap(bitmap, null, renderRect, filterPaint)
             canvas.restore()
 
             // Draw annotations for this page

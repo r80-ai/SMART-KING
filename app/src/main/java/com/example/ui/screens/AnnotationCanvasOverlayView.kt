@@ -566,12 +566,12 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 
     // --- Mode B: Manual Partial Pixel Eraser ---
 
+    private var pendingManualRemovedItems: List<PdfEngine.EditItem>? = null
+    private var isManualEraserLayerInitialized = false
+
     private fun prepareDrawingLayerForManualEraser() {
         if (width <= 0 || height <= 0) return
-        val currentList = pageAnnotations[currentPageIndex] ?: return
-        if (currentList.isEmpty()) return
-
-        onHistoryPush?.invoke()
+        val currentList = pageAnnotations.getOrPut(currentPageIndex) { mutableListOf() }
 
         if (drawingLayerBitmap == null || drawingLayerBitmap?.width != width || drawingLayerBitmap?.height != height) {
             drawingLayerBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
@@ -580,10 +580,15 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         val bmpCanvas = drawingLayerCanvas ?: return
         bmpCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
 
-        // Render current vector items into transparent drawingLayerBitmap
-        renderAnnotationsToCanvas(bmpCanvas, currentList)
+        if (currentList.isNotEmpty()) {
+            // Render current vector items into transparent drawingLayerBitmap
+            renderAnnotationsToCanvas(bmpCanvas, currentList)
+            pendingManualRemovedItems = currentList.toList()
+        } else {
+            pendingManualRemovedItems = null
+        }
 
-        // Replace individual items with the single baked drawing layer item
+        // Replace individual items with the single baked drawing layer item internally
         manualEraserItem = PdfEngine.EditItem(
             pageIndex = currentPageIndex,
             type = PdfEngine.AnnotationType.DRAW,
@@ -591,11 +596,11 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             baseWidth = width.toFloat(),
             baseHeight = height.toFloat()
         )
-        val removed = currentList.toList()
         currentList.clear()
         currentList.add(manualEraserItem!!)
-        onAnnotationsRemoved?.invoke(removed)
-        onAnnotationAdded?.invoke(manualEraserItem!!)
+        isManualEraserLayerInitialized = true
+        // NOTE: Defer notifying Compose (onAnnotationsRemoved/onAnnotationAdded) until ACTION_UP
+        // to avoid mid-gesture recomposition that collapses toolbars / bottom sheets.
     }
 
     private fun applyManualEraserAt(x: Float, y: Float, lx: Float, ly: Float) {
@@ -608,7 +613,15 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     }
 
     private fun finishManualEraserGesture() {
-        if (manualEraserItem != null && drawingLayerBitmap != null) {
+        if (manualEraserItem != null && drawingLayerBitmap != null && isManualEraserLayerInitialized) {
+            onHistoryPush?.invoke()
+            pendingManualRemovedItems?.let { removed ->
+                if (removed.isNotEmpty()) {
+                    onAnnotationsRemoved?.invoke(removed)
+                }
+            }
+            pendingManualRemovedItems = null
+
             val updated = manualEraserItem!!.copy(
                 drawingBitmap = drawingLayerBitmap?.copy(Bitmap.Config.ARGB_8888, true)
             )
@@ -617,15 +630,26 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             if (idx != -1) {
                 currentList!![idx] = updated
                 manualEraserItem = updated
-                onAnnotationUpdated?.invoke(updated)
             }
+            onAnnotationAdded?.invoke(updated)
+            isManualEraserLayerInitialized = false
         }
+    }
+
+    override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (isInteractionEnabled) {
+            parent?.requestDisallowInterceptTouchEvent(true)
+            disallowParentIntercept(true)
+        }
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!isInteractionEnabled) {
             return false
         }
+        parent?.requestDisallowInterceptTouchEvent(true)
+        disallowParentIntercept(true)
 
         val x = event.x
         val y = event.y
