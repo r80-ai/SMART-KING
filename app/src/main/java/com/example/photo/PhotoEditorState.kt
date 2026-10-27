@@ -24,6 +24,7 @@ enum class PhotoEditTool(val displayName: String, val category: PhotoEditCategor
     SATURATION("Saturation", PhotoEditCategory.ADJUST),
     ENHANCE("Enhance", PhotoEditCategory.ADJUST),
     SHARPEN("Sharpen", PhotoEditCategory.ADJUST),
+    FLASH("Flash", PhotoEditCategory.ADJUST),
 
     // Tools
     BLUR("Blur", PhotoEditCategory.TOOLS),

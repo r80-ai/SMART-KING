@@ -9,6 +9,7 @@ import android.graphics.Color as AndroidColor
 import android.graphics.PointF
 import android.graphics.RectF
 import android.net.Uri
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -156,9 +157,11 @@ import com.example.photo.MaskStroke
 import com.example.photo.CropPreset
 import com.example.photo.DrawingStroke
 import com.example.photo.GradientDirection
+import androidx.compose.material.icons.filled.FlashOn
 import com.example.photo.PhotoEditCategory
 import com.example.photo.PhotoEditTool
 import com.example.photo.PhotoEditorEngine
+import com.example.photo.FaceRelightEngine
 import com.example.photo.PhotoFonts
 import com.example.photo.TextAlignment
 import com.example.photo.TextItem
@@ -233,6 +236,9 @@ fun PhotoEditingScreen(
     var saturationValue by remember { mutableFloatStateOf(0f) }   // -100..+100
     var enhanceValue by remember { mutableFloatStateOf(0f) }   // 0..100
     var sharpenValue by remember { mutableFloatStateOf(0f) }   // 0..100
+    var flashIntensity by remember { mutableFloatStateOf(60f) }   // 0..100
+    var isFlashProcessing by remember { mutableStateOf(false) }
+    var flashRelitBaseBitmap by remember { mutableStateOf<Bitmap?>(null) }
 
     // BLUR
     var blurBrushSize by remember { mutableFloatStateOf(28f) }
@@ -427,6 +433,8 @@ fun PhotoEditingScreen(
         val current = currentBitmap ?: return
         redoStack.add(current)
         currentBitmap = undoStack.removeLast()
+        flashRelitBaseBitmap?.recycle()
+        flashRelitBaseBitmap = null
         previewBitmap = null
         activeTool = PhotoEditTool.NONE
     }
@@ -437,6 +445,8 @@ fun PhotoEditingScreen(
         val current = currentBitmap ?: return
         undoStack.add(current)
         currentBitmap = redoStack.removeLast()
+        flashRelitBaseBitmap?.recycle()
+        flashRelitBaseBitmap = null
         previewBitmap = null
         activeTool = PhotoEditTool.NONE
     }
@@ -447,6 +457,9 @@ fun PhotoEditingScreen(
         undoStack.clear()
         redoStack.clear()
         currentBitmap = orig.copy(Bitmap.Config.ARGB_8888, true)
+        flashRelitBaseBitmap?.recycle()
+        flashRelitBaseBitmap = null
+        flashIntensity = 60f
         previewBitmap = null
         extractedSubjectBitmap = null
         bgCustomImage = null
@@ -479,6 +492,9 @@ fun PhotoEditingScreen(
                         withContext(Dispatchers.Main) {
                             originalBitmap = loaded
                             currentBitmap = loaded.copy(Bitmap.Config.ARGB_8888, true)
+                            flashRelitBaseBitmap?.recycle()
+                            flashRelitBaseBitmap = null
+                            flashIntensity = 60f
                             undoStack.clear()
                             redoStack.clear()
                             previewBitmap = null
@@ -904,8 +920,25 @@ fun PhotoEditingScreen(
                             }
                         }
 
+                        if (isFlashProcessing) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.Black.copy(alpha = 0.65f)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    CircularProgressIndicator(color = Color(0xFFFFD54F), strokeWidth = 3.dp, modifier = Modifier.size(36.dp))
+                                    Text("Turning on flash...", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                                }
+                            }
+                        }
+
                         // Interactive Overlays depending on active tool (hidden during Eye comparison)
-                        if (!isHoldingEyeComparison && !isBgModelProcessing) {
+                        if (!isHoldingEyeComparison && !isBgModelProcessing && !isFlashProcessing) {
                             when (activeTool) {
                                 PhotoEditTool.CROP -> {
                                     CropOverlay(
@@ -1242,6 +1275,11 @@ fun PhotoEditingScreen(
                                             currentDrawStrokePoints = emptyList()
                                             isDrawingPanMode = false
                                         }
+                                        if (activeTool == PhotoEditTool.FLASH) {
+                                            flashRelitBaseBitmap?.recycle()
+                                            flashRelitBaseBitmap = null
+                                            flashIntensity = 60f
+                                        }
                                         previewBitmap = null
                                         extractedSubjectBitmap = null
                                         brightnessValue = 0f
@@ -1283,6 +1321,15 @@ fun PhotoEditingScreen(
                                                 currentBitmap = PhotoEditorEngine.applyEnhanceAndSharpen(curr, enh, shp)
                                                 enhanceValue = 0f
                                                 sharpenValue = 0f
+                                            }
+                                            PhotoEditTool.FLASH -> {
+                                                val relit = flashRelitBaseBitmap
+                                                if (relit != null) {
+                                                    currentBitmap = previewBitmap ?: FaceRelightEngine.blendRelit(curr, relit, flashIntensity / 100f)
+                                                    relit.recycle()
+                                                }
+                                                flashRelitBaseBitmap = null
+                                                flashIntensity = 60f
                                             }
                                             PhotoEditTool.BLUR -> {
                                                 currentBitmap = PhotoEditorEngine.applySelectiveBlur(
@@ -1508,6 +1555,66 @@ fun PhotoEditingScreen(
                                     valueRange = 0f..100f,
                                     colors = SliderDefaults.colors(thumbColor = CrimsonPrimary, activeTrackColor = CrimsonPrimary)
                                 )
+                            }
+
+                            PhotoEditTool.FLASH -> {
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.FlashOn,
+                                                contentDescription = null,
+                                                tint = Color(0xFFFFD54F),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "AI Flash Light (Face Relight)",
+                                                color = Color.White,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        Text(
+                                            text = "${flashIntensity.roundToInt()}%",
+                                            color = Color(0xFFFFD54F),
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Slider(
+                                        value = flashIntensity,
+                                        onValueChange = {
+                                            flashIntensity = it
+                                            val curr = currentBitmap
+                                            val relit = flashRelitBaseBitmap
+                                            if (curr != null && relit != null) {
+                                                previewBitmap = FaceRelightEngine.blendRelit(curr, relit, it / 100f)
+                                            }
+                                        },
+                                        valueRange = 0f..100f,
+                                        colors = SliderDefaults.colors(
+                                            thumbColor = Color(0xFFFFD54F),
+                                            activeTrackColor = Color(0xFFFFD54F),
+                                            inactiveTrackColor = Color(0xFF334155)
+                                        ),
+                                        modifier = Modifier.testTag("flash_intensity_slider")
+                                    )
+                                    Text(
+                                        text = "Intelligently illuminates face contours, fills harsh shadows & adds specular eye catchlights.",
+                                        color = Color(0xFF94A3B8),
+                                        fontSize = 11.sp
+                                    )
+                                }
                             }
 
                             PhotoEditTool.BLUR -> {
@@ -2337,6 +2444,36 @@ fun PhotoEditingScreen(
                                 }
 
                                 PhotoEditCategory.ADJUST -> {
+                                    ToolButton(
+                                        icon = Icons.Default.FlashOn,
+                                        label = "Flash",
+                                        testTag = "tool_flash",
+                                        onClick = {
+                                            activeTool = PhotoEditTool.FLASH
+                                            val curr = currentBitmap
+                                            if (curr != null) {
+                                                val cached = flashRelitBaseBitmap
+                                                if (cached != null && !cached.isRecycled && cached.width == curr.width && cached.height == curr.height) {
+                                                    previewBitmap = FaceRelightEngine.blendRelit(curr, cached, flashIntensity / 100f)
+                                                } else {
+                                                    previewBitmap = null
+                                                    isFlashProcessing = true
+                                                    coroutineScope.launch {
+                                                        try {
+                                                            val relit = FaceRelightEngine.generateFullRelitBitmap(context, curr)
+                                                            flashRelitBaseBitmap = relit
+                                                            previewBitmap = FaceRelightEngine.blendRelit(curr, relit, flashIntensity / 100f)
+                                                        } catch (e: Exception) {
+                                                            Log.e("PhotoEditing", "Flash error", e)
+                                                            Toast.makeText(context, "Flash effect failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                                        } finally {
+                                                            isFlashProcessing = false
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    )
                                     ToolButton(
                                         icon = Icons.Default.WbSunny,
                                         label = "Brightness",

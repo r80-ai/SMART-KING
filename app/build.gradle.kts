@@ -127,6 +127,7 @@ dependencies {
   implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
   implementation("org.bouncycastle:bcpkix-jdk18on:1.78.1")
   implementation("com.google.mlkit:text-recognition:16.0.1")
+  implementation("com.google.mlkit:face-detection:16.1.7")
   implementation("com.tom-roush:pdfbox-android:2.0.27.0") {
     exclude(group = "org.bouncycastle")
   }
