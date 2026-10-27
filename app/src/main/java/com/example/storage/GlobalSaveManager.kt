@@ -487,6 +487,36 @@ object GlobalSaveManager {
     }
 
     /**
+     * Share or locate file via Android system share sheet
+     */
+    fun shareFile(context: Context, uri: Uri?, file: File?, mimeType: String = "application/pdf") {
+        try {
+            val targetUri = if (uri != null && uri.scheme == "content" && !uri.toString().contains(context.packageName)) {
+                uri
+            } else if (file != null && file.exists()) {
+                FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            } else {
+                uri
+            } ?: run {
+                Toast.makeText(context, "File location is not accessible for sharing", Toast.LENGTH_SHORT).show()
+                return
+            }
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = mimeType
+                putExtra(Intent.EXTRA_STREAM, targetUri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            val chooser = Intent.createChooser(shareIntent, "Share / Send File")
+            chooser.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(chooser)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Unable to share file (${e.message})", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
      * Requirement 8: Open the REAL Android File Manager/system file browser at the folder
      */
     fun openFolder(

@@ -57,6 +57,10 @@ import androidx.compose.material.icons.filled.Draw
 import androidx.compose.material.icons.filled.DynamicForm
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import android.widget.Toast
 import androidx.compose.material.icons.filled.LowPriority
 import androidx.compose.material.icons.filled.NavigateBefore
 import androidx.compose.material.icons.filled.NavigateNext
@@ -162,6 +166,13 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
                 viewModel.openSavedFolder(
                     uri,
                     File(resultInfo.resultFile.filePath)
+                )
+            },
+            onShareFile = { record, uri ->
+                viewModel.shareSavedFile(
+                    uri,
+                    File(record.filePath),
+                    if (resultInfo.isPhotoOutput) "image/jpeg" else "application/pdf"
                 )
             },
             onSaveAndOpenInFiles = {
@@ -418,6 +429,154 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
                             modifier = Modifier.testTag("delete_confirm_button")
                         ) {
                             Text("Delete")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.closeModal() }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+        }
+        ActiveModal.PROTECT -> {
+            selectedFile?.let { file ->
+                var passwordInput by remember { mutableStateOf("") }
+                var passwordVisible by remember { mutableStateOf(false) }
+                var outputFileName by remember(file) { mutableStateOf("${file.nameWithoutExtension()}_protected.pdf") }
+                val context = LocalContext.current
+
+                AlertDialog(
+                    onDismissRequest = { viewModel.closeModal() },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = ToolPurple, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Protect PDF (Add Password)", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        }
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "Enter a password to encrypt \"${file.name}\". All pages will be secured with standard encryption.",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = passwordInput,
+                                onValueChange = { passwordInput = it },
+                                label = { Text("Set Password *") },
+                                singleLine = true,
+                                visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = "Toggle password visibility"
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("input_modal_protect_password")
+                            )
+                            OutlinedTextField(
+                                value = outputFileName,
+                                onValueChange = { outputFileName = it },
+                                label = { Text("Output File Name") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("input_modal_protect_output_name")
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                val pass = passwordInput.trim()
+                                if (pass.isEmpty()) {
+                                    Toast.makeText(context, "Please enter a password", Toast.LENGTH_SHORT).show()
+                                    return@Button
+                                }
+                                viewModel.closeModal()
+                                viewModel.protectPdf(
+                                    sourceRecord = file,
+                                    password = pass,
+                                    desiredFileName = if (outputFileName.isBlank()) "${file.nameWithoutExtension()}_protected.pdf" else outputFileName.trim()
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ToolPurple),
+                            modifier = Modifier.testTag("btn_modal_confirm_protect")
+                        ) {
+                            Text("Protect & Save")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.closeModal() }) {
+                            Text("Cancel")
+                        }
+                    }
+                )
+            }
+        }
+        ActiveModal.UNLOCK -> {
+            selectedFile?.let { file ->
+                var passwordInput by remember { mutableStateOf("") }
+                var passwordVisible by remember { mutableStateOf(false) }
+                var outputFileName by remember(file) { mutableStateOf("${file.nameWithoutExtension()}_unlocked.pdf") }
+
+                AlertDialog(
+                    onDismissRequest = { viewModel.closeModal() },
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.LockOpen, contentDescription = null, tint = ToolBlue, modifier = Modifier.size(24.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Unlock PDF (Remove Password)", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                        }
+                    },
+                    text = {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text(
+                                "Remove encryption and save a fully unlocked version of \"${file.name}\". If it requires a password to open, please enter it below:",
+                                fontSize = 13.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            OutlinedTextField(
+                                value = passwordInput,
+                                onValueChange = { passwordInput = it },
+                                label = { Text("Current Password (if required)") },
+                                singleLine = true,
+                                visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                        Icon(
+                                            if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = "Toggle password visibility"
+                                        )
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth().testTag("input_modal_unlock_password")
+                            )
+                            OutlinedTextField(
+                                value = outputFileName,
+                                onValueChange = { outputFileName = it },
+                                label = { Text("Output File Name") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth().testTag("input_modal_unlock_output_name")
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                viewModel.closeModal()
+                                viewModel.unlockPdf(
+                                    sourceRecord = file,
+                                    password = passwordInput.trim(),
+                                    desiredFileName = if (outputFileName.isBlank()) "${file.nameWithoutExtension()}_unlocked.pdf" else outputFileName.trim()
+                                )
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = ToolBlue),
+                            modifier = Modifier.testTag("btn_modal_confirm_unlock")
+                        ) {
+                            Text("Unlock & Save")
                         }
                     },
                     dismissButton = {

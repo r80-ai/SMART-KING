@@ -2525,4 +2525,78 @@ object PdfEngine {
         }
         return clean
     }
+
+    /**
+     * Encrypt a PDF file with user and owner passwords using standard PDFBox encryption.
+     */
+    suspend fun protectPdfFile(
+        context: Context,
+        sourceFile: File,
+        password: String,
+        outputFileName: String
+    ): File = withContext(Dispatchers.IO) {
+        val dir = getPdfsDirectory(context)
+        val outFile = generateUniquePdfFile(dir, outputFileName)
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
+
+        val doc = try {
+            com.tom_roush.pdfbox.pdmodel.PDDocument.load(sourceFile)
+        } catch (_: Exception) {
+            com.tom_roush.pdfbox.pdmodel.PDDocument.load(sourceFile, password)
+        }
+
+        try {
+            val ap = com.tom_roush.pdfbox.pdmodel.encryption.AccessPermission()
+            val spp = com.tom_roush.pdfbox.pdmodel.encryption.StandardProtectionPolicy(password, password, ap).apply {
+                encryptionKeyLength = 128
+                permissions = ap
+            }
+            doc.protect(spp)
+            doc.save(outFile)
+        } finally {
+            try { doc.close() } catch (_: Throwable) {}
+        }
+        outFile
+    }
+
+    /**
+     * Decrypt and remove all security/passwords from a PDF file using PDFBox.
+     */
+    suspend fun unlockPdfFile(
+        context: Context,
+        sourceFile: File,
+        password: String,
+        outputFileName: String
+    ): File = withContext(Dispatchers.IO) {
+        val dir = getPdfsDirectory(context)
+        val outFile = generateUniquePdfFile(dir, outputFileName)
+        com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(context)
+
+        val cleanPass = password.trim()
+        val doc = try {
+            if (cleanPass.isNotEmpty()) {
+                com.tom_roush.pdfbox.pdmodel.PDDocument.load(sourceFile, cleanPass)
+            } else {
+                com.tom_roush.pdfbox.pdmodel.PDDocument.load(sourceFile)
+            }
+        } catch (e: Exception) {
+            try {
+                if (cleanPass.isNotEmpty()) {
+                    com.tom_roush.pdfbox.pdmodel.PDDocument.load(sourceFile, cleanPass.uppercase())
+                } else {
+                    throw e
+                }
+            } catch (_: Exception) {
+                com.tom_roush.pdfbox.pdmodel.PDDocument.load(sourceFile, "")
+            }
+        }
+
+        try {
+            doc.setAllSecurityToBeRemoved(true)
+            doc.save(outFile)
+        } finally {
+            try { doc.close() } catch (_: Throwable) {}
+        }
+        outFile
+    }
 }

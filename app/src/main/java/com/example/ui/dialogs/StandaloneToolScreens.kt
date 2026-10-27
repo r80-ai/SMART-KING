@@ -70,6 +70,7 @@ import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.Rotate90DegreesCw
 import androidx.compose.material.icons.filled.RotateRight
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.ZoomIn
@@ -414,6 +415,7 @@ fun ToolResultPreviewDialog(
     info: ToolResultInfo,
     onOpenFile: ((PdfFileRecord) -> Unit)? = null,
     onViewFolder: ((String, Uri?) -> Unit)? = null,
+    onShareFile: ((PdfFileRecord, Uri?) -> Unit)? = null,
     onSaveAndOpenInFiles: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -598,7 +600,7 @@ fun ToolResultPreviewDialog(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Actions: Open File & View Folder
+                // Primary Actions: Open File & Locate / Share
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
@@ -630,32 +632,33 @@ fun ToolResultPreviewDialog(
 
                     Button(
                         onClick = {
-                            if (onViewFolder != null) {
-                                onViewFolder(info.savedDisplayLocation, info.savedUri)
+                            if (onShareFile != null) {
+                                onShareFile(info.resultFile, info.savedUri)
                             } else {
-                                com.example.storage.GlobalSaveManager.openFolder(
+                                com.example.storage.GlobalSaveManager.shareFile(
                                     context = context,
-                                    treeUriStr = info.savedUri?.toString(),
-                                    targetFile = File(info.resultFile.filePath)
+                                    uri = info.savedUri,
+                                    file = File(info.resultFile.filePath),
+                                    mimeType = if (info.isPhotoOutput) "image/jpeg" else "application/pdf"
                                 )
                             }
                         },
                         modifier = Modifier
                             .weight(1f)
                             .height(50.dp)
-                            .testTag("btn_view_folder"),
+                            .testTag("btn_locate_share"),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
                     ) {
-                        Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(text = "View Folder", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        Text(text = "Locate / Share", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                // Secondary Action: View in App Files Library
+                // Action: View in App Files Library
                 androidx.compose.material3.OutlinedButton(
                     onClick = onSaveAndOpenInFiles,
                     modifier = Modifier
@@ -671,9 +674,35 @@ fun ToolResultPreviewDialog(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
+                // Action: View Saved Folder
+                androidx.compose.material3.OutlinedButton(
+                    onClick = {
+                        if (onViewFolder != null) {
+                            onViewFolder(info.savedDisplayLocation, info.savedUri)
+                        } else {
+                            com.example.storage.GlobalSaveManager.openFolder(
+                                context = context,
+                                treeUriStr = info.savedUri?.toString(),
+                                targetFile = File(info.resultFile.filePath)
+                            )
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .testTag("btn_view_folder"),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Icon(Icons.Default.FolderOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(text = "View Saved Folder", fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
                 TextButton(
                     onClick = onDismiss,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("btn_dismiss_result")
                 ) {
                     Text("Done (Stay on Tools)", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }

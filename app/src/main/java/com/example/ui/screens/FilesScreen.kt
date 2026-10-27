@@ -556,6 +556,25 @@ fun FileItemRow(
                             leadingIcon = { Icon(Icons.Default.Info, contentDescription = null, tint = ToolTeal) },
                             onClick = { menuExpanded = false; viewModel.openWorkspaceWithTool(file, WorkspaceSubTool.DOC_INFO) }
                         )
+                        if (!file.isProtected) {
+                            DropdownMenuItem(
+                                text = { Text("Protect PDF (Add Password)") },
+                                leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = ToolPurple) },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.openModal(ActiveModal.PROTECT, file)
+                                }
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text("Unlock PDF (Remove Password)") },
+                                leadingIcon = { Icon(Icons.Default.LockOpen, contentDescription = null, tint = ToolBlue) },
+                                onClick = {
+                                    menuExpanded = false
+                                    viewModel.openModal(ActiveModal.UNLOCK, file)
+                                }
+                            )
+                        }
                         DropdownMenuItem(
                             text = { Text("View Folder") },
                             leadingIcon = { Icon(Icons.Default.FolderOpen, contentDescription = null, tint = ToolOrange) },

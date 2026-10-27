@@ -969,12 +969,13 @@ fun PdfEditorMainView(
                                 },
                                 onProtectPassword = {
                                     isProtectAction = true
+                                    passwordInput = ""
                                     showPasswordDialog = true
                                 },
                                 onRemovePassword = {
                                     isProtectAction = false
-                                    viewModel.toggleProtectFile(currentFile, "")
-                                    Toast.makeText(context, "Password protection removed", Toast.LENGTH_SHORT).show()
+                                    passwordInput = ""
+                                    showPasswordDialog = true
                                 },
                                 onAddPageNumbers = {
                                     showPageNumbersWorkspaceDialog = true
@@ -2410,40 +2411,121 @@ fun PdfEditorMainView(
     }
 
     if (showPasswordDialog) {
+        var passwordVisible by remember { mutableStateOf(false) }
+        var outputFileName by remember(isProtectAction, currentFile) {
+            mutableStateOf(
+                if (isProtectAction) "${currentFile.nameWithoutExtension()}_protected.pdf"
+                else "${currentFile.nameWithoutExtension()}_unlocked.pdf"
+            )
+        }
+
         AlertDialog(
             onDismissRequest = { showPasswordDialog = false },
-            title = { Text(if (isProtectAction) "Protect PDF with Password" else "Remove Password") },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        if (isProtectAction) Icons.Default.Lock else Icons.Default.LockOpen,
+                        contentDescription = null,
+                        tint = if (isProtectAction) ToolPurple else ToolBlue,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        if (isProtectAction) "Protect PDF (Add Password)" else "Unlock PDF (Remove Password)",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                }
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (isProtectAction) {
-                        Text("Set a password to encrypt this PDF document:", fontSize = 13.sp, color = Color.Gray)
+                        Text(
+                            "Set a password to encrypt this PDF document. All pages and content will be secured with standard 128-bit encryption:",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                         OutlinedTextField(
                             value = passwordInput,
                             onValueChange = { passwordInput = it },
-                            label = { Text("Password") },
+                            label = { Text("Set Password *") },
                             singleLine = true,
-                            modifier = Modifier.fillMaxWidth()
+                            visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = "Toggle password visibility"
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("input_protect_password")
                         )
                     } else {
-                        Text("Remove password protection from this document?", fontSize = 14.sp)
+                        Text(
+                            "Remove encryption and save a fully unlocked, password-free version of this PDF. If the document currently requires a password to open, please enter it below:",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        OutlinedTextField(
+                            value = passwordInput,
+                            onValueChange = { passwordInput = it },
+                            label = { Text("Current Password (if required)") },
+                            singleLine = true,
+                            visualTransformation = if (passwordVisible) androidx.compose.ui.text.input.VisualTransformation.None else androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            trailingIcon = {
+                                IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                    Icon(
+                                        if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                        contentDescription = "Toggle password visibility"
+                                    )
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth().testTag("input_unlock_password")
+                        )
                     }
+
+                    OutlinedTextField(
+                        value = outputFileName,
+                        onValueChange = { outputFileName = it },
+                        label = { Text("Output File Name") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth().testTag("input_output_file_name")
+                    )
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
+                        val pass = passwordInput.trim()
+                        if (isProtectAction && pass.isEmpty()) {
+                            Toast.makeText(context, "Please enter a password to encrypt", Toast.LENGTH_SHORT).show()
+                            return@Button
+                        }
                         showPasswordDialog = false
+                        val finalName = if (outputFileName.isBlank()) {
+                            if (isProtectAction) "${currentFile.nameWithoutExtension()}_protected.pdf"
+                            else "${currentFile.nameWithoutExtension()}_unlocked.pdf"
+                        } else outputFileName.trim()
+
                         if (isProtectAction) {
-                            viewModel.toggleProtectFile(currentFile, passwordInput)
-                            Toast.makeText(context, "Password protection applied!", Toast.LENGTH_SHORT).show()
+                            viewModel.protectPdf(
+                                sourceRecord = currentFile,
+                                password = pass,
+                                desiredFileName = finalName
+                            )
                         } else {
-                            viewModel.toggleProtectFile(currentFile, "")
-                            Toast.makeText(context, "Password protection removed", Toast.LENGTH_SHORT).show()
+                            viewModel.unlockPdf(
+                                sourceRecord = currentFile,
+                                password = pass,
+                                desiredFileName = finalName
+                            )
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = ToolBlue)
+                    colors = ButtonDefaults.buttonColors(containerColor = if (isProtectAction) ToolPurple else ToolBlue),
+                    modifier = Modifier.testTag("btn_confirm_password_action")
                 ) {
-                    Text(if (isProtectAction) "Protect" else "Remove")
+                    Text(if (isProtectAction) "Protect & Save" else "Unlock & Save")
                 }
             },
             dismissButton = {

@@ -43,6 +43,8 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Highlight
 import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.LowPriority
 import androidx.compose.material.icons.filled.PictureAsPdf
 import androidx.compose.material.icons.filled.RotateRight
@@ -161,6 +163,24 @@ fun ToolsScreen(
             }
         }
     }
+    val pdfPickerForProtectLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importPdfFromUri(uri) { record ->
+                viewModel.openModal(ActiveModal.PROTECT, record)
+            }
+        }
+    }
+    val pdfPickerForUnlockLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            viewModel.importPdfFromUri(uri) { record ->
+                viewModel.openModal(ActiveModal.UNLOCK, record)
+            }
+        }
+    }
     val pinnedTools by viewModel.pinnedTools.collectAsState()
     var selectedCategoryFilter by remember { mutableStateOf("all") }
     var filterQuery by remember { mutableStateOf("") }
@@ -209,10 +229,28 @@ fun ToolsScreen(
             ),
             ToolCategory(
                 nameEn = "Security",
-                nameBn = "নিরাপত্তা ও স্বাক্ষর",
+                nameBn = "নিরাপত্তা ও পাসওয়ার্ড",
                 icon = Icons.Default.VerifiedUser,
                 badgeColor = ToolGreen,
                 tools = listOf(
+                    ToolDefinition(
+                        "protect_pdf",
+                        "Protect PDF",
+                        "পাসওয়ার্ড যোগ",
+                        "Encrypt and add password protection to PDF",
+                        Icons.Default.Lock,
+                        ToolPurple,
+                        ActiveModal.PROTECT
+                    ),
+                    ToolDefinition(
+                        "unlock_pdf",
+                        "Unlock PDF",
+                        "পাসওয়ার্ড অপসারণ",
+                        "Decrypt and remove password protection from PDF",
+                        Icons.Default.LockOpen,
+                        ToolBlue,
+                        ActiveModal.UNLOCK
+                    ),
                     ToolDefinition(
                         "signature_validation",
                         "PDF Signature Valid",
@@ -244,6 +282,12 @@ fun ToolsScreen(
             }
             "edit_pdf" -> {
                 viewModel.openModal(ActiveModal.EDIT)
+            }
+            "protect_pdf" -> {
+                pdfPickerForProtectLauncher.launch(arrayOf("application/pdf"))
+            }
+            "unlock_pdf" -> {
+                pdfPickerForUnlockLauncher.launch(arrayOf("application/pdf"))
             }
             else -> {
                 viewModel.openModal(tool.modal)

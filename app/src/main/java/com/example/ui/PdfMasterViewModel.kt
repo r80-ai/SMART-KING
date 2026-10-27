@@ -6,6 +6,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.util.Log
 import android.util.LruCache
 import com.google.android.gms.auth.api.signin.GoogleSignIn
 import com.google.android.gms.auth.api.signin.GoogleSignInOptions
@@ -74,7 +75,9 @@ enum class ActiveModal {
     DOC_ENHANCER,
     NAME_DATE_PHOTO,
     APPLICATION_MAKER,
-    ANNAPURNA_DECLARATION
+    ANNAPURNA_DECLARATION,
+    PROTECT,
+    UNLOCK
 }
 
 data class ToolResultInfo(
@@ -1231,16 +1234,127 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
         }
     }
 
-    fun toggleProtectFile(record: PdfFileRecord, password: String) {
+    fun protectPdf(
+        sourceRecord: PdfFileRecord,
+        password: String,
+        desiredFileName: String? = null,
+        onSuccess: ((PdfFileRecord) -> Unit)? = null
+    ) {
         viewModelScope.launch {
-            val updated = record.copy(
-                isProtected = !record.isProtected,
-                lastModified = System.currentTimeMillis()
-            )
-            repository.updateFile(updated)
-            val msg = if (updated.isProtected) "Protected with password ($password)" else "Password removed"
-            _notification.value = UiNotification(msg)
-            closeModal()
+            _isProcessing.value = true
+            _processingMessage.value = "Encrypting and protecting PDF..."
+            try {
+                val sourceFile = File(sourceRecord.filePath)
+                val defaultName = desiredFileName?.ifBlank { null }
+                    ?: "${sourceRecord.nameWithoutExtension()}_protected.pdf"
+
+                val tempOut = PdfEngine.protectPdfFile(
+                    context = getApplication(),
+                    sourceFile = sourceFile,
+                    password = password,
+                    outputFileName = defaultName
+                )
+
+                val pageCount = try {
+                    com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(getApplication())
+                    val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(tempOut, password)
+                    val count = doc.numberOfPages
+                    doc.close()
+                    count
+                } catch (_: Exception) {
+                    sourceRecord.pageCount
+                }
+
+                val resultRecord = commitAndShowResult(
+                    sourceOutputFile = tempOut,
+                    desiredName = defaultName,
+                    toolTitle = "Protect PDF",
+                    originalRecord = sourceRecord,
+                    summaryText = "Password protection applied successfully (128-bit encryption).",
+                    mimeType = "application/pdf",
+                    category = "protected",
+                    tag = "PROTECT"
+                )
+
+                val updated = resultRecord.copy(isProtected = true, pageCount = pageCount)
+                repository.updateFile(updated)
+                _selectedFile.value = updated
+                _toolResult.value = _toolResult.value?.copy(resultFile = updated)
+
+                _notification.value = UiNotification("Password protection applied successfully!")
+                onSuccess?.invoke(updated)
+            } catch (e: Exception) {
+                Log.e("PdfMasterViewModel", "Failed to protect PDF", e)
+                _notification.value = UiNotification("Failed to protect PDF: ${e.localizedMessage ?: e.message}", false)
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
+
+    fun unlockPdf(
+        sourceRecord: PdfFileRecord,
+        password: String = "",
+        desiredFileName: String? = null,
+        onSuccess: ((PdfFileRecord) -> Unit)? = null
+    ) {
+        viewModelScope.launch {
+            _isProcessing.value = true
+            _processingMessage.value = "Removing password and decrypting PDF..."
+            try {
+                val sourceFile = File(sourceRecord.filePath)
+                val defaultName = desiredFileName?.ifBlank { null }
+                    ?: "${sourceRecord.nameWithoutExtension()}_unlocked.pdf"
+
+                val tempOut = PdfEngine.unlockPdfFile(
+                    context = getApplication(),
+                    sourceFile = sourceFile,
+                    password = password,
+                    outputFileName = defaultName
+                )
+
+                val pageCount = try {
+                    com.tom_roush.pdfbox.android.PDFBoxResourceLoader.init(getApplication())
+                    val doc = com.tom_roush.pdfbox.pdmodel.PDDocument.load(tempOut)
+                    val count = doc.numberOfPages
+                    doc.close()
+                    count
+                } catch (_: Exception) {
+                    sourceRecord.pageCount
+                }
+
+                val resultRecord = commitAndShowResult(
+                    sourceOutputFile = tempOut,
+                    desiredName = defaultName,
+                    toolTitle = "Unlock PDF",
+                    originalRecord = sourceRecord,
+                    summaryText = "Password protection removed successfully. File is now decrypted.",
+                    mimeType = "application/pdf",
+                    category = "unlocked",
+                    tag = "UNLOCK"
+                )
+
+                val updated = resultRecord.copy(isProtected = false, pageCount = pageCount)
+                repository.updateFile(updated)
+                _selectedFile.value = updated
+                _toolResult.value = _toolResult.value?.copy(resultFile = updated)
+
+                _notification.value = UiNotification("Password protection removed successfully!")
+                onSuccess?.invoke(updated)
+            } catch (e: Exception) {
+                Log.e("PdfMasterViewModel", "Failed to unlock PDF", e)
+                _notification.value = UiNotification("Failed to unlock PDF: ${e.localizedMessage ?: "Invalid password"}", false)
+            } finally {
+                _isProcessing.value = false
+            }
+        }
+    }
+
+    fun toggleProtectFile(record: PdfFileRecord, password: String) {
+        if (record.isProtected || password.isBlank()) {
+            unlockPdf(record, password)
+        } else {
+            protectPdf(record, password)
         }
     }
 
@@ -1409,6 +1523,10 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
 
     fun openSavedFolder(treeUri: Uri? = null, file: File? = null) {
         com.example.storage.GlobalSaveManager.openFolder(getApplication(), treeUri?.toString(), file)
+    }
+
+    fun shareSavedFile(uri: Uri? = null, file: File? = null, mimeType: String = "application/pdf") {
+        com.example.storage.GlobalSaveManager.shareFile(getApplication(), uri, file, mimeType)
     }
 
     fun isSaveLocationAvailable(): Boolean {
