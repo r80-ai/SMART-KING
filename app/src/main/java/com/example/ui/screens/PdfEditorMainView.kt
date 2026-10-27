@@ -139,6 +139,7 @@ fun PdfEditorMainView(
     var selectedAnnotationId by remember { mutableStateOf<String?>(null) }
     var pageBackgroundColor by remember { mutableStateOf(Color.White) }
     var pageContentScale by remember { mutableFloatStateOf(1.0f) }
+    var textLayerUpdateTrigger by remember { mutableIntStateOf(0) }
 
     fun getScaledPageBitmap(original: Bitmap, scale: Float): Bitmap {
         if (scale == 1.0f) return original
@@ -172,6 +173,8 @@ fun PdfEditorMainView(
             val previous = undoStack.removeAt(undoStack.size - 1)
             editItems.clear()
             editItems.addAll(previous)
+            textLayerUpdateTrigger++
+            selectedAnnotationId = null
         }
     }
 
@@ -181,6 +184,8 @@ fun PdfEditorMainView(
             val next = redoStack.removeAt(redoStack.size - 1)
             editItems.clear()
             editItems.addAll(next)
+            textLayerUpdateTrigger++
+            selectedAnnotationId = null
         }
     }
 
@@ -195,7 +200,6 @@ fun PdfEditorMainView(
     var showLayerManagerDialog by remember { mutableStateOf(false) }
     var pdfCanvasWidthPx by remember { mutableFloatStateOf(800f) }
     var pdfCanvasHeightPx by remember { mutableFloatStateOf(1100f) }
-    var textLayerUpdateTrigger by remember { mutableIntStateOf(0) }
     var textOverlayViewRef by remember { mutableStateOf<TextOverlayView?>(null) }
 
     // Pen & Annotation tool state
@@ -573,44 +577,6 @@ fun PdfEditorMainView(
                                 viewModel.shareFile(context, currentFile)
                             },
                             modifier = Modifier.testTag("menu_item_share")
-                        )
-
-                        HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-
-                        // Undo Option
-                        DropdownMenuItem(
-                            text = { Text("Undo") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Undo,
-                                    contentDescription = null,
-                                    tint = if (undoStack.isNotEmpty()) MaterialTheme.colorScheme.onSurface else Color(0xFF94A3B8)
-                                )
-                            },
-                            enabled = undoStack.isNotEmpty(),
-                            onClick = {
-                                moreMenuExpanded = false
-                                handleUndo()
-                            },
-                            modifier = Modifier.testTag("menu_item_undo")
-                        )
-
-                        // Redo Option
-                        DropdownMenuItem(
-                            text = { Text("Redo") },
-                            leadingIcon = {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Redo,
-                                    contentDescription = null,
-                                    tint = if (redoStack.isNotEmpty()) MaterialTheme.colorScheme.onSurface else Color(0xFF94A3B8)
-                                )
-                            },
-                            enabled = redoStack.isNotEmpty(),
-                            onClick = {
-                                moreMenuExpanded = false
-                                handleRedo()
-                            },
-                            modifier = Modifier.testTag("menu_item_redo")
                         )
 
                         HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
@@ -1105,14 +1071,78 @@ fun PdfEditorMainView(
                             },
                         contentAlignment = Alignment.Center
                     ) {
-                        // Floating Zoom & Fit Controls Overlay on top of preview container
+                        // Floating Canvas Controls Overlay: Undo, Redo, Zoom, Fit to Screen
                         Row(
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .padding(12.dp)
                                 .zIndex(10f),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            // Quick Action: Undo & Redo Dual-Pill Container
+                            val canUndo = undoStack.isNotEmpty()
+                            val canRedo = redoStack.isNotEmpty()
+
+                            Surface(
+                                color = Color(0xFF1E293B).copy(alpha = 0.88f),
+                                shape = RoundedCornerShape(8.dp),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF334155)),
+                                shadowElevation = 2.dp,
+                                modifier = Modifier
+                                    .pointerInput(Unit) {
+                                        detectTapGestures { /* consume touch to prevent canvas pan/zoom */ }
+                                    }
+                                    .testTag("container_overlay_undo_redo")
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 2.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    // Undo Quick Action Button
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 34.dp, height = 28.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable(enabled = canUndo) { handleUndo() }
+                                            .testTag("btn_overlay_undo"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Undo,
+                                            contentDescription = "Undo",
+                                            tint = if (canUndo) Color.White else Color.White.copy(alpha = 0.3f),
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+
+                                    // Subtle vertical divider between Undo and Redo
+                                    Box(
+                                        modifier = Modifier
+                                            .width(1.dp)
+                                            .height(16.dp)
+                                            .background(Color(0xFF334155))
+                                    )
+
+                                    // Redo Quick Action Button
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 34.dp, height = 28.dp)
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .clickable(enabled = canRedo) { handleRedo() }
+                                            .testTag("btn_overlay_redo"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Redo,
+                                            contentDescription = "Redo",
+                                            tint = if (canRedo) Color.White else Color.White.copy(alpha = 0.3f),
+                                            modifier = Modifier.size(17.dp)
+                                        )
+                                    }
+                                }
+                            }
+
                             Surface(
                                 color = Color(0xFF1E293B).copy(alpha = 0.88f),
                                 shape = RoundedCornerShape(8.dp),
