@@ -54,7 +54,7 @@ fun ApplicationMakerScreen(onBack: () -> Unit) {
 
     var isBengali by remember { mutableStateOf(true) }
 
-    // Full 21 Categories and Letter Types Repository from ApplicationCategoriesData.kt
+    // Categories and Letter Types Repository from ApplicationCategoriesData.kt
     val categories = remember { getApplicationCategories() }
 
     var selectedCategoryIndex by remember { mutableIntStateOf(0) }
