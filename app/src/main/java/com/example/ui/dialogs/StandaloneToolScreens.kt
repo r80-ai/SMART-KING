@@ -416,7 +416,6 @@ fun ToolResultPreviewDialog(
     onOpenFile: ((PdfFileRecord) -> Unit)? = null,
     onViewFolder: ((String, Uri?) -> Unit)? = null,
     onShareFile: ((PdfFileRecord, Uri?) -> Unit)? = null,
-    onSaveAndOpenInFiles: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -657,22 +656,6 @@ fun ToolResultPreviewDialog(
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
-
-                // Action: View in App Files Library
-                androidx.compose.material3.OutlinedButton(
-                    onClick = onSaveAndOpenInFiles,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .testTag("btn_save_and_open_in_files"),
-                    shape = RoundedCornerShape(12.dp)
-                ) {
-                    Icon(Icons.Default.Folder, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = "View in App Files Library", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
 
                 // Action: View Saved Folder
                 androidx.compose.material3.OutlinedButton(

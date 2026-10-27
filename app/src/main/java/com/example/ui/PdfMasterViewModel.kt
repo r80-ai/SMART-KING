@@ -38,7 +38,7 @@ import java.io.File
 import java.io.FileOutputStream
 
 enum class NavigationTab {
-    HOME, TOOLS, FILES, SETTINGS, PHOTO_TOOLS, HISAB_CALCULATOR, BANGLA_CALENDAR, AMAR_DOKAN
+    HOME, TOOLS, SETTINGS, PHOTO_TOOLS, HISAB_CALCULATOR, BANGLA_CALENDAR, AMAR_DOKAN
 }
 
 enum class ActiveModal {
@@ -123,13 +123,13 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
         _toolResult.value = info.copy(savedDisplayLocation = finalLocation)
     }
 
-    fun dismissToolResult(goToFiles: Boolean = true) {
+    fun dismissToolResult(goToFiles: Boolean = false) {
         _toolResult.value = null
         _activeModal.value = ActiveModal.NONE
         _selectedFile.value = null
         modalBackStack.clear()
         if (goToFiles) {
-            setTab(NavigationTab.FILES)
+            setTab(NavigationTab.HOME)
         }
     }
 
@@ -292,26 +292,7 @@ class PdfMasterViewModel(application: Application) : AndroidViewModel(applicatio
     val recentFiles: StateFlow<List<PdfFileRecord>> = repository.recentFiles
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // Filtered files for Files screen
-    val filteredFiles: StateFlow<List<PdfFileRecord>> = combine(
-        allFiles,
-        searchQuery,
-        selectedCategory
-    ) { files, query, cat ->
-        files.filter { file ->
-            val matchesQuery = query.isBlank() || file.name.contains(query, ignoreCase = true)
-            val matchesCat = when (cat) {
-                "All" -> true
-                "Recent" -> true
-                "Created" -> file.category == "created"
-                "Converted" -> file.category == "converted"
-                "Scanned" -> file.category == "scanned"
-                "Downloads" -> file.category == "downloads"
-                else -> true
-            }
-            matchesQuery && matchesCat
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
 
     // App-wide Navigation Back Stack Tracking
     private val tabBackStack = mutableListOf<NavigationTab>()

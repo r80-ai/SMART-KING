@@ -175,9 +175,6 @@ fun ToolActionModalsHost(viewModel: PdfMasterViewModel) {
                     if (resultInfo.isPhotoOutput) "image/jpeg" else "application/pdf"
                 )
             },
-            onSaveAndOpenInFiles = {
-                viewModel.dismissToolResult(goToFiles = true)
-            },
             onDismiss = {
                 viewModel.dismissToolResult(goToFiles = false)
             }

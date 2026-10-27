@@ -37,7 +37,6 @@ import com.example.ui.ActiveModal
 import com.example.ui.NavigationTab
 import com.example.ui.PdfMasterViewModel
 import com.example.ui.dialogs.ToolActionModalsHost
-import com.example.ui.screens.FilesScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.PhotoToolsScreen
 import com.example.ui.screens.SettingsScreen
@@ -131,23 +130,7 @@ fun PdfMasterApp(viewModel: PdfMasterViewModel) {
             .fillMaxSize()
             .testTag("app_scaffold"),
         snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-        floatingActionButton = {
-            if (currentTab == NavigationTab.FILES && activeModal == ActiveModal.NONE) {
-                FloatingActionButton(
-                    onClick = { viewModel.openModal(ActiveModal.SCANNER) },
-                    containerColor = CrimsonPrimary,
-                    contentColor = Color.White,
-                    elevation = FloatingActionButtonDefaults.elevation(defaultElevation = 4.dp),
-                    modifier = Modifier.testTag("fab_scan")
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.CameraAlt,
-                        contentDescription = "Scan Document",
-                        modifier = Modifier.size(24.dp)
-                    )
-                }
-            }
-        }
+
     ) { innerPadding ->
         Box(
             modifier = Modifier
@@ -189,7 +172,6 @@ fun PdfMasterApp(viewModel: PdfMasterViewModel) {
                             }
                         }
                     )
-                    NavigationTab.FILES -> FilesScreen(viewModel = viewModel)
                     NavigationTab.SETTINGS -> SettingsScreen(viewModel = viewModel)
                 }
             }

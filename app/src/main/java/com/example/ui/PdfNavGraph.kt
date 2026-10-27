@@ -10,7 +10,6 @@ import com.example.ui.screens.RemovePagesScreen
 object PdfNavRoutes {
     const val ROUTE_HOME = "home"
     const val ROUTE_TOOLS = "tools"
-    const val ROUTE_FILES = "files"
     const val ROUTE_SETTINGS = "settings"
     const val ROUTE_REMOVE_PAGES = "remove_pages"
     const val ROUTE_MERGE = "merge"
