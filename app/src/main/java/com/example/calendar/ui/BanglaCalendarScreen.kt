@@ -2,17 +2,23 @@ package com.example.calendar.ui
 
 import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import coil.compose.AsyncImage
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -283,7 +289,8 @@ fun BanglaCalendarScreen(
 
                                     val cellEvents = monthEventsMap[cellDate] ?: emptyList()
                                     val isHoliday = isSunday || cellEvents.any { it.isHoliday || it.category == EventCategory.GOVERNMENT_HOLIDAY }
-                                    val visualEvent = cellEvents.firstOrNull { it.visualType != null || !it.photoUrl.isNullOrEmpty() || it.type == "ISLAMIC" || it.type == "HINDU" }
+                                    val visualEvent = cellEvents.firstOrNull { it.resolveDrawableRes() != null || !it.photoUrl.isNullOrEmpty() }
+                                        ?: cellEvents.firstOrNull { it.visualType != null || it.type == "ISLAMIC" || it.type == "HINDU" }
                                     val textEvent = cellEvents.firstOrNull { it != visualEvent } ?: cellEvents.firstOrNull()
 
                                     Box(
@@ -445,10 +452,17 @@ fun BanglaCalendarScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         // Multi-calendar Date Headers
+                        val englishMonthName = when (selectedDate.month) {
+                            1 -> "January"; 2 -> "February"; 3 -> "March"; 4 -> "April"
+                            5 -> "May"; 6 -> "June"; 7 -> "July"; 8 -> "August"
+                            9 -> "September"; 10 -> "October"; 11 -> "November"; 12 -> "December"
+                            else -> ""
+                        }
+
                         Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                             // 1. English Gregorian Date
                             Text(
-                                text = "${selectedDate.day} ${BanglaDate.getGregorianMonthNameBn(selectedDate.month)} ${BanglaDate.toBanglaDigits(selectedDate.year)} খ্রিষ্টাব্দ",
+                                text = "${selectedDate.day} $englishMonthName ${selectedDate.year} | ${selectedDate.day} ${BanglaDate.getGregorianMonthNameBn(selectedDate.month)} ${BanglaDate.toBanglaDigits(selectedDate.year)} খ্রিষ্টাব্দ",
                                 style = MaterialTheme.typography.titleSmall.copy(
                                     fontWeight = FontWeight.SemiBold,
                                     fontSize = 15.sp
@@ -498,57 +512,115 @@ fun BanglaCalendarScreen(
                                         }
                                     }
 
-                                    Column(
+                                    val evDrawableRes = ev.resolveDrawableRes()
+
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(Color(0xFF0F1522), RoundedCornerShape(8.dp))
-                                            .border(0.5.dp, Color(0xFF222F43), RoundedCornerShape(8.dp))
+                                            .background(Color(0xFF0F1522), RoundedCornerShape(10.dp))
+                                            .border(0.5.dp, Color(0xFF222F43), RoundedCornerShape(10.dp))
                                             .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(4.dp),
-                                                color = badgeBg
+                                        // Circular / rounded avatar showcasing the corresponding drawable image
+                                        if (evDrawableRes != null) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                                    .border(1.5.dp, Color(0xFFD4A017), CircleShape),
+                                                contentAlignment = Alignment.Center
                                             ) {
-                                                Text(
-                                                    text = badgeText,
-                                                    style = MaterialTheme.typography.labelSmall.copy(
-                                                        fontSize = 10.5.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    ),
-                                                    color = badgeFg,
-                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                Image(
+                                                    painter = painterResource(id = evDrawableRes),
+                                                    contentDescription = ev.titleBn,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
                                                 )
                                             }
+                                        } else if (!ev.photoUrl.isNullOrEmpty()) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(52.dp)
+                                                    .clip(CircleShape)
+                                                    .border(1.5.dp, Color(0xFFD4A017), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                AsyncImage(
+                                                    model = ev.photoUrl,
+                                                    contentDescription = ev.titleBn,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            }
+                                        } else if (ev.type == "ISLAMIC" || ev.type == "HINDU" || ev.category == EventCategory.BIRTHDAY) {
+                                            CalendarCellVisual(
+                                                event = ev,
+                                                isToday = false,
+                                                modifier = Modifier.size(44.dp)
+                                            )
+                                        }
 
-                                            if (ev.moonSightingAdjustable) {
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Surface(
+                                                    shape = RoundedCornerShape(4.dp),
+                                                    color = badgeBg
+                                                ) {
+                                                    Text(
+                                                        text = badgeText,
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontSize = 10.5.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        ),
+                                                        color = badgeFg,
+                                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                    )
+                                                }
+
+                                                if (ev.moonSightingAdjustable) {
+                                                    Text(
+                                                        text = "(±১ দিন চাঁদ দেখার ওপর নির্ভরশীল)",
+                                                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                        color = Color(0xFF94A3B8)
+                                                    )
+                                                }
+                                            }
+
+                                            Text(
+                                                text = ev.titleBn,
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 15.sp
+                                                ),
+                                                color = badgeFg
+                                            )
+
+                                            if (!ev.titleEn.isNullOrBlank() && ev.titleEn != ev.titleBn) {
                                                 Text(
-                                                    text = "(±১ দিন চাঁদ দেখার ওপর নির্ভরশীল)",
-                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                    text = ev.titleEn,
+                                                    style = MaterialTheme.typography.labelMedium.copy(
+                                                        fontSize = 12.sp,
+                                                        fontWeight = FontWeight.Medium
+                                                    ),
                                                     color = Color(0xFF94A3B8)
                                                 )
                                             }
-                                        }
 
-                                        Text(
-                                            text = ev.titleBn,
-                                            style = MaterialTheme.typography.titleMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 15.sp
-                                            ),
-                                            color = badgeFg
-                                        )
-
-                                        if (!ev.descriptionBn.isNullOrBlank()) {
-                                            Text(
-                                                text = ev.descriptionBn,
-                                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
-                                                color = Color(0xFFCBD5E1)
-                                            )
+                                            if (!ev.descriptionBn.isNullOrBlank()) {
+                                                Text(
+                                                    text = ev.descriptionBn,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
+                                                    color = Color(0xFFCBD5E1)
+                                                )
+                                            }
                                         }
                                     }
                                 }

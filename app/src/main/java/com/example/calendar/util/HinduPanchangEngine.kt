@@ -107,7 +107,8 @@ object HinduPanchangEngine {
                         descriptionBn = "শ্রী সত্যনারায়ণ পূজা ও পূর্ণিমা স্নান",
                         descriptionEn = "Full Moon day and Satyanarayan Puja",
                         visualType = EventVisualType.TITHI_PURNIMA,
-                        type = "HINDU"
+                        type = "HINDU",
+                        imageResId = com.example.R.drawable.photo_moon_full
                     )
                 )
             }
@@ -123,7 +124,8 @@ object HinduPanchangEngine {
                         descriptionBn = "শ্রী হরি আরাধনা ও একাদশী উপবাস",
                         descriptionEn = "Holy Ekadashi fasting and Lord Hari worship",
                         visualType = EventVisualType.KRISHNA,
-                        type = "HINDU"
+                        type = "HINDU",
+                        imageResId = com.example.R.drawable.photo_krishna
                     )
                 )
             }
@@ -139,7 +141,8 @@ object HinduPanchangEngine {
                         descriptionBn = "অমাবস্যা স্নান ও পিতৃ তর্পণ",
                         descriptionEn = "New Moon day and Tarpan",
                         visualType = EventVisualType.TITHI_AMAVASYA,
-                        type = "HINDU"
+                        type = "HINDU",
+                        imageResId = com.example.R.drawable.photo_moon_dark
                     )
                 )
             }
@@ -203,7 +206,7 @@ object HinduPanchangEngine {
             10 -> when (d) {
                 1 -> list.add(createHinduEvent("h25_navami", "দুর্গাপূজা - মহা নবমী", "Durga Puja - Maha Navami", date, true, "মহা নবমী বিহিত পূজা ও যজ্ঞ", EventVisualType.DURGA))
                 2 -> list.add(createHinduEvent("h25_dashami", "বিজয়া দশমী ও সিঁদুর খেলা", "Bijoya Dashami / Dussehra", date, true, "মা দুর্গার বিসর্জন ও শুভ বিজয়ার শুভেচ্ছা", EventVisualType.DURGA))
-                6 -> list.add(createHinduEvent("h25_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "আশ্বিনী পূর্ণিমা — ধনধান্যের দেবী মা লক্ষ্মীর আরাধনা", EventVisualType.SARASWATI))
+                6 -> list.add(createHinduEvent("h25_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "আশ্বিনী পূর্ণিমা — ধনধান্যের দেবী মা লক্ষ্মীর আরাধনা", EventVisualType.LAXMI))
                 20 -> list.add(createHinduEvent("h25_kali", "কালীপূজা ও দীপাবলি", "Kali Puja & Diwali", date, true, "কার্তিকী অমাবস্যা — শ্যামাপূজা ও আলোর উৎসব", EventVisualType.KALI))
                 22 -> list.add(createHinduEvent("h25_bhaiphota", "ভাইফোঁটা ও ভ্রাতৃদ্বিতীয়া", "Bhai Phota", date, true, "কার্তিক শুক্লা দ্বিতীয়া — ভাইয়ের দীর্ঘায়ু কামনায় ফোঁটা", EventVisualType.HINDU_DIYA))
                 26 -> list.add(createHinduEvent("h25_chhath", "ছট পূজা (সূর্য অর্ঘ্য)", "Chhath Puja", date, true, "কার্তিক শুক্লা ষষ্ঠী — সূর্য দেবতার মহা আরাধনা", EventVisualType.HINDU_DIYA))
@@ -260,7 +263,7 @@ object HinduPanchangEngine {
                 19 -> list.add(createHinduEvent("h26_ashtami", "দুর্গাপূজা - মহা অষ্টমী ও সন্ধিপূজা", "Durga Puja - Maha Ashtami & Sandhi Puja", date, true, "অষ্টমী অঞ্জলি ও সন্ধিপূজা", EventVisualType.DURGA))
                 20 -> list.add(createHinduEvent("h26_navami", "দুর্গাপূজা - মহা নবমী", "Durga Puja - Maha Navami", date, true, "নবমী যজ্ঞ ও আরতি", EventVisualType.DURGA))
                 21 -> list.add(createHinduEvent("h26_dashami", "বিজয়া দশমী ও সিঁদুর খেলা", "Bijoya Dashami / Dussehra", date, true, "প্রতিমা বিসর্জন ও শুভ বিজয়ার প্রণাম", EventVisualType.DURGA))
-                25 -> list.add(createHinduEvent("h26_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "আশ্বিন পূর্ণিমা — ধনধান্য ও সৌভাগ্যের পূজা", EventVisualType.SARASWATI))
+                25 -> list.add(createHinduEvent("h26_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "আশ্বিন পূর্ণিমা — ধনধান্য ও সৌভাগ্যের পূজা", EventVisualType.LAXMI))
             }
             11 -> when (d) {
                 8 -> list.add(createHinduEvent("h26_kali", "কালীপূজা ও দীপাবলি", "Kali Puja & Diwali", date, true, "কার্তিক অমাবস্যা — শ্যামাপূজা ও আলোক উৎসব", EventVisualType.KALI))
@@ -319,7 +322,7 @@ object HinduPanchangEngine {
                 8 -> list.add(createHinduEvent("h27_ashtami", "দুর্গাপূজা - মহা অষ্টমী ও সন্ধিপূজা", "Durga Puja - Maha Ashtami & Sandhi Puja", date, true, "মহা অষ্টমী", EventVisualType.DURGA))
                 9 -> list.add(createHinduEvent("h27_navami", "দুর্গাপূজা - মহা নবমী", "Durga Puja - Maha Navami", date, true, "মহা নবমী", EventVisualType.DURGA))
                 10 -> list.add(createHinduEvent("h27_dashami", "বিজয়া দশমী ও সিঁদুর খেলা", "Bijoya Dashami / Dussehra", date, true, "শুভ বিজয়া দশমী", EventVisualType.DURGA))
-                15 -> list.add(createHinduEvent("h27_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "আশ্বিন পূর্ণিমা — লক্ষ্মী পূজা", EventVisualType.SARASWATI))
+                15 -> list.add(createHinduEvent("h27_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "আশ্বিন পূর্ণিমা — লক্ষ্মী পূজা", EventVisualType.LAXMI))
                 29 -> list.add(createHinduEvent("h27_kali", "কালীপূজা ও দীপাবলি", "Kali Puja & Diwali", date, true, "কার্তিক অমাবস্যা — দীপাবলি ও কালীপূজা", EventVisualType.KALI))
                 31 -> list.add(createHinduEvent("h27_bhaiphota", "ভাইফোঁটা ও ভ্রাতৃদ্বিতীয়া", "Bhai Phota", date, true, "ভাইফোঁটা", EventVisualType.HINDU_DIYA))
             }
@@ -371,7 +374,7 @@ object HinduPanchangEngine {
                 29 -> list.add(createHinduEvent("h28_dashami", "বিজয়া দশমী", "Bijoya Dashami", date, true, "শুভ বিজয়া", EventVisualType.DURGA))
             }
             10 -> when (d) {
-                3 -> list.add(createHinduEvent("h28_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "কোজাগরী পূর্ণিমা", EventVisualType.SARASWATI))
+                3 -> list.add(createHinduEvent("h28_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "কোজাগরী পূর্ণিমা", EventVisualType.LAXMI))
                 17 -> list.add(createHinduEvent("h28_kali", "কালীপূজা ও দীপাবলি", "Kali Puja & Diwali", date, true, "দীপাবলি ও কালীপূজা", EventVisualType.KALI))
                 19 -> list.add(createHinduEvent("h28_bhaiphota", "ভাইফোঁটা", "Bhai Phota", date, true, "ভাইফোঁটা", EventVisualType.HINDU_DIYA))
                 23 -> list.add(createHinduEvent("h28_chhath", "ছট পূজা", "Chhath Puja", date, true, "ছট পূজা", EventVisualType.HINDU_DIYA))
@@ -444,7 +447,8 @@ object HinduPanchangEngine {
             descriptionEn = titleEn,
             visualType = visualType,
             type = "HINDU",
-            moonSightingAdjustable = false
+            moonSightingAdjustable = false,
+            imageResId = EventDrawableMapper.getDrawableResForVisualType(visualType)
         )
     }
 }

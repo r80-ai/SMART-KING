@@ -86,4 +86,43 @@ class SpecialDaysRepositoryTest {
         val gfEvents = HinduPanchangEngine.getHinduFestivalsForDate(goodFridayDate)
         assertTrue("Good Friday should be mapped on April 3, 2026", gfEvents.any { it.titleBn.contains("গুড ফ্রাইডে") })
     }
+
+    @Test
+    fun testEventDrawableMapping() {
+        // 1. Dr. APJ Abdul Kalam on 15 October
+        val oct15Events = SpecialDaysRepository.getSpecialDayEventsForDate(CalendarDate(2026, 10, 15), context)
+        val kalamEvent = oct15Events.find { it.titleBn.contains("কালাম") || it.id.contains("10-15") }
+        assertNotNull("Kalam event should exist on Oct 15", kalamEvent)
+        assertEquals(com.example.R.drawable.photo_dr_apj_abdul_kalam, kalamEvent!!.resolveDrawableRes())
+
+        // 2. Netaji on 23 January
+        val jan23Events = SpecialDaysRepository.getSpecialDayEventsForDate(CalendarDate(2026, 1, 23), context)
+        val netajiEvent = jan23Events.find { it.titleBn.contains("নেতাজি") }
+        assertNotNull("Netaji event should exist", netajiEvent)
+        assertEquals(com.example.R.drawable.photo_netaji, netajiEvent!!.resolveDrawableRes())
+
+        // 3. Gandhi on 2 October
+        val oct2Events = SpecialDaysRepository.getSpecialDayEventsForDate(CalendarDate(2026, 10, 2), context)
+        val gandhiEvent = oct2Events.find { it.titleBn.contains("গান্ধী") }
+        assertNotNull("Gandhi event should exist", gandhiEvent)
+        assertEquals(com.example.R.drawable.photo_gandhi, gandhiEvent!!.resolveDrawableRes())
+
+        // 4. Lakshmi Puja in 2026 (25 October 2026)
+        val laxmiEvents = HinduPanchangEngine.getHinduFestivalsForDate(CalendarDate(2026, 10, 25))
+        val laxmiEvent = laxmiEvents.find { it.titleBn.contains("লক্ষ্মী") }
+        assertNotNull("Lakshmi puja should exist on Oct 25, 2026", laxmiEvent)
+        assertEquals(com.example.R.drawable.photo_laxmi, laxmiEvent!!.resolveDrawableRes())
+
+        // 5. Kali Puja in 2026 (8 November 2026)
+        val kaliEvents = HinduPanchangEngine.getHinduFestivalsForDate(CalendarDate(2026, 11, 8))
+        val kaliEvent = kaliEvents.find { it.titleBn.contains("কালী") }
+        assertNotNull("Kali puja should exist on Nov 8, 2026", kaliEvent)
+        assertEquals(com.example.R.drawable.photo_kali, kaliEvent!!.resolveDrawableRes())
+
+        // 6. Rabindranath Tagore on 8 May
+        val tagoreEvents = CalendarEventsRepository.getRegionalObservances(CalendarDate(2026, 5, 8))
+        val tagoreEvent = tagoreEvents.find { it.titleBn.contains("রবীন্দ্রনাথ") }
+        assertNotNull("Tagore event should exist on May 8", tagoreEvent)
+        assertEquals(com.example.R.drawable.photo_tagore, tagoreEvent!!.resolveDrawableRes())
+    }
 }

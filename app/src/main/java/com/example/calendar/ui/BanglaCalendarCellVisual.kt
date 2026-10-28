@@ -35,7 +35,7 @@ fun CalendarCellVisual(
     isToday: Boolean,
     modifier: Modifier = Modifier
 ) {
-    val drawableRes = when (event.visualType) {
+    val drawableRes = event.resolveDrawableRes() ?: when (event.visualType) {
         EventVisualType.KRISHNA -> R.drawable.photo_krishna
         EventVisualType.RADHAKRISHNAN -> R.drawable.photo_radhakrishnan
         EventVisualType.GANESHA -> R.drawable.photo_ganesha
@@ -44,6 +44,9 @@ fun CalendarCellVisual(
         EventVisualType.TITHI_PURNIMA -> R.drawable.photo_moon_full
         EventVisualType.TITHI_AMAVASYA -> R.drawable.photo_moon_dark
         EventVisualType.DURGA -> R.drawable.photo_durga
+        EventVisualType.KALI -> R.drawable.photo_kali
+        EventVisualType.LAXMI -> R.drawable.photo_laxmi
+        EventVisualType.APJ_ABDUL_KALAM -> R.drawable.photo_dr_apj_abdul_kalam
         EventVisualType.SARASWATI -> R.drawable.photo_saraswati
         EventVisualType.SHIVA -> R.drawable.photo_shiva
         EventVisualType.JAGANNATH -> R.drawable.photo_jagannath
