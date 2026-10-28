@@ -12,6 +12,8 @@ import com.example.amardokan.data.Customer
 import com.example.amardokan.data.ServiceItem
 import com.example.amardokan.data.Bill
 import com.example.amardokan.data.BillItem
+import com.example.model.FestivalEntity
+import com.example.data.FestivalDao
 import com.example.amardokan.data.Payment
 import com.example.amardokan.data.SyncMetadata
 import com.example.amardokan.data.AmarDokanDao
@@ -25,15 +27,17 @@ import com.example.amardokan.data.AmarDokanDao
         Bill::class,
         BillItem::class,
         Payment::class,
-        SyncMetadata::class
+        SyncMetadata::class,
+        FestivalEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun pdfFileDao(): PdfFileDao
     abstract fun userBirthdayDao(): UserBirthdayDao
     abstract fun amarDokanDao(): AmarDokanDao
+    abstract fun festivalDao(): FestivalDao
 
     companion object {
         @Volatile
@@ -58,6 +62,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS `calendar_festivals` (`id` TEXT NOT NULL, `titleBn` TEXT NOT NULL, `titleEn` TEXT NOT NULL, `year` INTEGER NOT NULL, `month` INTEGER NOT NULL, `day` INTEGER NOT NULL, `type` TEXT NOT NULL, `isHoliday` INTEGER NOT NULL, `descriptionBn` TEXT, `descriptionEn` TEXT, `visualType` TEXT, `moonSightingAdjustable` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
+
         fun getDatabase(
             context: Context,
             userKey: String = com.example.util.UserManager.getCurrentUserKey(context)
@@ -76,7 +86,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     dbName
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
             }

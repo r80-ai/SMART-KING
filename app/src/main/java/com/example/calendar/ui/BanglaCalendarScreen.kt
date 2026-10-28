@@ -31,6 +31,7 @@ import com.example.calendar.model.CalendarEvent
 import com.example.calendar.model.EventCategory
 import com.example.calendar.util.BanglaCalendarConverter
 import com.example.calendar.util.CalendarEventsRepository
+import com.example.calendar.util.HijriCalendarEngine
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -282,8 +283,8 @@ fun BanglaCalendarScreen(
 
                                     val cellEvents = monthEventsMap[cellDate] ?: emptyList()
                                     val isHoliday = isSunday || cellEvents.any { it.isHoliday || it.category == EventCategory.GOVERNMENT_HOLIDAY }
-                                    val visualEvent = cellEvents.firstOrNull { it.visualType != null || !it.photoUrl.isNullOrEmpty() }
-                                    val textEvent = cellEvents.firstOrNull { it.visualType == null && it.photoUrl.isNullOrEmpty() }
+                                    val visualEvent = cellEvents.firstOrNull { it.visualType != null || !it.photoUrl.isNullOrEmpty() || it.type == "ISLAMIC" || it.type == "HINDU" }
+                                    val textEvent = cellEvents.firstOrNull { it != visualEvent } ?: cellEvents.firstOrNull()
 
                                     Box(
                                         modifier = Modifier
@@ -335,7 +336,8 @@ fun BanglaCalendarScreen(
                                                         !isCurrentMonth -> Color(0xFF4B5563)
                                                         else -> Color(0xFF94A3B8)
                                                     },
-                                                    maxLines = 1
+                                                    maxLines = 1,
+                                                    softWrap = false
                                                 )
                                             }
 
@@ -355,7 +357,7 @@ fun BanglaCalendarScreen(
                                                 textAlign = TextAlign.Center
                                             )
 
-                                            // 3. Festival photo or clean Bengali label
+                                            // 3. Festival photo/badge or clean Bengali label
                                             Box(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
@@ -377,8 +379,15 @@ fun BanglaCalendarScreen(
                                                                 fontSize = 7.sp,
                                                                 fontWeight = if (isToday) FontWeight.Bold else FontWeight.Normal
                                                             ),
-                                                            color = if (isToday) Color(0xFF111827) else Color(0xFFF1F5F9),
+                                                            color = when {
+                                                                isToday -> Color(0xFF111827)
+                                                                visualEvent.type == "ISLAMIC" -> Color(0xFF34D399)
+                                                                visualEvent.type == "HINDU" -> Color(0xFFFFD54F)
+                                                                visualEvent.isHoliday -> Color(0xFFEF5350)
+                                                                else -> Color(0xFFF1F5F9)
+                                                            },
                                                             maxLines = 1,
+                                                            softWrap = false,
                                                             overflow = TextOverflow.Ellipsis,
                                                             textAlign = TextAlign.Center,
                                                             modifier = Modifier.padding(horizontal = 1.dp)
@@ -393,10 +402,13 @@ fun BanglaCalendarScreen(
                                                         ),
                                                         color = when {
                                                             isToday -> Color(0xFF111827)
+                                                            textEvent.type == "ISLAMIC" -> Color(0xFF34D399)
+                                                            textEvent.type == "HINDU" -> Color(0xFFFFD54F)
                                                             isHoliday -> Color(0xFFEF5350)
                                                             else -> Color(0xFFE2E8F0)
                                                         },
                                                         maxLines = 1,
+                                                        softWrap = false,
                                                         overflow = TextOverflow.Ellipsis,
                                                         textAlign = TextAlign.Center,
                                                         modifier = Modifier.padding(horizontal = 1.dp)
@@ -414,9 +426,12 @@ fun BanglaCalendarScreen(
                 }
             }
 
-            // SELECTED DATE INFO CARD (matching reference design)
+            // SELECTED DATE INFO CARD (Gregorian + Bengali Bangabda + Islamic Hijri + Active Events)
             item {
-                val primaryEvent = selectedDateEvents.firstOrNull()
+                val selectedHijriDate = remember(selectedDate) {
+                    HijriCalendarEngine.toHijriDate(selectedDate)
+                }
+
                 Card(
                     shape = RoundedCornerShape(12.dp),
                     colors = CardDefaults.cardColors(containerColor = Color(0xFF121927)),
@@ -426,35 +441,117 @@ fun BanglaCalendarScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // Date header: e.g. "১৮ সেপ্টেম্বর ২০২৫ (৩ আশ্বিন ১৪৩২)"
-                        Text(
-                            text = "${selectedDate.day} ${BanglaDate.getGregorianMonthNameBn(selectedDate.month)} ${BanglaDate.toBanglaDigits(selectedDate.year)} (${selectedBanglaDate.dayBn} ${selectedBanglaDate.monthNameBn} ${selectedBanglaDate.yearBn})",
-                            style = MaterialTheme.typography.titleSmall.copy(
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 14.5.sp
-                            ),
-                            color = Color.White
+                        // Multi-calendar Date Headers
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            // 1. English Gregorian Date
+                            Text(
+                                text = "${selectedDate.day} ${BanglaDate.getGregorianMonthNameBn(selectedDate.month)} ${BanglaDate.toBanglaDigits(selectedDate.year)} খ্রিষ্টাব্দ",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 15.sp
+                                ),
+                                color = Color.White
+                            )
+
+                            // 2. Bengali Date (Bangabda)
+                            Text(
+                                text = "${selectedBanglaDate.dayBn} ${selectedBanglaDate.monthNameBn} ${selectedBanglaDate.yearBn} বঙ্গাব্দ (${selectedBanglaDate.dayNameBn})",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.5.sp
+                                ),
+                                color = Color(0xFFFFB74D) // Warm Bengali Orange
+                            )
+
+                            // 3. Hijri Date (Lunar / Islamic)
+                            Text(
+                                text = "${selectedHijriDate.dayBn} ${selectedHijriDate.monthNameBn} ${selectedHijriDate.yearBn} হিজরি (${selectedHijriDate.monthNameAr})",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    fontWeight = FontWeight.Normal,
+                                    fontSize = 12.5.sp
+                                ),
+                                color = Color(0xFF34D399) // Emerald Mint Green
+                            )
+                        }
+
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp),
+                            thickness = 0.8.dp,
+                            color = Color(0xFF1E293B)
                         )
 
-                        // Festival / Occasion title in warm gold
-                        if (primaryEvent != null) {
-                            Text(
-                                text = primaryEvent.titleBn,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 16.sp
-                                ),
-                                color = Color(0xFFFFD54F)
-                            )
-                            if (!primaryEvent.descriptionBn.isNullOrBlank()) {
-                                Text(
-                                    text = primaryEvent.descriptionBn,
-                                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.sp),
-                                    color = Color(0xFF94A3B8)
-                                )
+                        // Active Events List for this date
+                        if (selectedDateEvents.isNotEmpty()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                selectedDateEvents.forEach { ev ->
+                                    val (badgeText, badgeBg, badgeFg) = when (ev.type) {
+                                        "ISLAMIC" -> Triple("ইসলামিক উৎসব", Color(0x2210B981), Color(0xFF34D399))
+                                        "HINDU" -> Triple("সনাতন / পূজা", Color(0x22F59E0B), Color(0xFFFFD54F))
+                                        "BIRTHDAY" -> Triple("জন্মদিন", Color(0x22EC4899), Color(0xFFF472B6))
+                                        else -> when (ev.category) {
+                                            EventCategory.GOVERNMENT_HOLIDAY -> Triple("সরকারি ছুটি", Color(0x22EF4444), Color(0xFFF87171))
+                                            EventCategory.NATIONAL_DAY -> Triple("জাতীয় দিবস", Color(0x2238BDF8), Color(0xFF38BDF8))
+                                            else -> Triple("বিশেষ দিবস", Color(0x2264748B), Color(0xFF94A3B8))
+                                        }
+                                    }
+
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(Color(0xFF0F1522), RoundedCornerShape(8.dp))
+                                            .border(0.5.dp, Color(0xFF222F43), RoundedCornerShape(8.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Surface(
+                                                shape = RoundedCornerShape(4.dp),
+                                                color = badgeBg
+                                            ) {
+                                                Text(
+                                                    text = badgeText,
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        fontSize = 10.5.sp,
+                                                        fontWeight = FontWeight.Bold
+                                                    ),
+                                                    color = badgeFg,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+
+                                            if (ev.moonSightingAdjustable) {
+                                                Text(
+                                                    text = "(±১ দিন চাঁদ দেখার ওপর নির্ভরশীল)",
+                                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                                                    color = Color(0xFF94A3B8)
+                                                )
+                                            }
+                                        }
+
+                                        Text(
+                                            text = ev.titleBn,
+                                            style = MaterialTheme.typography.titleMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 15.sp
+                                            ),
+                                            color = badgeFg
+                                        )
+
+                                        if (!ev.descriptionBn.isNullOrBlank()) {
+                                            Text(
+                                                text = ev.descriptionBn,
+                                                style = MaterialTheme.typography.bodyMedium.copy(fontSize = 12.5.sp),
+                                                color = Color(0xFFCBD5E1)
+                                            )
+                                        }
+                                    }
+                                }
                             }
                         } else {
                             Text(
@@ -468,57 +565,95 @@ fun BanglaCalendarScreen(
             }
 
             // DAY STEPPER CONTROLS & ADD BIRTHDAY BUTTON
+            // Guaranteed singleLine / softWrap=false with contentPadding to prevent any vertical wrapping
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     OutlinedButton(
                         onClick = { selectedDate = selectedDate.minusDays(1) },
-                        modifier = Modifier.weight(1f).testTag("btn_prev_day_bangla"),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_prev_day_bangla"),
                         shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE2E8F0)),
                         border = BorderStroke(1.dp, Color(0xFF334155))
                     ) {
-                        Text("পূর্বের দিন", fontSize = 12.sp)
+                        Text(
+                            text = "পূর্বের দিন",
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
                     Button(
                         onClick = { selectedDate = today },
-                        modifier = Modifier.weight(1f).testTag("btn_quick_today_bangla"),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_quick_today_bangla"),
                         shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = Color(0xFFD97706),
                             contentColor = Color.White
                         )
                     ) {
-                        Text("আজকের দিন", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            text = "আজকের দিন",
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
                     OutlinedButton(
                         onClick = { selectedDate = selectedDate.plusDays(1) },
-                        modifier = Modifier.weight(1f).testTag("btn_next_day_bangla"),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_next_day_bangla"),
                         shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                         colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFFE2E8F0)),
                         border = BorderStroke(1.dp, Color(0xFF334155))
                     ) {
-                        Text("পরের দিন", fontSize = 12.sp)
+                        Text(
+                            text = "পরের দিন",
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
 
                     // Birthday button
                     FilledTonalButton(
                         onClick = { showAddBirthdayDialog = true },
-                        modifier = Modifier.testTag("btn_add_bday_from_bangla"),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("btn_add_bday_from_bangla"),
                         shape = RoundedCornerShape(10.dp),
+                        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
                             containerColor = Color(0xFF1E293B),
                             contentColor = Color(0xFFE2E8F0)
                         )
                     ) {
-                        Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text("জন্মদিন", fontSize = 12.sp)
+                        Icon(
+                            Icons.Default.Add,
+                            contentDescription = null,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text(
+                            text = "জন্মদিন",
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            softWrap = false
+                        )
                     }
                 }
             }

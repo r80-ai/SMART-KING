@@ -91,13 +91,18 @@ fun MonthHolidaysDialog(
                 ) {
                     items(events) { event ->
                         val bDate = BanglaCalendarConverter.toBanglaDate(event.date)
-                        val categoryColor = when (event.category) {
-                            EventCategory.GOVERNMENT_HOLIDAY -> MaterialTheme.colorScheme.error
-                            EventCategory.FESTIVAL_PUJA -> ToolPurple
-                            EventCategory.NATIONAL_DAY -> ToolOrange
-                            EventCategory.SCHOOL_HOLIDAY -> ToolTeal
-                            EventCategory.BIRTHDAY -> ToolGreen
-                            EventCategory.OBSERVANCE -> MaterialTheme.colorScheme.primary
+                        val (categoryColor, categoryLabel) = when (event.type) {
+                            "ISLAMIC" -> Pair(Color(0xFF10B981), if (isBangla) "ইসলামিক উৎসব" else "Islamic Festival")
+                            "HINDU" -> Pair(Color(0xFFF59E0B), if (isBangla) "সনাতন / পূজা" else "Hindu Festival")
+                            "BIRTHDAY" -> Pair(ToolGreen, if (isBangla) "জন্মদিন" else "Birthday")
+                            else -> when (event.category) {
+                                EventCategory.GOVERNMENT_HOLIDAY -> Pair(MaterialTheme.colorScheme.error, if (isBangla) event.category.nameBn else event.category.nameEn)
+                                EventCategory.FESTIVAL_PUJA -> Pair(ToolPurple, if (isBangla) event.category.nameBn else event.category.nameEn)
+                                EventCategory.NATIONAL_DAY -> Pair(ToolOrange, if (isBangla) event.category.nameBn else event.category.nameEn)
+                                EventCategory.SCHOOL_HOLIDAY -> Pair(ToolTeal, if (isBangla) event.category.nameBn else event.category.nameEn)
+                                EventCategory.BIRTHDAY -> Pair(ToolGreen, if (isBangla) event.category.nameBn else event.category.nameEn)
+                                EventCategory.OBSERVANCE -> Pair(MaterialTheme.colorScheme.primary, if (isBangla) event.category.nameBn else event.category.nameEn)
+                            }
                         }
 
                         Card(
@@ -155,20 +160,33 @@ fun MonthHolidaysDialog(
 
                                     Spacer(modifier = Modifier.height(3.dp))
 
-                                    // Category Pill
-                                    Surface(
-                                        shape = RoundedCornerShape(4.dp),
-                                        color = categoryColor.copy(alpha = 0.15f)
+                                    // Category Pill + Moon sighting indicator
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Text(
-                                            text = if (isBangla) event.category.nameBn else event.category.nameEn,
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontSize = 10.sp
-                                            ),
-                                            color = categoryColor,
-                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
-                                        )
+                                        Surface(
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = categoryColor.copy(alpha = 0.15f)
+                                        ) {
+                                            Text(
+                                                text = categoryLabel,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    fontSize = 10.sp
+                                                ),
+                                                color = categoryColor,
+                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                            )
+                                        }
+
+                                        if (event.moonSightingAdjustable) {
+                                            Text(
+                                                text = if (isBangla) "(±১ দিন চাঁদ দেখার ওপর)" else "(±1 day moon sighting)",
+                                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.5.sp),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }

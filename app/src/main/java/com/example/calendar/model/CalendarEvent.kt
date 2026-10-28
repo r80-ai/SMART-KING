@@ -33,6 +33,8 @@ enum class EventVisualType {
     AMBEDKAR,
     CHRISTMAS,
     EID,
+    ISLAMIC_CRESCENT,
+    HINDU_DIYA,
     TITHI_PURNIMA,
     TITHI_AMAVASYA,
     TITHI_SHUKLA,
@@ -51,5 +53,7 @@ data class CalendarEvent(
     val descriptionBn: String? = null,
     val descriptionEn: String? = null,
     val visualType: EventVisualType? = null,
-    val photoUrl: String? = null
+    val photoUrl: String? = null,
+    val type: String = "NATIONAL", // "HINDU" | "ISLAMIC" | "NATIONAL"
+    val moonSightingAdjustable: Boolean = false // ±1 day indicator
 )
