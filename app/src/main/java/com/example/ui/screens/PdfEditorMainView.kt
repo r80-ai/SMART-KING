@@ -218,7 +218,22 @@ fun PdfEditorMainView(
     var shapeFillColor by remember { mutableStateOf<Int?>(null) }
 
     var eraserSize by remember { mutableStateOf(AnnotationCanvasOverlayView.EraserSize.MEDIUM) }
-    var eraserType by remember { mutableStateOf(AnnotationCanvasOverlayView.EraserType.STROKE) }
+    var eraserType by remember { mutableStateOf(AnnotationCanvasOverlayView.EraserType.MANUAL) }
+    var eraserStrokeWidth by remember { mutableFloatStateOf(44f) }
+    var arrowStyle by remember { mutableStateOf(AnnotationCanvasOverlayView.ArrowStyle.SINGLE) }
+
+    var iconType by remember { mutableStateOf("TICK_CLEAN") }
+    var iconColor by remember { mutableIntStateOf(AndroidColor.rgb(22, 163, 74)) }
+    var iconStrokeWidth by remember { mutableFloatStateOf(3.5f) }
+    var iconFillColor by remember { mutableStateOf<Int?>(null) }
+
+    // Color picker eyedropper state
+    var isColorPickerActive by remember { mutableStateOf(false) }
+    var colorPickerTarget by remember { mutableStateOf("PEN") } // "PEN", "HIGHLIGHT", "SHAPE", "ICON"
+
+    // Emoji picker dialog state
+    var showEmojiPickerDialog by remember { mutableStateOf(false) }
+
     var annotationCanvasRef by remember { mutableStateOf<AnnotationCanvasOverlayView?>(null) }
 
     // Sub-dialogs state
@@ -876,10 +891,20 @@ fun PdfEditorMainView(
                                 onShapeStrokeWidthChange = { shapeStrokeWidth = it },
                                 shapeFillColor = shapeFillColor,
                                 onShapeFillColorChange = { shapeFillColor = it },
-                                eraserType = eraserType,
-                                onEraserTypeChange = { eraserType = it },
+                                arrowStyle = arrowStyle,
+                                onArrowStyleChange = { arrowStyle = it },
+                                iconType = iconType,
+                                onIconTypeChange = { iconType = it },
+                                iconColor = iconColor,
+                                onIconColorChange = { iconColor = it },
+                                iconStrokeWidth = iconStrokeWidth,
+                                onIconStrokeWidthChange = { iconStrokeWidth = it },
+                                iconFillColor = iconFillColor,
+                                onIconFillColorChange = { iconFillColor = it },
                                 eraserSize = eraserSize,
                                 onEraserSizeChange = { eraserSize = it },
+                                eraserStrokeWidth = eraserStrokeWidth,
+                                onEraserStrokeWidthChange = { eraserStrokeWidth = it },
                                 selectedAnnotationId = selectedAnnotationId,
                                 onDeleteSelectedAnnotation = {
                                     selectedAnnotationId?.let { id ->
@@ -903,7 +928,9 @@ fun PdfEditorMainView(
                                             it.type == PdfEngine.AnnotationType.RECTANGLE ||
                                             it.type == PdfEngine.AnnotationType.CIRCLE ||
                                             it.type == PdfEngine.AnnotationType.LINE ||
-                                            it.type == PdfEngine.AnnotationType.ARROW
+                                            it.type == PdfEngine.AnnotationType.ARROW ||
+                                            it.type == PdfEngine.AnnotationType.ICON ||
+                                            it.type == PdfEngine.AnnotationType.ERASER
                                         )
                                     }
                                     if (toRemove.isNotEmpty()) {
@@ -920,7 +947,14 @@ fun PdfEditorMainView(
                                 },
                                 onUndo = { handleUndo() },
                                 canUndo = undoStack.isNotEmpty(),
-                                onDone = { activeTab = EditorTopTab.NONE }
+                                onDone = { activeTab = EditorTopTab.NONE },
+                                onOpenColorPicker = { target ->
+                                    colorPickerTarget = target
+                                    isColorPickerActive = true
+                                },
+                                onOpenEmojiPicker = {
+                                    showEmojiPickerDialog = true
+                                }
                             )
                         }
 
@@ -1348,10 +1382,13 @@ fun PdfEditorMainView(
                                                         annotOverlay.setHighlightMode(highlightColor, highlightWidth, highlightOpacity)
                                                     }
                                                     AnnotationCanvasOverlayView.ToolMode.SHAPE -> {
-                                                        annotOverlay.setShapeMode(shapeType, shapeColor, shapeStrokeWidth, penOpacity, shapeFillColor)
+                                                        annotOverlay.setShapeMode(shapeType, shapeColor, shapeStrokeWidth, penOpacity, shapeFillColor, arrowStyle)
+                                                    }
+                                                    AnnotationCanvasOverlayView.ToolMode.ICON -> {
+                                                        annotOverlay.setIconMode(iconType, iconColor, iconStrokeWidth, 1.0f, iconFillColor)
                                                     }
                                                     AnnotationCanvasOverlayView.ToolMode.ERASER -> {
-                                                        annotOverlay.setEraserMode(eraserSize, eraserType)
+                                                        annotOverlay.setEraserMode(eraserSize, eraserStrokeWidth)
                                                     }
                                                 }
                                                 annotOverlay.elevation = 24f * root.resources.displayMetrics.density
@@ -1377,6 +1414,40 @@ fun PdfEditorMainView(
                                             )
                                         }
                                     )
+
+                                    // Eyedropper Color Picker Loupe Overlay
+                                    if (isColorPickerActive && currentBmp != null) {
+                                        val activeColorForTarget = when (colorPickerTarget) {
+                                            "PEN" -> penColor
+                                            "HIGHLIGHT" -> highlightColor
+                                            "SHAPE" -> shapeColor
+                                            "ICON" -> iconColor
+                                            else -> penColor
+                                        }
+                                        EyedropperOverlay(
+                                            bitmap = currentBmp,
+                                            currentColor = activeColorForTarget,
+                                            onColorSampled = { sampled ->
+                                                when (colorPickerTarget) {
+                                                    "PEN" -> penColor = sampled
+                                                    "HIGHLIGHT" -> highlightColor = sampled
+                                                    "SHAPE" -> shapeColor = sampled
+                                                    "ICON" -> iconColor = sampled
+                                                }
+                                            },
+                                            onColorConfirmed = { finalColor ->
+                                                when (colorPickerTarget) {
+                                                    "PEN" -> penColor = finalColor
+                                                    "HIGHLIGHT" -> highlightColor = finalColor
+                                                    "SHAPE" -> shapeColor = finalColor
+                                                    "ICON" -> iconColor = finalColor
+                                                }
+                                                isColorPickerActive = false
+                                                Toast.makeText(context, "Color picked: #${Integer.toHexString(finalColor).uppercase()}", Toast.LENGTH_SHORT).show()
+                                            },
+                                            modifier = Modifier.fillMaxSize().zIndex(50f)
+                                        )
+                                    }
 
                                     // 3. Interactive Image Overlays: freely drag, reposition, and resize using touch gestures
                                     val pageImageItems = editItems.filter { it.pageIndex == currentPageIndex && it.type == PdfEngine.AnnotationType.IMAGE }
@@ -2641,6 +2712,35 @@ fun PdfEditorMainView(
             }
         )
     }
+
+    if (showEmojiPickerDialog) {
+        PdfEditorEmojiPickerSheet(
+            onEmojiSelected = { emoji ->
+                showEmojiPickerDialog = false
+                pushHistory()
+                val newEmojiItem = PdfEngine.EditItem(
+                    id = java.util.UUID.randomUUID().toString(),
+                    pageIndex = currentPageIndex,
+                    type = PdfEngine.AnnotationType.TEXT,
+                    text = emoji,
+                    posX = (pdfCanvasWidthPx / 2f).coerceAtLeast(40f),
+                    posY = (pdfCanvasHeightPx / 2f).coerceAtLeast(40f),
+                    fontSize = 44f,
+                    colorHex = AndroidColor.BLACK,
+                    isBold = false,
+                    isItalic = false,
+                    alignment = "CENTER"
+                )
+                editItems.add(newEmojiItem)
+                selectedAnnotationId = newEmojiItem.id
+                textLayerUpdateTrigger++
+                Toast.makeText(context, "Emoji added to page", Toast.LENGTH_SHORT).show()
+            },
+            onDismiss = {
+                showEmojiPickerDialog = false
+            }
+        )
+    }
 }
 
 @Composable
@@ -2911,16 +3011,28 @@ private fun PenSubToolbarSection(
     onShapeStrokeWidthChange: (Float) -> Unit,
     shapeFillColor: Int?,
     onShapeFillColorChange: (Int?) -> Unit,
-    eraserType: AnnotationCanvasOverlayView.EraserType,
-    onEraserTypeChange: (AnnotationCanvasOverlayView.EraserType) -> Unit,
+    arrowStyle: AnnotationCanvasOverlayView.ArrowStyle,
+    onArrowStyleChange: (AnnotationCanvasOverlayView.ArrowStyle) -> Unit,
+    iconType: String,
+    onIconTypeChange: (String) -> Unit,
+    iconColor: Int,
+    onIconColorChange: (Int) -> Unit,
+    iconStrokeWidth: Float,
+    onIconStrokeWidthChange: (Float) -> Unit,
+    iconFillColor: Int?,
+    onIconFillColorChange: (Int?) -> Unit,
     eraserSize: AnnotationCanvasOverlayView.EraserSize,
     onEraserSizeChange: (AnnotationCanvasOverlayView.EraserSize) -> Unit,
+    eraserStrokeWidth: Float,
+    onEraserStrokeWidthChange: (Float) -> Unit,
     selectedAnnotationId: String? = null,
     onDeleteSelectedAnnotation: () -> Unit = {},
     onClearAll: () -> Unit,
     onUndo: () -> Unit,
     canUndo: Boolean,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    onOpenColorPicker: (String) -> Unit,
+    onOpenEmojiPicker: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -2991,7 +3103,7 @@ private fun PenSubToolbarSection(
 
         Spacer(modifier = Modifier.height(6.dp))
 
-        // Sub-tool switcher tabs: Select, Freehand Pen, Highlight, Shapes, Eraser
+        // Sub-tool switcher tabs: Select, Pen, Highlight, Shapes, Icons, Emoji, Eraser
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -3026,6 +3138,20 @@ private fun PenSubToolbarSection(
                 label = { Text("Shapes", fontSize = 11.sp) },
                 leadingIcon = { Icon(Icons.Default.CropSquare, contentDescription = null, modifier = Modifier.size(14.dp)) },
                 modifier = Modifier.height(30.dp).testTag("chip_tool_shapes")
+            )
+            FilterChip(
+                selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.ICON,
+                onClick = { onSubToolChange(AnnotationCanvasOverlayView.ToolMode.ICON) },
+                label = { Text("Icons", fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Default.CheckCircle, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp).testTag("chip_tool_icons")
+            )
+            FilterChip(
+                selected = false,
+                onClick = { onOpenEmojiPicker() },
+                label = { Text("Emoji", fontSize = 11.sp) },
+                leadingIcon = { Icon(Icons.Default.Mood, contentDescription = null, modifier = Modifier.size(14.dp)) },
+                modifier = Modifier.height(30.dp).testTag("chip_tool_emoji")
             )
             FilterChip(
                 selected = activeSubTool == AnnotationCanvasOverlayView.ToolMode.ERASER,
@@ -3082,7 +3208,7 @@ private fun PenSubToolbarSection(
                         text = if (selectedAnnotationId != null)
                             "Drag inside box to move. Drag corner handles to scale / resize."
                         else
-                            "Tap any pen stroke, highlight, or shape to select, move, and resize it.",
+                            "Tap any pen stroke, highlight, shape, or icon to select, move, and resize it.",
                         color = Color(0xFF94A3B8),
                         fontSize = 10.sp
                     )
@@ -3107,13 +3233,34 @@ private fun PenSubToolbarSection(
                         }
                     }
 
-                    // Color palette & Opacity
+                    // Color palette & Eyedropper & Opacity
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+
+                        // Eyedropper button
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF334155))
+                                .border(1.5.dp, CrimsonPrimary, CircleShape)
+                                .clickable { onOpenColorPicker("PEN") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Colorize,
+                                contentDescription = "Pick color from PDF",
+                                tint = CrimsonPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
                         listOf(
                             AndroidColor.rgb(37, 99, 235), // Royal Blue
                             AndroidColor.rgb(220, 38, 38), // Crimson Red
@@ -3143,7 +3290,7 @@ private fun PenSubToolbarSection(
                             value = penOpacity,
                             onValueChange = onPenOpacityChange,
                             valueRange = 0.2f..1.0f,
-                            modifier = Modifier.weight(1f).height(24.dp)
+                            modifier = Modifier.width(100.dp).height(24.dp)
                         )
                     }
                 }
@@ -3167,13 +3314,34 @@ private fun PenSubToolbarSection(
                         }
                     }
 
-                    // Highlighter Colors
+                    // Highlighter Colors & Eyedropper
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+
+                        // Eyedropper button
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF334155))
+                                .border(1.5.dp, CrimsonPrimary, CircleShape)
+                                .clickable { onOpenColorPicker("HIGHLIGHT") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Colorize,
+                                contentDescription = "Pick color from PDF",
+                                tint = CrimsonPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
                         listOf(
                             AndroidColor.rgb(250, 204, 21), // Fluorescent Yellow
                             AndroidColor.rgb(74, 222, 128), // Neon Green
@@ -3202,7 +3370,7 @@ private fun PenSubToolbarSection(
                             value = highlightOpacity,
                             onValueChange = onHighlightOpacityChange,
                             valueRange = 0.15f..0.70f,
-                            modifier = Modifier.weight(1f).height(24.dp)
+                            modifier = Modifier.width(100.dp).height(24.dp)
                         )
                     }
                 }
@@ -3212,6 +3380,9 @@ private fun PenSubToolbarSection(
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     // Shape Type Picker
                     Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -3245,13 +3416,63 @@ private fun PenSubToolbarSection(
                         )
                     }
 
-                    // Stroke Colors & Fill toggle
+                    // Comprehensive Arrow Styles if Arrow is selected
+                    if (shapeType == AnnotationCanvasOverlayView.ShapeType.ARROW) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("Style:", color = Color(0xFF94A3B8), fontSize = 10.sp)
+                            listOf(
+                                AnnotationCanvasOverlayView.ArrowStyle.SINGLE to "Single",
+                                AnnotationCanvasOverlayView.ArrowStyle.DOUBLE_ENDED to "Double",
+                                AnnotationCanvasOverlayView.ArrowStyle.DASHED to "Dashed",
+                                AnnotationCanvasOverlayView.ArrowStyle.CURVED to "Curved",
+                                AnnotationCanvasOverlayView.ArrowStyle.BLOCK to "Block",
+                                AnnotationCanvasOverlayView.ArrowStyle.CHEVRON to "Chevron",
+                                AnnotationCanvasOverlayView.ArrowStyle.FILLED_HEAD to "Filled Head"
+                            ).forEach { (style, label) ->
+                                FilterChip(
+                                    selected = arrowStyle == style,
+                                    onClick = { onArrowStyleChange(style) },
+                                    label = { Text(label, fontSize = 9.sp) },
+                                    modifier = Modifier.height(24.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Stroke Colors & Eyedropper & Fill toggle
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+
+                        // Eyedropper button
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF334155))
+                                .border(1.5.dp, CrimsonPrimary, CircleShape)
+                                .clickable { onOpenColorPicker("SHAPE") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Colorize,
+                                contentDescription = "Pick color from PDF",
+                                tint = CrimsonPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
                         listOf(
                             AndroidColor.rgb(220, 38, 38), // Crimson
                             AndroidColor.rgb(37, 99, 235), // Blue
@@ -3287,9 +3508,46 @@ private fun PenSubToolbarSection(
                 }
             }
 
-            AnnotationCanvasOverlayView.ToolMode.ERASER -> {
+            AnnotationCanvasOverlayView.ToolMode.ICON -> {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // Dual Eraser Mode Switcher: Mode A (Stroke Eraser) vs Mode B (Manual Eraser)
+                    // Customizable Vector Icon Categories & Chips
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        listOf(
+                            "TICK_CLEAN" to "✓ Clean",
+                            "TICK_HAND" to "✔ Hand",
+                            "TICK_CIRCLE" to "ⓥ Circle",
+                            "TICK_BOX" to "☑ Box",
+                            "TICK_DOUBLE" to "✓✓ Double",
+                            "CROSS_CLEAN" to "✗ Clean",
+                            "CROSS_SKETCH" to "✘ Sketch",
+                            "CROSS_CIRCLE" to "ⓧ Circle",
+                            "CROSS_BOX" to "☒ Box",
+                            "STAR_FIVE" to "★ Star",
+                            "WARNING_TRIANGLE" to "▲ Alert",
+                            "QUESTION_CIRCLE" to "? Help",
+                            "INFO_CIRCLE" to "ℹ Info",
+                            "HEART" to "♥ Heart",
+                            "THUMBS_UP" to "👍 Like",
+                            "APPROVED_STAMP" to "APPROVED",
+                            "REJECTED_STAMP" to "REJECTED",
+                            "PAID_STAMP" to "PAID"
+                        ).forEach { (t, lbl) ->
+                            FilterChip(
+                                selected = iconType == t,
+                                onClick = { onIconTypeChange(t) },
+                                label = { Text(lbl, fontSize = 9.sp) },
+                                modifier = Modifier.height(26.dp)
+                            )
+                        }
+                    }
+
+                    // Icon Color, Eyedropper & Fill toggle
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -3297,58 +3555,118 @@ private fun PenSubToolbarSection(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Text("Eraser Mode:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        Text("Color:", color = Color(0xFF94A3B8), fontSize = 11.sp)
+
+                        // Eyedropper button
+                        Box(
+                            modifier = Modifier
+                                .size(24.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF334155))
+                                .border(1.5.dp, CrimsonPrimary, CircleShape)
+                                .clickable { onOpenColorPicker("ICON") },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Colorize,
+                                contentDescription = "Pick color from PDF",
+                                tint = CrimsonPrimary,
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+
+                        listOf(
+                            AndroidColor.rgb(22, 163, 74), // Green
+                            AndroidColor.rgb(220, 38, 38), // Red
+                            AndroidColor.rgb(37, 99, 235), // Blue
+                            AndroidColor.rgb(245, 158, 11), // Orange
+                            AndroidColor.rgb(147, 51, 234), // Purple
+                            AndroidColor.BLACK,
+                            AndroidColor.WHITE
+                        ).forEach { c ->
+                            Box(
+                                modifier = Modifier
+                                    .size(20.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(c))
+                                    .border(
+                                        width = if (iconColor == c) 2.dp else 1.dp,
+                                        color = if (iconColor == c) Color.White else Color(0xFF475569),
+                                        shape = CircleShape
+                                    )
+                                    .clickable { onIconColorChange(c) }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(4.dp))
                         FilterChip(
-                            selected = eraserType == AnnotationCanvasOverlayView.EraserType.STROKE,
-                            onClick = { onEraserTypeChange(AnnotationCanvasOverlayView.EraserType.STROKE) },
-                            label = { Text("Stroke Eraser (Auto)", fontSize = 10.sp) },
-                            modifier = Modifier.height(26.dp).testTag("chip_eraser_stroke")
+                            selected = iconFillColor != null,
+                            onClick = { onIconFillColorChange(if (iconFillColor == null) iconColor else null) },
+                            label = { Text(if (iconFillColor != null) "Filled" else "Outline", fontSize = 10.sp) },
+                            modifier = Modifier.height(26.dp)
                         )
-                        FilterChip(
-                            selected = eraserType == AnnotationCanvasOverlayView.EraserType.MANUAL,
-                            onClick = { onEraserTypeChange(AnnotationCanvasOverlayView.EraserType.MANUAL) },
-                            label = { Text("Manual Eraser (Partial)", fontSize = 10.sp) },
-                            modifier = Modifier.height(26.dp).testTag("chip_eraser_manual")
-                        )
+
+                        Text("Drag on PDF to place", color = Color(0xFF64748B), fontSize = 10.sp)
+                    }
+                }
+            }
+
+            AnnotationCanvasOverlayView.ToolMode.ERASER -> {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Photo Editor Stroke Eraser Width Presets
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Text("Size:", color = Color(0xFF94A3B8), fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                        listOf(
+                            16f to "Fine (16dp)",
+                            32f to "Medium (32dp)",
+                            50f to "Thick (50dp)",
+                            72f to "Broad (72dp)"
+                        ).forEach { (w, lbl) ->
+                            FilterChip(
+                                selected = eraserStrokeWidth == w,
+                                onClick = { onEraserStrokeWidthChange(w) },
+                                label = { Text(lbl, fontSize = 10.sp) },
+                                modifier = Modifier.height(26.dp)
+                            )
+                        }
                     }
 
+                    // Stroke Width Slider (4dp - 80dp) & PDF Protection Badge
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text("Eraser Size:", color = Color(0xFF94A3B8), fontSize = 11.sp)
-                            listOf(
-                                AnnotationCanvasOverlayView.EraserSize.SMALL to "Small",
-                                AnnotationCanvasOverlayView.EraserSize.MEDIUM to "Medium",
-                                AnnotationCanvasOverlayView.EraserSize.LARGE to "Large"
-                            ).forEach { (sz, lbl) ->
-                                FilterChip(
-                                    selected = eraserSize == sz,
-                                    onClick = { onEraserSizeChange(sz) },
-                                    label = { Text(lbl, fontSize = 10.sp) },
-                                    modifier = Modifier.height(26.dp)
-                                )
-                            }
-                        }
-
-                        Text(
-                            text = "PDF Protected",
-                            color = Color(0xFF10B981),
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.SemiBold
+                        Text("${eraserStrokeWidth.toInt()}dp", color = Color(0xFFCBD5E1), fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        Slider(
+                            value = eraserStrokeWidth,
+                            onValueChange = onEraserStrokeWidthChange,
+                            valueRange = 4f..80f,
+                            modifier = Modifier.weight(1f).height(24.dp)
                         )
+
+                        Surface(
+                            color = Color(0xFF064E3B),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Text(
+                                text = "PDF Protected",
+                                color = Color(0xFF34D399),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                            )
+                        }
                     }
 
                     Text(
-                        text = if (eraserType == AnnotationCanvasOverlayView.EraserType.STROKE)
-                            "Mode A: Tap any stroke, highlight, or shape to erase entire object instantly."
-                        else
-                            "Mode B: Drag finger across annotations to erase only the touched portion.",
+                        text = "Drag finger across strokes, highlights, or shapes to erase. Underlying PDF is 100% safe.",
                         color = Color(0xFF94A3B8),
                         fontSize = 10.sp
                     )

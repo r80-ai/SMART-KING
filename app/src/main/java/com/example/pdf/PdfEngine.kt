@@ -5,9 +5,12 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.DashPathEffect
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.PorterDuff
+import android.graphics.PorterDuffXfermode
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
@@ -773,7 +776,7 @@ object PdfEngine {
     }
 
     enum class AnnotationType {
-        TEXT, STAMP, IMAGE, DRAW, PEN, HIGHLIGHTER, UNDERLINE, STRIKETHROUGH, ARROW, LINE, RECTANGLE, CIRCLE, CHECKMARK, STAR, HEART, CROSS, SMILEY, THUMBS_UP, WARNING, OCR_REPLACEMENT, WATERMARK
+        TEXT, STAMP, IMAGE, DRAW, PEN, HIGHLIGHTER, UNDERLINE, STRIKETHROUGH, ARROW, LINE, RECTANGLE, CIRCLE, CHECKMARK, STAR, HEART, CROSS, SMILEY, THUMBS_UP, WARNING, OCR_REPLACEMENT, WATERMARK, ERASER, ICON
     }
 
     enum class PageNumberPosition {
@@ -951,8 +954,9 @@ object PdfEngine {
             canvas.drawBitmap(bitmap, null, renderRect, filterPaint)
             canvas.restore()
 
-            // Draw annotations for this page
+            // Draw annotations for this page in offscreen layer for clean stroke eraser isolation
             val pageItems = items.filter { it.pageIndex == i }
+            val layerSave = canvas.saveLayer(0f, 0f, finalW.toFloat(), finalH.toFloat(), null)
             for (item in pageItems) {
                 if (!item.isVisible) continue
                 val sx = if (item.baseWidth > 0f) finalW.toFloat() / item.baseWidth else 1f
@@ -1116,6 +1120,7 @@ object PdfEngine {
                     if (itemRot != 0f) {
                         canvas.rotate(itemRot, (posX + endX) / 2f, (posY + endY) / 2f)
                     }
+                    val arrowStyle = item.stampText.ifBlank { "SINGLE" }.uppercase()
                     val arrowPaint = Paint().apply {
                         color = item.colorHex
                         alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
@@ -1125,19 +1130,137 @@ object PdfEngine {
                         strokeJoin = Paint.Join.ROUND
                         isAntiAlias = true
                     }
-                    canvas.drawLine(posX, posY, endX, endY, arrowPaint)
-                    val angle = Math.atan2((endY - posY).toDouble(), (endX - posX).toDouble())
-                    val arrowHeadLen = (strokeW * 4.0f).coerceIn(14f, 42f)
-                    val x1 = (endX - arrowHeadLen * Math.cos(angle - Math.PI / 6)).toFloat()
-                    val y1 = (endY - arrowHeadLen * Math.sin(angle - Math.PI / 6)).toFloat()
-                    val x2 = (endX - arrowHeadLen * Math.cos(angle + Math.PI / 6)).toFloat()
-                    val y2 = (endY - arrowHeadLen * Math.sin(angle + Math.PI / 6)).toFloat()
-                    val headPath = Path().apply {
-                        moveTo(x1, y1)
-                        lineTo(endX, endY)
-                        lineTo(x2, y2)
+                    val dx = endX - posX
+                    val dy = endY - posY
+                    val angle = Math.atan2(dy.toDouble(), dx.toDouble())
+                    val arrowHeadLen = (strokeW * 3.8f).coerceIn(16f, 52f)
+
+                    when (arrowStyle) {
+                        "DOUBLE_ENDED" -> {
+                            canvas.drawLine(posX, posY, endX, endY, arrowPaint)
+                            // End head
+                            val x1 = (endX - arrowHeadLen * Math.cos(angle - Math.PI / 6)).toFloat()
+                            val y1 = (endY - arrowHeadLen * Math.sin(angle - Math.PI / 6)).toFloat()
+                            val x2 = (endX - arrowHeadLen * Math.cos(angle + Math.PI / 6)).toFloat()
+                            val y2 = (endY - arrowHeadLen * Math.sin(angle + Math.PI / 6)).toFloat()
+                            val headPath = Path().apply { moveTo(x1, y1); lineTo(endX, endY); lineTo(x2, y2) }
+                            canvas.drawPath(headPath, arrowPaint)
+                            // Start head
+                            val sx1 = (posX + arrowHeadLen * Math.cos(angle - Math.PI / 6)).toFloat()
+                            val sy1 = (posY + arrowHeadLen * Math.sin(angle - Math.PI / 6)).toFloat()
+                            val sx2 = (posX + arrowHeadLen * Math.cos(angle + Math.PI / 6)).toFloat()
+                            val sy2 = (posY + arrowHeadLen * Math.sin(angle + Math.PI / 6)).toFloat()
+                            val startHeadPath = Path().apply { moveTo(sx1, sy1); lineTo(posX, posY); lineTo(sx2, sy2) }
+                            canvas.drawPath(startHeadPath, arrowPaint)
+                        }
+                        "DASHED" -> {
+                            val dashPaint = Paint(arrowPaint).apply {
+                                pathEffect = DashPathEffect(floatArrayOf(16f * strokeScale, 10f * strokeScale), 0f)
+                            }
+                            canvas.drawLine(posX, posY, endX, endY, dashPaint)
+                            val x1 = (endX - arrowHeadLen * Math.cos(angle - Math.PI / 6)).toFloat()
+                            val y1 = (endY - arrowHeadLen * Math.sin(angle - Math.PI / 6)).toFloat()
+                            val x2 = (endX - arrowHeadLen * Math.cos(angle + Math.PI / 6)).toFloat()
+                            val y2 = (endY - arrowHeadLen * Math.sin(angle + Math.PI / 6)).toFloat()
+                            val headPath = Path().apply { moveTo(x1, y1); lineTo(endX, endY); lineTo(x2, y2) }
+                            canvas.drawPath(headPath, arrowPaint)
+                        }
+                        "CURVED" -> {
+                            val midX = (posX + endX) / 2f - dy * 0.25f
+                            val midY = (posY + endY) / 2f + dx * 0.25f
+                            val arcPath = Path().apply {
+                                moveTo(posX, posY)
+                                quadTo(midX, midY, endX, endY)
+                            }
+                            canvas.drawPath(arcPath, arrowPaint)
+                            val tangentAngle = Math.atan2((endY - midY).toDouble(), (endX - midX).toDouble())
+                            val x1 = (endX - arrowHeadLen * Math.cos(tangentAngle - Math.PI / 6)).toFloat()
+                            val y1 = (endY - arrowHeadLen * Math.sin(tangentAngle - Math.PI / 6)).toFloat()
+                            val x2 = (endX - arrowHeadLen * Math.cos(tangentAngle + Math.PI / 6)).toFloat()
+                            val y2 = (endY - arrowHeadLen * Math.sin(tangentAngle + Math.PI / 6)).toFloat()
+                            val headPath = Path().apply { moveTo(x1, y1); lineTo(endX, endY); lineTo(x2, y2) }
+                            canvas.drawPath(headPath, arrowPaint)
+                        }
+                        "BLOCK" -> {
+                            val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                            val shaftW = (strokeW * 2.2f).coerceIn(8f, 32f)
+                            val headW = (strokeW * 5.0f).coerceIn(20f, 65f)
+                            val headL = arrowHeadLen.coerceAtMost(len * 0.5f)
+                            val blockPath = Path()
+                            canvas.save()
+                            canvas.translate(posX, posY)
+                            canvas.rotate(Math.toDegrees(angle).toFloat())
+                            blockPath.moveTo(0f, -shaftW / 2f)
+                            blockPath.lineTo(len - headL, -shaftW / 2f)
+                            blockPath.lineTo(len - headL, -headW / 2f)
+                            blockPath.lineTo(len, 0f)
+                            blockPath.lineTo(len - headL, headW / 2f)
+                            blockPath.lineTo(len - headL, shaftW / 2f)
+                            blockPath.lineTo(0f, shaftW / 2f)
+                            blockPath.close()
+                            if (item.fillColorHex != null) {
+                                val fillP = Paint().apply {
+                                    color = item.fillColorHex
+                                    alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
+                                    style = Paint.Style.FILL
+                                    isAntiAlias = true
+                                }
+                                canvas.drawPath(blockPath, fillP)
+                            }
+                            canvas.drawPath(blockPath, arrowPaint)
+                            canvas.restore()
+                        }
+                        "CHEVRON" -> {
+                            canvas.drawLine(posX, posY, endX, endY, arrowPaint)
+                            // Outer chevron
+                            val x1 = (endX - arrowHeadLen * Math.cos(angle - Math.PI / 6)).toFloat()
+                            val y1 = (endY - arrowHeadLen * Math.sin(angle - Math.PI / 6)).toFloat()
+                            val x2 = (endX - arrowHeadLen * Math.cos(angle + Math.PI / 6)).toFloat()
+                            val y2 = (endY - arrowHeadLen * Math.sin(angle + Math.PI / 6)).toFloat()
+                            val headPath = Path().apply { moveTo(x1, y1); lineTo(endX, endY); lineTo(x2, y2) }
+                            canvas.drawPath(headPath, arrowPaint)
+                            // Inner chevron offset
+                            val offX = (arrowHeadLen * 0.45f * Math.cos(angle)).toFloat()
+                            val offY = (arrowHeadLen * 0.45f * Math.sin(angle)).toFloat()
+                            val headPath2 = Path().apply { moveTo(x1 - offX, y1 - offY); lineTo(endX - offX, endY - offY); lineTo(x2 - offX, y2 - offY) }
+                            canvas.drawPath(headPath2, arrowPaint)
+                        }
+                        "FILLED_HEAD" -> {
+                            val lineEndX = (endX - arrowHeadLen * 0.7f * Math.cos(angle)).toFloat()
+                            val lineEndY = (endY - arrowHeadLen * 0.7f * Math.sin(angle)).toFloat()
+                            canvas.drawLine(posX, posY, lineEndX, lineEndY, arrowPaint)
+                            val x1 = (endX - arrowHeadLen * Math.cos(angle - Math.PI / 6)).toFloat()
+                            val y1 = (endY - arrowHeadLen * Math.sin(angle - Math.PI / 6)).toFloat()
+                            val x2 = (endX - arrowHeadLen * Math.cos(angle + Math.PI / 6)).toFloat()
+                            val y2 = (endY - arrowHeadLen * Math.sin(angle + Math.PI / 6)).toFloat()
+                            val headPath = Path().apply {
+                                moveTo(x1, y1)
+                                lineTo(endX, endY)
+                                lineTo(x2, y2)
+                                close()
+                            }
+                            val solidHeadPaint = Paint().apply {
+                                color = item.colorHex
+                                alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
+                                style = Paint.Style.FILL
+                                isAntiAlias = true
+                            }
+                            canvas.drawPath(headPath, solidHeadPaint)
+                        }
+                        else -> { // "SINGLE" default
+                            canvas.drawLine(posX, posY, endX, endY, arrowPaint)
+                            val x1 = (endX - arrowHeadLen * Math.cos(angle - Math.PI / 6)).toFloat()
+                            val y1 = (endY - arrowHeadLen * Math.sin(angle - Math.PI / 6)).toFloat()
+                            val x2 = (endX - arrowHeadLen * Math.cos(angle + Math.PI / 6)).toFloat()
+                            val y2 = (endY - arrowHeadLen * Math.sin(angle + Math.PI / 6)).toFloat()
+                            val headPath = Path().apply {
+                                moveTo(x1, y1)
+                                lineTo(endX, endY)
+                                lineTo(x2, y2)
+                            }
+                            canvas.drawPath(headPath, arrowPaint)
+                        }
                     }
-                    canvas.drawPath(headPath, arrowPaint)
                     canvas.restore()
                 } else if (item.type == AnnotationType.RECTANGLE) {
                     canvas.save()
@@ -1431,6 +1554,65 @@ object PdfEngine {
                         canvas.drawText(item.text, posX, posY, wmPaint)
                         canvas.restore()
                     }
+                } else if (item.type == AnnotationType.ERASER) {
+                    if (scaledPoints.size >= 2) {
+                        val erasePaint = Paint().apply {
+                            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                            style = Paint.Style.STROKE
+                            strokeWidth = strokeW.coerceAtLeast(4f)
+                            strokeCap = Paint.Cap.ROUND
+                            strokeJoin = Paint.Join.ROUND
+                            isAntiAlias = true
+                        }
+                        val path = Path()
+                        path.moveTo(scaledPoints[0].first, scaledPoints[0].second)
+                        for (pIdx in 1 until scaledPoints.size) {
+                            val prevX = scaledPoints[pIdx - 1].first
+                            val prevY = scaledPoints[pIdx - 1].second
+                            val currX = scaledPoints[pIdx].first
+                            val currY = scaledPoints[pIdx].second
+                            val midX = (prevX + currX) / 2f
+                            val midY = (prevY + currY) / 2f
+                            path.quadTo(prevX, prevY, midX, midY)
+                        }
+                        path.lineTo(scaledPoints.last().first, scaledPoints.last().second)
+                        canvas.drawPath(path, erasePaint)
+                    } else if (scaledPoints.size == 1) {
+                        val eraseCircle = Paint().apply {
+                            xfermode = PorterDuffXfermode(PorterDuff.Mode.CLEAR)
+                            style = Paint.Style.FILL
+                            isAntiAlias = true
+                        }
+                        canvas.drawCircle(scaledPoints[0].first, scaledPoints[0].second, strokeW / 2f, eraseCircle)
+                    }
+                } else if (item.type == AnnotationType.ICON) {
+                    canvas.save()
+                    if (itemRot != 0f) {
+                        canvas.rotate(itemRot, (posX + endX) / 2f, (posY + endY) / 2f)
+                    }
+                    val left = Math.min(posX, endX)
+                    val right = Math.max(posX, endX)
+                    val top = Math.min(posY, endY)
+                    val bottom = Math.max(posY, endY)
+                    val w = (right - left).coerceAtLeast(16f * strokeScale)
+                    val h = (bottom - top).coerceAtLeast(16f * strokeScale)
+                    val iconPaint = Paint().apply {
+                        color = item.colorHex
+                        alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
+                        style = Paint.Style.STROKE
+                        strokeWidth = strokeW.coerceAtLeast(2f)
+                        strokeCap = Paint.Cap.ROUND
+                        strokeJoin = Paint.Join.ROUND
+                        isAntiAlias = true
+                    }
+                    val fillPaint = Paint().apply {
+                        color = item.fillColorHex ?: item.colorHex
+                        alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
+                        style = Paint.Style.FILL
+                        isAntiAlias = true
+                    }
+                    drawVectorIconOnCanvas(canvas, item.stampText.ifBlank { "TICK_CLEAN" }, left, top, w, h, iconPaint, if (item.fillColorHex != null) fillPaint else null)
+                    canvas.restore()
                 } else if (item.type == AnnotationType.TEXT || item.text.isNotBlank()) {
                     val scaledItem = item.copy(
                         posX = posX,
@@ -1442,6 +1624,7 @@ object PdfEngine {
                     com.example.ui.screens.TextEffectRenderer.drawPdfEditItem(canvas, scaledItem, strokeScale)
                 }
             }
+            canvas.restoreToCount(layerSave)
 
             doc.finishPage(docPage)
             bitmap.recycle()
@@ -1461,6 +1644,229 @@ object PdfEngine {
         }
         doc.close()
         finalOutFile
+    }
+
+    /**
+     * Renders standard vector icons (checkmarks, crosses, utility badges, stamps) directly onto a Canvas.
+     */
+    fun drawVectorIconOnCanvas(
+        canvas: Canvas,
+        iconType: String,
+        left: Float,
+        top: Float,
+        w: Float,
+        h: Float,
+        strokePaint: Paint,
+        fillPaint: Paint?
+    ) {
+        val typeKey = iconType.uppercase().trim()
+        when {
+            typeKey == "TICK_CLEAN" -> {
+                val path = Path().apply {
+                    moveTo(left + 0.15f * w, top + 0.52f * h)
+                    lineTo(left + 0.40f * w, top + 0.82f * h)
+                    lineTo(left + 0.88f * w, top + 0.20f * h)
+                }
+                canvas.drawPath(path, strokePaint)
+            }
+            typeKey == "TICK_HAND" -> {
+                val path = Path().apply {
+                    moveTo(left + 0.12f * w, top + 0.50f * h)
+                    cubicTo(left + 0.20f * w, top + 0.65f * h, left + 0.32f * w, top + 0.92f * h, left + 0.42f * w, top + 0.88f * h)
+                    cubicTo(left + 0.55f * w, top + 0.72f * h, left + 0.78f * w, top + 0.30f * h, left + 0.95f * w, top + 0.10f * h)
+                }
+                canvas.drawPath(path, strokePaint)
+            }
+            typeKey == "TICK_CIRCLE" -> {
+                val cx = left + w / 2f
+                val cy = top + h / 2f
+                val r = (Math.min(w, h) / 2f - strokePaint.strokeWidth / 2f).coerceAtLeast(2f)
+                if (fillPaint != null) canvas.drawCircle(cx, cy, r, fillPaint)
+                canvas.drawCircle(cx, cy, r, strokePaint)
+                val path = Path().apply {
+                    moveTo(cx - 0.28f * r, cy + 0.05f * r)
+                    lineTo(cx - 0.05f * r, cy + 0.38f * r)
+                    lineTo(cx + 0.38f * r, cy - 0.32f * r)
+                }
+                canvas.drawPath(path, strokePaint)
+            }
+            typeKey == "TICK_BOX" -> {
+                val rect = RectF(left, top, left + w, top + h)
+                val corner = Math.min(w, h) * 0.18f
+                if (fillPaint != null) canvas.drawRoundRect(rect, corner, corner, fillPaint)
+                canvas.drawRoundRect(rect, corner, corner, strokePaint)
+                val path = Path().apply {
+                    moveTo(left + 0.25f * w, top + 0.52f * h)
+                    lineTo(left + 0.44f * w, top + 0.75f * h)
+                    lineTo(left + 0.78f * w, top + 0.28f * h)
+                }
+                canvas.drawPath(path, strokePaint)
+            }
+            typeKey == "TICK_DOUBLE" -> {
+                val path1 = Path().apply {
+                    moveTo(left + 0.05f * w, top + 0.52f * h)
+                    lineTo(left + 0.30f * w, top + 0.82f * h)
+                    lineTo(left + 0.75f * w, top + 0.22f * h)
+                }
+                val path2 = Path().apply {
+                    moveTo(left + 0.25f * w, top + 0.52f * h)
+                    lineTo(left + 0.48f * w, top + 0.82f * h)
+                    lineTo(left + 0.92f * w, top + 0.22f * h)
+                }
+                canvas.drawPath(path1, strokePaint)
+                canvas.drawPath(path2, strokePaint)
+            }
+            typeKey == "CROSS_CLEAN" -> {
+                canvas.drawLine(left + 0.18f * w, top + 0.18f * h, left + 0.82f * w, top + 0.82f * h, strokePaint)
+                canvas.drawLine(left + 0.82f * w, top + 0.18f * h, left + 0.18f * w, top + 0.82f * h, strokePaint)
+            }
+            typeKey == "CROSS_SKETCH" -> {
+                val p1 = Path().apply {
+                    moveTo(left + 0.16f * w, top + 0.18f * h)
+                    quadTo(left + 0.52f * w, top + 0.48f * h, left + 0.84f * w, top + 0.86f * h)
+                }
+                val p2 = Path().apply {
+                    moveTo(left + 0.84f * w, top + 0.16f * h)
+                    quadTo(left + 0.48f * w, top + 0.52f * h, left + 0.16f * w, top + 0.84f * h)
+                }
+                canvas.drawPath(p1, strokePaint)
+                canvas.drawPath(p2, strokePaint)
+            }
+            typeKey == "CROSS_CIRCLE" -> {
+                val cx = left + w / 2f
+                val cy = top + h / 2f
+                val r = (Math.min(w, h) / 2f - strokePaint.strokeWidth / 2f).coerceAtLeast(2f)
+                if (fillPaint != null) canvas.drawCircle(cx, cy, r, fillPaint)
+                canvas.drawCircle(cx, cy, r, strokePaint)
+                val off = r * 0.42f
+                canvas.drawLine(cx - off, cy - off, cx + off, cy + off, strokePaint)
+                canvas.drawLine(cx + off, cy - off, cx - off, cy + off, strokePaint)
+            }
+            typeKey == "CROSS_BOX" -> {
+                val rect = RectF(left, top, left + w, top + h)
+                val corner = Math.min(w, h) * 0.18f
+                if (fillPaint != null) canvas.drawRoundRect(rect, corner, corner, fillPaint)
+                canvas.drawRoundRect(rect, corner, corner, strokePaint)
+                canvas.drawLine(left + 0.28f * w, top + 0.28f * h, left + 0.72f * w, top + 0.72f * h, strokePaint)
+                canvas.drawLine(left + 0.72f * w, top + 0.28f * h, left + 0.28f * w, top + 0.72f * h, strokePaint)
+            }
+            typeKey == "STAR_FIVE" -> {
+                val cx = left + w / 2f
+                val cy = top + h / 2f
+                val outerR = Math.min(w, h) / 2f
+                val innerR = outerR * 0.42f
+                val starPath = Path()
+                for (i in 0 until 10) {
+                    val angle = (Math.PI / 5.0) * i - Math.PI / 2.0
+                    val r = if (i % 2 == 0) outerR else innerR
+                    val px = (cx + r * Math.cos(angle)).toFloat()
+                    val py = (cy + r * Math.sin(angle)).toFloat()
+                    if (i == 0) starPath.moveTo(px, py) else starPath.lineTo(px, py)
+                }
+                starPath.close()
+                if (fillPaint != null) canvas.drawPath(starPath, fillPaint)
+                canvas.drawPath(starPath, strokePaint)
+            }
+            typeKey == "WARNING_TRIANGLE" -> {
+                val triPath = Path().apply {
+                    moveTo(left + w * 0.5f, top + 0.08f * h)
+                    lineTo(left + w * 0.94f, top + 0.92f * h)
+                    lineTo(left + w * 0.06f, top + 0.92f * h)
+                    close()
+                }
+                if (fillPaint != null) canvas.drawPath(triPath, fillPaint)
+                canvas.drawPath(triPath, strokePaint)
+                canvas.drawLine(left + w * 0.5f, top + 0.38f * h, left + w * 0.5f, top + 0.65f * h, strokePaint)
+                val dotPaint = Paint(strokePaint).apply { style = Paint.Style.FILL }
+                canvas.drawCircle(left + w * 0.5f, top + 0.80f * h, strokePaint.strokeWidth * 0.8f, dotPaint)
+            }
+            typeKey == "QUESTION_CIRCLE" -> {
+                val cx = left + w / 2f
+                val cy = top + h / 2f
+                val r = (Math.min(w, h) / 2f - strokePaint.strokeWidth / 2f).coerceAtLeast(2f)
+                if (fillPaint != null) canvas.drawCircle(cx, cy, r, fillPaint)
+                canvas.drawCircle(cx, cy, r, strokePaint)
+                val qPath = Path().apply {
+                    moveTo(cx - 0.25f * r, cy - 0.35f * r)
+                    cubicTo(cx - 0.25f * r, cy - 0.65f * r, cx + 0.30f * r, cy - 0.65f * r, cx + 0.30f * r, cy - 0.35f * r)
+                    cubicTo(cx + 0.30f * r, cy - 0.15f * r, cx, cy - 0.08f * r, cx, cy + 0.15f * r)
+                }
+                canvas.drawPath(qPath, strokePaint)
+                val dotPaint = Paint(strokePaint).apply { style = Paint.Style.FILL }
+                canvas.drawCircle(cx, cy + 0.38f * r, strokePaint.strokeWidth * 0.8f, dotPaint)
+            }
+            typeKey == "INFO_CIRCLE" -> {
+                val cx = left + w / 2f
+                val cy = top + h / 2f
+                val r = (Math.min(w, h) / 2f - strokePaint.strokeWidth / 2f).coerceAtLeast(2f)
+                if (fillPaint != null) canvas.drawCircle(cx, cy, r, fillPaint)
+                canvas.drawCircle(cx, cy, r, strokePaint)
+                val dotPaint = Paint(strokePaint).apply { style = Paint.Style.FILL }
+                canvas.drawCircle(cx, cy - 0.35f * r, strokePaint.strokeWidth * 0.8f, dotPaint)
+                canvas.drawLine(cx, cy - 0.15f * r, cx, cy + 0.38f * r, strokePaint)
+            }
+            typeKey == "HEART" -> {
+                val heartPath = Path().apply {
+                    moveTo(left + w * 0.5f, top + h * 0.85f)
+                    cubicTo(left + w * 0.1f, top + h * 0.55f, left, top + h * 0.25f, left + w * 0.25f, top + h * 0.15f)
+                    cubicTo(left + w * 0.45f, top + h * 0.08f, left + w * 0.5f, top + h * 0.35f, left + w * 0.5f, top + h * 0.35f)
+                    cubicTo(left + w * 0.5f, top + h * 0.35f, left + w * 0.55f, top + h * 0.08f, left + w * 0.75f, top + h * 0.15f)
+                    cubicTo(left + w * 1.0f, top + h * 0.25f, left + w * 0.9f, top + h * 0.55f, left + w * 0.5f, top + h * 0.85f)
+                    close()
+                }
+                if (fillPaint != null) canvas.drawPath(heartPath, fillPaint)
+                canvas.drawPath(heartPath, strokePaint)
+            }
+            typeKey == "THUMBS_UP" -> {
+                val path = Path().apply {
+                    moveTo(left + w * 0.3f, top + h * 0.4f); lineTo(left + w * 0.3f, top + h * 0.9f)
+                    lineTo(left + w * 0.1f, top + h * 0.9f); lineTo(left + w * 0.1f, top + h * 0.4f); close()
+                    moveTo(left + w * 0.3f, top + h * 0.4f); lineTo(left + w * 0.45f, top + h * 0.1f)
+                    cubicTo(left + w * 0.6f, top, left + w * 0.7f, top + h * 0.1f, left + w * 0.6f, top + h * 0.3f)
+                    lineTo(left + w * 0.9f, top + h * 0.3f); cubicTo(left + w, top + h * 0.3f, left + w, top + h * 0.5f, left + w * 0.9f, top + h * 0.5f)
+                    lineTo(left + w * 0.85f, top + h * 0.5f); cubicTo(left + w * 0.95f, top + h * 0.5f, left + w * 0.95f, top + h * 0.7f, left + w * 0.85f, top + h * 0.7f)
+                    lineTo(left + w * 0.8f, top + h * 0.7f); cubicTo(left + w * 0.9f, top + h * 0.7f, left + w * 0.9f, top + h * 0.9f, left + w * 0.8f, top + h * 0.9f)
+                    lineTo(left + w * 0.3f, top + h * 0.9f)
+                }
+                if (fillPaint != null) canvas.drawPath(path, fillPaint)
+                canvas.drawPath(path, strokePaint)
+            }
+            typeKey in listOf("APPROVED_STAMP", "REJECTED_STAMP", "PAID_STAMP") -> {
+                val stampText = when (typeKey) {
+                    "APPROVED_STAMP" -> "APPROVED"
+                    "REJECTED_STAMP" -> "REJECTED"
+                    "PAID_STAMP" -> "PAID"
+                    else -> typeKey
+                }
+                val rect = RectF(left, top, left + w, top + h)
+                val rCorner = Math.min(w, h) * 0.12f
+                if (fillPaint != null) canvas.drawRoundRect(rect, rCorner, rCorner, fillPaint)
+                canvas.drawRoundRect(rect, rCorner, rCorner, strokePaint)
+                val innerMargin = Math.min(w, h) * 0.08f
+                val innerRect = RectF(left + innerMargin, top + innerMargin, left + w - innerMargin, top + h - innerMargin)
+                val innerStroke = Paint(strokePaint).apply { strokeWidth = (strokePaint.strokeWidth * 0.6f).coerceAtLeast(1f) }
+                canvas.drawRoundRect(innerRect, rCorner * 0.7f, rCorner * 0.7f, innerStroke)
+                val textP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                    color = strokePaint.color
+                    alpha = strokePaint.alpha
+                    typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
+                    textAlign = Paint.Align.CENTER
+                    textSize = (Math.min(w * 0.22f, h * 0.45f)).coerceAtLeast(10f)
+                }
+                val metrics = textP.fontMetrics
+                val baseline = top + h / 2f - (metrics.ascent + metrics.descent) / 2f
+                canvas.drawText(stampText, left + w / 2f, baseline, textP)
+            }
+            else -> {
+                // Default fallback to crisp checkmark
+                val path = Path().apply {
+                    moveTo(left + 0.15f * w, top + 0.52f * h)
+                    lineTo(left + 0.40f * w, top + 0.82f * h)
+                    lineTo(left + 0.88f * w, top + 0.20f * h)
+                }
+                canvas.drawPath(path, strokePaint)
+            }
+        }
     }
 
     /**

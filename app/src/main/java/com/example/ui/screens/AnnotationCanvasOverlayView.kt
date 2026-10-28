@@ -44,22 +44,32 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 ) : View(context, attrs, defStyleAttr) {
 
     enum class ToolMode {
-        SELECT, PEN, HIGHLIGHT, SHAPE, ERASER
+        SELECT, PEN, HIGHLIGHT, SHAPE, ICON, ERASER
     }
 
     enum class ShapeType {
         RECTANGLE, CIRCLE, LINE, ARROW
     }
 
+    enum class ArrowStyle(val label: String, val key: String) {
+        SINGLE("Single", "SINGLE"),
+        DOUBLE_ENDED("Double Ended", "DOUBLE_ENDED"),
+        DASHED("Dashed", "DASHED"),
+        CURVED("Curved", "CURVED"),
+        BLOCK("Block", "BLOCK"),
+        CHEVRON("Chevron", "CHEVRON"),
+        FILLED_HEAD("Filled Head", "FILLED_HEAD")
+    }
+
     enum class EraserType {
         STROKE, // Mode A: Auto Object Eraser
-        MANUAL  // Mode B: Partial Drag Eraser
+        MANUAL  // Mode B: Photo Editor CLEAR Stroke Eraser
     }
 
     enum class EraserSize(val radiusDp: Float) {
-        SMALL(12f),
-        MEDIUM(24f),
-        LARGE(44f)
+        SMALL(10f),
+        MEDIUM(22f),
+        LARGE(40f)
     }
 
     // Active tool state
@@ -86,13 +96,32 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             invalidate()
         }
 
-    var eraserType: EraserType = EraserType.STROKE
+    var arrowStyle: ArrowStyle = ArrowStyle.SINGLE
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var currentIconType: String = "TICK_CLEAN"
+        set(value) {
+            field = value
+            invalidate()
+        }
+
+    var eraserType: EraserType = EraserType.MANUAL
         set(value) {
             field = value
             invalidate()
         }
 
     var eraserSize: EraserSize = EraserSize.MEDIUM
+        set(value) {
+            field = value
+            eraserStrokeWidthDp = value.radiusDp * 2f
+            invalidate()
+        }
+
+    var eraserStrokeWidthDp: Float = 44f
         set(value) {
             field = value
             invalidate()
@@ -117,6 +146,11 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     var shapeStrokeWidth: Float = 3.5f
     var shapeOpacity: Float = 1.0f
     var shapeFillColor: Int? = null
+
+    var iconColor: Int = Color.rgb(22, 163, 74) // Emerald Green
+    var iconStrokeWidth: Float = 3.5f
+    var iconOpacity: Float = 1.0f
+    var iconFillColor: Int? = null
 
     // Callbacks for ViewModel & history synchronization
     var onAnnotationAdded: ((PdfEngine.EditItem) -> Unit)? = null
@@ -149,18 +183,12 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
     private var eraserTouchY = 0f
     private val removedDuringCurrentGesture = mutableListOf<PdfEngine.EditItem>()
 
-    // Mode B: Manual Eraser drawing layer
-    private var drawingLayerBitmap: Bitmap? = null
-    private var drawingLayerCanvas: Canvas? = null
-    private var manualEraserItem: PdfEngine.EditItem? = null
-
     // Move & Resize interaction state
     private enum class TouchInteraction {
         NONE,
         DRAW_STROKE,
         DRAW_SHAPE,
         ERASE_STROKE,
-        ERASE_MANUAL,
         MOVE_ANNOTATION,
         RESIZE_ANNOTATION
     }
@@ -263,20 +291,44 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         invalidate()
     }
 
-    fun setShapeMode(shape: ShapeType, color: Int, strokeWidth: Float, opacity: Float, fillColor: Int?) {
+    fun setShapeMode(
+        shape: ShapeType,
+        color: Int,
+        strokeWidth: Float,
+        opacity: Float,
+        fillColor: Int?,
+        arrow: ArrowStyle = arrowStyle
+    ) {
         currentTool = ToolMode.SHAPE
         currentShape = shape
         shapeColor = color
         shapeStrokeWidth = strokeWidth
         shapeOpacity = opacity.coerceIn(0.05f, 1.0f)
         shapeFillColor = fillColor
+        arrowStyle = arrow
         invalidate()
     }
 
-    fun setEraserMode(size: EraserSize, type: EraserType = eraserType) {
+    fun setIconMode(
+        iconType: String,
+        color: Int,
+        strokeWidth: Float,
+        opacity: Float,
+        fillColor: Int?
+    ) {
+        currentTool = ToolMode.ICON
+        currentIconType = iconType
+        iconColor = color
+        iconStrokeWidth = strokeWidth
+        iconOpacity = opacity.coerceIn(0.05f, 1.0f)
+        iconFillColor = fillColor
+        invalidate()
+    }
+
+    fun setEraserMode(size: EraserSize, customWidthDp: Float? = null) {
         currentTool = ToolMode.ERASER
         eraserSize = size
-        eraserType = type
+        eraserStrokeWidthDp = customWidthDp ?: (size.radiusDp * 2f)
         invalidate()
     }
 
@@ -294,7 +346,9 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             it.type == PdfEngine.AnnotationType.RECTANGLE ||
             it.type == PdfEngine.AnnotationType.CIRCLE ||
             it.type == PdfEngine.AnnotationType.LINE ||
-            it.type == PdfEngine.AnnotationType.ARROW
+            it.type == PdfEngine.AnnotationType.ARROW ||
+            it.type == PdfEngine.AnnotationType.ICON ||
+            it.type == PdfEngine.AnnotationType.ERASER
         }
         if (itemsToRemove.isNotEmpty()) {
             onHistoryPush?.invoke()
@@ -352,7 +406,8 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
 
             PdfEngine.AnnotationType.RECTANGLE,
-            PdfEngine.AnnotationType.CIRCLE -> {
+            PdfEngine.AnnotationType.CIRCLE,
+            PdfEngine.AnnotationType.ICON -> {
                 val l = min(item.posX * scaleX, item.endX * scaleX)
                 val t = min(item.posY * scaleY, item.endY * scaleY)
                 val r = max(item.posX * scaleX, item.endX * scaleX)
@@ -539,7 +594,8 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                     )
                 }
                 PdfEngine.AnnotationType.RECTANGLE,
-                PdfEngine.AnnotationType.CIRCLE -> {
+                PdfEngine.AnnotationType.CIRCLE,
+                PdfEngine.AnnotationType.ICON -> {
                     initial.copy(
                         posX = newL / scaleX,
                         posY = newT / scaleY,
@@ -562,78 +618,6 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             }
         }
         return initial
-    }
-
-    // --- Mode B: Manual Partial Pixel Eraser ---
-
-    private var pendingManualRemovedItems: List<PdfEngine.EditItem>? = null
-    private var isManualEraserLayerInitialized = false
-
-    private fun prepareDrawingLayerForManualEraser() {
-        if (width <= 0 || height <= 0) return
-        val currentList = pageAnnotations.getOrPut(currentPageIndex) { mutableListOf() }
-
-        if (drawingLayerBitmap == null || drawingLayerBitmap?.width != width || drawingLayerBitmap?.height != height) {
-            drawingLayerBitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-            drawingLayerCanvas = Canvas(drawingLayerBitmap!!)
-        }
-        val bmpCanvas = drawingLayerCanvas ?: return
-        bmpCanvas.drawColor(Color.TRANSPARENT, PorterDuff.Mode.CLEAR)
-
-        if (currentList.isNotEmpty()) {
-            // Render current vector items into transparent drawingLayerBitmap
-            renderAnnotationsToCanvas(bmpCanvas, currentList)
-            pendingManualRemovedItems = currentList.toList()
-        } else {
-            pendingManualRemovedItems = null
-        }
-
-        // Replace individual items with the single baked drawing layer item internally
-        manualEraserItem = PdfEngine.EditItem(
-            pageIndex = currentPageIndex,
-            type = PdfEngine.AnnotationType.DRAW,
-            drawingBitmap = drawingLayerBitmap,
-            baseWidth = width.toFloat(),
-            baseHeight = height.toFloat()
-        )
-        currentList.clear()
-        currentList.add(manualEraserItem!!)
-        isManualEraserLayerInitialized = true
-        // NOTE: Defer notifying Compose (onAnnotationsRemoved/onAnnotationAdded) until ACTION_UP
-        // to avoid mid-gesture recomposition that collapses toolbars / bottom sheets.
-    }
-
-    private fun applyManualEraserAt(x: Float, y: Float, lx: Float, ly: Float) {
-        val bmpCanvas = drawingLayerCanvas ?: return
-        val radiusPx = eraserSize.radiusDp * resources.displayMetrics.density
-
-        manualErasePaint.strokeWidth = radiusPx * 2f
-        bmpCanvas.drawLine(lx, ly, x, y, manualErasePaint)
-        bmpCanvas.drawCircle(x, y, radiusPx, manualEraseCirclePaint)
-    }
-
-    private fun finishManualEraserGesture() {
-        if (manualEraserItem != null && drawingLayerBitmap != null && isManualEraserLayerInitialized) {
-            onHistoryPush?.invoke()
-            pendingManualRemovedItems?.let { removed ->
-                if (removed.isNotEmpty()) {
-                    onAnnotationsRemoved?.invoke(removed)
-                }
-            }
-            pendingManualRemovedItems = null
-
-            val updated = manualEraserItem!!.copy(
-                drawingBitmap = drawingLayerBitmap?.copy(Bitmap.Config.ARGB_8888, true)
-            )
-            val currentList = pageAnnotations[currentPageIndex]
-            val idx = currentList?.indexOfFirst { it.id == manualEraserItem!!.id } ?: -1
-            if (idx != -1) {
-                currentList!![idx] = updated
-                manualEraserItem = updated
-            }
-            onAnnotationAdded?.invoke(updated)
-            isManualEraserLayerInitialized = false
-        }
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
@@ -727,7 +711,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                         activePath.moveTo(x, y)
                     }
 
-                    ToolMode.SHAPE -> {
+                    ToolMode.SHAPE, ToolMode.ICON -> {
                         selectedAnnotationId = null
                         onAnnotationSelected?.invoke(null)
                         activeInteraction = TouchInteraction.DRAW_SHAPE
@@ -744,16 +728,13 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                         isErasing = true
                         eraserTouchX = x
                         eraserTouchY = y
-
-                        if (eraserType == EraserType.STROKE) {
-                            activeInteraction = TouchInteraction.ERASE_STROKE
-                            removedDuringCurrentGesture.clear()
-                            checkAndEraseAnnotationsAt(x, y)
-                        } else {
-                            activeInteraction = TouchInteraction.ERASE_MANUAL
-                            prepareDrawingLayerForManualEraser()
-                            applyManualEraserAt(x, y, lastX, lastY)
-                        }
+                        activeInteraction = TouchInteraction.ERASE_STROKE
+                        activePoints.clear()
+                        activePoints.add(x to y)
+                        activePath.reset()
+                        activePath.moveTo(x, y)
+                        removedDuringCurrentGesture.clear()
+                        checkAndEraseAnnotationsAt(x, y)
                     }
 
                     ToolMode.SELECT -> {}
@@ -803,17 +784,13 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                     TouchInteraction.ERASE_STROKE -> {
                         eraserTouchX = x
                         eraserTouchY = y
-                        checkAndEraseAnnotationsAt(x, y)
-                        invalidate()
-                        return true
-                    }
-
-                    TouchInteraction.ERASE_MANUAL -> {
-                        eraserTouchX = x
-                        eraserTouchY = y
-                        applyManualEraserAt(x, y, lastX, lastY)
+                        val midX = (lastX + x) / 2f
+                        val midY = (lastY + y) / 2f
+                        activePath.quadTo(lastX, lastY, midX, midY)
                         lastX = x
                         lastY = y
+                        activePoints.add(x to y)
+                        checkAndEraseAnnotationsAt(x, y)
                         invalidate()
                         return true
                     }
@@ -870,24 +847,35 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                         isDrawingShape = false
 
                         val dist = hypot(shapeCurrentX - shapeStartX, shapeCurrentY - shapeStartY)
-                        if (dist > 12f) {
-                            onHistoryPush?.invoke()
-                            val annotType = when (currentShape) {
-                                ShapeType.RECTANGLE -> PdfEngine.AnnotationType.RECTANGLE
-                                ShapeType.CIRCLE -> PdfEngine.AnnotationType.CIRCLE
-                                ShapeType.LINE -> PdfEngine.AnnotationType.LINE
-                                ShapeType.ARROW -> PdfEngine.AnnotationType.ARROW
-                            }
-
-                            val (pX, pY, eX, eY) = if (currentShape == ShapeType.LINE || currentShape == ShapeType.ARROW) {
-                                listOf(shapeStartX, shapeStartY, shapeCurrentX, shapeCurrentY)
+                        val (pX, pY, eX, eY) = if (currentTool == ToolMode.ICON) {
+                            if (dist < 10f) {
+                                val iconSize = 44f * resources.displayMetrics.density
+                                listOf(shapeStartX - iconSize / 2f, shapeStartY - iconSize / 2f, shapeStartX + iconSize / 2f, shapeStartY + iconSize / 2f)
                             } else {
-                                listOf(
-                                    min(shapeStartX, shapeCurrentX),
-                                    min(shapeStartY, shapeCurrentY),
-                                    max(shapeStartX, shapeCurrentX),
-                                    max(shapeStartY, shapeCurrentY)
-                                )
+                                listOf(min(shapeStartX, shapeCurrentX), min(shapeStartY, shapeCurrentY), max(shapeStartX, shapeCurrentX), max(shapeStartY, shapeCurrentY))
+                            }
+                        } else if (currentShape == ShapeType.LINE || currentShape == ShapeType.ARROW) {
+                            listOf(shapeStartX, shapeStartY, shapeCurrentX, shapeCurrentY)
+                        } else {
+                            listOf(
+                                min(shapeStartX, shapeCurrentX),
+                                min(shapeStartY, shapeCurrentY),
+                                max(shapeStartX, shapeCurrentX),
+                                max(shapeStartY, shapeCurrentY)
+                            )
+                        }
+
+                        if (dist > 8f || currentTool == ToolMode.ICON) {
+                            onHistoryPush?.invoke()
+                            val annotType = if (currentTool == ToolMode.ICON) {
+                                PdfEngine.AnnotationType.ICON
+                            } else {
+                                when (currentShape) {
+                                    ShapeType.RECTANGLE -> PdfEngine.AnnotationType.RECTANGLE
+                                    ShapeType.CIRCLE -> PdfEngine.AnnotationType.CIRCLE
+                                    ShapeType.LINE -> PdfEngine.AnnotationType.LINE
+                                    ShapeType.ARROW -> PdfEngine.AnnotationType.ARROW
+                                }
                             }
 
                             val newShapeAnnotation = PdfEngine.EditItem(
@@ -897,10 +885,11 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                                 posY = pY,
                                 endX = eX,
                                 endY = eY,
-                                colorHex = shapeColor,
-                                fillColorHex = shapeFillColor,
-                                strokeWidth = shapeStrokeWidth,
-                                opacity = shapeOpacity,
+                                stampText = if (currentTool == ToolMode.ICON) currentIconType else if (currentShape == ShapeType.ARROW) arrowStyle.key else "",
+                                colorHex = if (currentTool == ToolMode.ICON) iconColor else shapeColor,
+                                fillColorHex = if (currentTool == ToolMode.ICON) iconFillColor else shapeFillColor,
+                                strokeWidth = if (currentTool == ToolMode.ICON) iconStrokeWidth else shapeStrokeWidth,
+                                opacity = if (currentTool == ToolMode.ICON) iconOpacity else shapeOpacity,
                                 baseWidth = if (width > 0) width.toFloat() else 800f,
                                 baseHeight = if (height > 0) height.toFloat() else 1100f
                             )
@@ -912,15 +901,35 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
 
                     TouchInteraction.ERASE_STROKE -> {
                         isErasing = false
+                        activePath.lineTo(x, y)
+                        activePoints.add(x to y)
+
+                        var hasChanges = false
                         if (removedDuringCurrentGesture.isNotEmpty()) {
                             onAnnotationsRemoved?.invoke(removedDuringCurrentGesture.toList())
+                            hasChanges = true
                         }
                         removedDuringCurrentGesture.clear()
-                    }
 
-                    TouchInteraction.ERASE_MANUAL -> {
-                        isErasing = false
-                        finishManualEraserGesture()
+                        if (activePoints.size >= 1) {
+                            val eraseStroke = PdfEngine.EditItem(
+                                pageIndex = currentPageIndex,
+                                type = PdfEngine.AnnotationType.ERASER,
+                                strokeWidth = eraserStrokeWidthDp,
+                                points = activePoints.toList(),
+                                baseWidth = if (width > 0) width.toFloat() else 800f,
+                                baseHeight = if (height > 0) height.toFloat() else 1100f
+                            )
+                            val currentList = pageAnnotations.getOrPut(currentPageIndex) { mutableListOf() }
+                            currentList.add(eraseStroke)
+                            onAnnotationAdded?.invoke(eraseStroke)
+                            hasChanges = true
+                        }
+                        if (hasChanges) {
+                            onHistoryPush?.invoke()
+                        }
+                        activePoints.clear()
+                        activePath.reset()
                     }
 
                     TouchInteraction.NONE -> {}
@@ -1197,23 +1206,205 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                     strokePaint.color = item.colorHex
                     strokePaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
                     strokePaint.strokeWidth = item.strokeWidth * density * strokeScale
-                    canvas.drawLine(sX, sY, eX, eY, strokePaint)
 
-                    val angle = atan2((eY - sY).toDouble(), (eX - sX).toDouble())
-                    val arrowHeadLen = (item.strokeWidth * density * strokeScale * 3.5f).coerceIn(16f, 48f)
-                    val x1 = (eX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
-                    val y1 = (eY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
-                    val x2 = (eX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
-                    val y2 = (eY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
-                    val headPath = Path().apply {
-                        moveTo(x1, y1)
-                        lineTo(eX, eY)
-                        lineTo(x2, y2)
+                    if (item.fillColorHex != null) {
+                        fillPaint.color = item.fillColorHex
+                        fillPaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
                     }
-                    canvas.drawPath(headPath, strokePaint)
+                    drawArrowOnCanvas(
+                        canvas,
+                        sX,
+                        sY,
+                        eX,
+                        eY,
+                        item.stampText.ifBlank { "SINGLE" },
+                        strokePaint,
+                        if (item.fillColorHex != null) fillPaint else null,
+                        strokeScale
+                    )
+                }
+
+                PdfEngine.AnnotationType.ICON -> {
+                    val l = min(item.posX * scaleX, item.endX * scaleX)
+                    val t = min(item.posY * scaleY, item.endY * scaleY)
+                    val r = max(item.posX * scaleX, item.endX * scaleX)
+                    val b = max(item.posY * scaleY, item.endY * scaleY)
+                    val w = max(16f * density, r - l)
+                    val h = max(16f * density, b - t)
+
+                    strokePaint.color = item.colorHex
+                    strokePaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
+                    strokePaint.strokeWidth = item.strokeWidth * density * strokeScale
+
+                    if (item.fillColorHex != null) {
+                        fillPaint.color = item.fillColorHex
+                        fillPaint.alpha = (item.opacity.coerceIn(0.01f, 1f) * 255).toInt()
+                    }
+                    PdfEngine.drawVectorIconOnCanvas(
+                        canvas,
+                        item.stampText.ifBlank { "TICK_CLEAN" },
+                        l,
+                        t,
+                        w,
+                        h,
+                        strokePaint,
+                        if (item.fillColorHex != null) fillPaint else null
+                    )
+                }
+
+                PdfEngine.AnnotationType.ERASER -> {
+                    val pts = item.points
+                    val eraserRadius = (item.strokeWidth * density * strokeScale) / 2f
+                    manualErasePaint.strokeWidth = eraserRadius * 2f
+                    if (pts.size >= 2) {
+                        val path = Path()
+                        path.moveTo(pts[0].first * scaleX, pts[0].second * scaleY)
+                        for (i in 1 until pts.size) {
+                            val prevX = pts[i - 1].first * scaleX
+                            val prevY = pts[i - 1].second * scaleY
+                            val currX = pts[i].first * scaleX
+                            val currY = pts[i].second * scaleY
+                            val midX = (prevX + currX) / 2f
+                            val midY = (prevY + currY) / 2f
+                            path.quadTo(prevX, prevY, midX, midY)
+                        }
+                        path.lineTo(pts.last().first * scaleX, pts.last().second * scaleY)
+                        canvas.drawPath(path, manualErasePaint)
+                    } else if (pts.size == 1) {
+                        canvas.drawCircle(pts[0].first * scaleX, pts[0].second * scaleY, eraserRadius, manualEraseCirclePaint)
+                    }
                 }
 
                 else -> {}
+            }
+        }
+    }
+
+    private fun drawArrowOnCanvas(
+        canvas: Canvas,
+        sX: Float,
+        sY: Float,
+        eX: Float,
+        eY: Float,
+        arrowStyleKey: String,
+        strokeP: Paint,
+        fillP: Paint?,
+        scale: Float = 1f
+    ) {
+        val dx = eX - sX
+        val dy = eY - sY
+        val angle = atan2(dy.toDouble(), dx.toDouble())
+        val arrowHeadLen = (strokeP.strokeWidth * 3.5f).coerceIn(16f * scale, 48f * scale)
+
+        when (arrowStyleKey.uppercase()) {
+            "DOUBLE_ENDED" -> {
+                canvas.drawLine(sX, sY, eX, eY, strokeP)
+                // End head
+                val x1 = (eX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
+                val y1 = (eY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
+                val x2 = (eX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
+                val y2 = (eY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
+                val headPath = Path().apply { moveTo(x1, y1); lineTo(eX, eY); lineTo(x2, y2) }
+                canvas.drawPath(headPath, strokeP)
+                // Start head
+                val sx1 = (sX + arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
+                val sy1 = (sY + arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
+                val sx2 = (sX + arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
+                val sy2 = (sY + arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
+                val startHeadPath = Path().apply { moveTo(sx1, sy1); lineTo(sX, sY); lineTo(sx2, sy2) }
+                canvas.drawPath(startHeadPath, strokeP)
+            }
+            "DASHED" -> {
+                val dashPaint = Paint(strokeP).apply {
+                    pathEffect = DashPathEffect(floatArrayOf(14f * scale, 8f * scale), 0f)
+                }
+                canvas.drawLine(sX, sY, eX, eY, dashPaint)
+                val x1 = (eX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
+                val y1 = (eY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
+                val x2 = (eX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
+                val y2 = (eY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
+                val headPath = Path().apply { moveTo(x1, y1); lineTo(eX, eY); lineTo(x2, y2) }
+                canvas.drawPath(headPath, strokeP)
+            }
+            "CURVED" -> {
+                val midX = (sX + eX) / 2f - dy * 0.25f
+                val midY = (sY + eY) / 2f + dx * 0.25f
+                val arcPath = Path().apply {
+                    moveTo(sX, sY)
+                    quadTo(midX, midY, eX, eY)
+                }
+                canvas.drawPath(arcPath, strokeP)
+                val tangentAngle = atan2((eY - midY).toDouble(), (eX - midX).toDouble())
+                val x1 = (eX - arrowHeadLen * cos(tangentAngle - Math.PI / 6)).toFloat()
+                val y1 = (eY - arrowHeadLen * sin(tangentAngle - Math.PI / 6)).toFloat()
+                val x2 = (eX - arrowHeadLen * cos(tangentAngle + Math.PI / 6)).toFloat()
+                val y2 = (eY - arrowHeadLen * sin(tangentAngle + Math.PI / 6)).toFloat()
+                val headPath = Path().apply { moveTo(x1, y1); lineTo(eX, eY); lineTo(x2, y2) }
+                canvas.drawPath(headPath, strokeP)
+            }
+            "BLOCK" -> {
+                val len = hypot(dx.toDouble(), dy.toDouble()).toFloat()
+                val shaftW = (strokeP.strokeWidth * 2.2f).coerceIn(8f * scale, 30f * scale)
+                val headW = (strokeP.strokeWidth * 5.0f).coerceIn(18f * scale, 60f * scale)
+                val headL = arrowHeadLen.coerceAtMost(len * 0.5f)
+                val blockPath = Path()
+                canvas.save()
+                canvas.translate(sX, sY)
+                canvas.rotate(Math.toDegrees(angle).toFloat())
+                blockPath.moveTo(0f, -shaftW / 2f)
+                blockPath.lineTo(len - headL, -shaftW / 2f)
+                blockPath.lineTo(len - headL, -headW / 2f)
+                blockPath.lineTo(len, 0f)
+                blockPath.lineTo(len - headL, headW / 2f)
+                blockPath.lineTo(len - headL, shaftW / 2f)
+                blockPath.lineTo(0f, shaftW / 2f)
+                blockPath.close()
+                if (fillP != null) canvas.drawPath(blockPath, fillP)
+                canvas.drawPath(blockPath, strokeP)
+                canvas.restore()
+            }
+            "CHEVRON" -> {
+                canvas.drawLine(sX, sY, eX, eY, strokeP)
+                val x1 = (eX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
+                val y1 = (eY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
+                val x2 = (eX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
+                val y2 = (eY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
+                val headPath = Path().apply { moveTo(x1, y1); lineTo(eX, eY); lineTo(x2, y2) }
+                canvas.drawPath(headPath, strokeP)
+                val offX = (arrowHeadLen * 0.45f * cos(angle)).toFloat()
+                val offY = (arrowHeadLen * 0.45f * sin(angle)).toFloat()
+                val headPath2 = Path().apply { moveTo(x1 - offX, y1 - offY); lineTo(eX - offX, eY - offY); lineTo(x2 - offX, y2 - offY) }
+                canvas.drawPath(headPath2, strokeP)
+            }
+            "FILLED_HEAD" -> {
+                val lineEndX = (eX - arrowHeadLen * 0.7f * cos(angle)).toFloat()
+                val lineEndY = (eY - arrowHeadLen * 0.7f * sin(angle)).toFloat()
+                canvas.drawLine(sX, sY, lineEndX, lineEndY, strokeP)
+                val x1 = (eX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
+                val y1 = (eY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
+                val x2 = (eX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
+                val y2 = (eY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
+                val headPath = Path().apply {
+                    moveTo(x1, y1)
+                    lineTo(eX, eY)
+                    lineTo(x2, y2)
+                    close()
+                }
+                val solidHeadPaint = Paint(strokeP).apply { style = Paint.Style.FILL }
+                canvas.drawPath(headPath, solidHeadPaint)
+            }
+            else -> { // SINGLE default
+                canvas.drawLine(sX, sY, eX, eY, strokeP)
+                val x1 = (eX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
+                val y1 = (eY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
+                val x2 = (eX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
+                val y2 = (eY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
+                val headPath = Path().apply {
+                    moveTo(x1, y1)
+                    lineTo(eX, eY)
+                    lineTo(x2, y2)
+                }
+                canvas.drawPath(headPath, strokeP)
             }
         }
     }
@@ -1222,11 +1413,15 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
         super.onDraw(canvas)
         val density = resources.displayMetrics.density
 
+        // Isolate annotations into an offscreen hardware-accelerated layer so CLEAR eraser strokes
+        // only clear vector annotations without altering or damaging the underlying PDF page!
+        val layerSave = canvas.saveLayer(0f, 0f, width.toFloat(), height.toFloat(), null)
+
         // 1. Render all committed annotations for the current page
         val currentList = pageAnnotations[currentPageIndex] ?: emptyList()
         renderAnnotationsToCanvas(canvas, currentList)
 
-        // 2. Render active in-progress stroke
+        // 2. Render active in-progress stroke (PEN / HIGHLIGHT)
         if ((currentTool == ToolMode.PEN || currentTool == ToolMode.HIGHLIGHT) && activePoints.size >= 2) {
             val isHighlight = currentTool == ToolMode.HIGHLIGHT
             strokePaint.color = if (isHighlight) highlightColor else penColor
@@ -1235,7 +1430,21 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             canvas.drawPath(activePath, strokePaint)
         }
 
-        // 3. Render active in-progress shape preview
+        // 3. Render active in-progress ERASER stroke via CLEAR
+        if (currentTool == ToolMode.ERASER && isErasing && activePoints.isNotEmpty()) {
+            val radiusPx = (eraserStrokeWidthDp * density) / 2f
+            manualErasePaint.strokeWidth = radiusPx * 2f
+            if (activePoints.size >= 2) {
+                canvas.drawPath(activePath, manualErasePaint)
+            } else if (activePoints.size == 1) {
+                canvas.drawCircle(activePoints[0].first, activePoints[0].second, radiusPx, manualEraseCirclePaint)
+            }
+        }
+
+        // Restore offscreen layer onto view canvas
+        canvas.restoreToCount(layerSave)
+
+        // 4. Render active in-progress shape or icon preview (drawn on top of the layer)
         if (currentTool == ToolMode.SHAPE && isDrawingShape) {
             previewShapePaint.color = shapeColor
             previewShapePaint.alpha = (shapeOpacity * 255).toInt()
@@ -1273,31 +1482,55 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
                 }
 
                 ShapeType.ARROW -> {
-                    canvas.drawLine(shapeStartX, shapeStartY, shapeCurrentX, shapeCurrentY, previewShapePaint)
-                    val angle = atan2((shapeCurrentY - shapeStartY).toDouble(), (shapeCurrentX - shapeStartX).toDouble())
-                    val arrowHeadLen = (shapeStrokeWidth * density * 3.5f).coerceIn(16f, 48f)
-                    val x1 = (shapeCurrentX - arrowHeadLen * cos(angle - Math.PI / 6)).toFloat()
-                    val y1 = (shapeCurrentY - arrowHeadLen * sin(angle - Math.PI / 6)).toFloat()
-                    val x2 = (shapeCurrentX - arrowHeadLen * cos(angle + Math.PI / 6)).toFloat()
-                    val y2 = (shapeCurrentY - arrowHeadLen * sin(angle + Math.PI / 6)).toFloat()
-                    val headPath = Path().apply {
-                        moveTo(x1, y1)
-                        lineTo(shapeCurrentX, shapeCurrentY)
-                        lineTo(x2, y2)
-                    }
-                    canvas.drawPath(headPath, previewShapePaint)
+                    drawArrowOnCanvas(
+                        canvas,
+                        shapeStartX,
+                        shapeStartY,
+                        shapeCurrentX,
+                        shapeCurrentY,
+                        arrowStyle.key,
+                        previewShapePaint,
+                        if (shapeFillColor != null) fillPaint else null
+                    )
                 }
             }
+        } else if (currentTool == ToolMode.ICON && isDrawingShape) {
+            val l = min(shapeStartX, shapeCurrentX)
+            val t = min(shapeStartY, shapeCurrentY)
+            val r = max(shapeStartX, shapeCurrentX)
+            val b = max(shapeStartY, shapeCurrentY)
+            val w = max(16f * density, r - l)
+            val h = max(16f * density, b - t)
+            previewShapePaint.color = iconColor
+            previewShapePaint.alpha = (iconOpacity * 255).toInt()
+            previewShapePaint.strokeWidth = iconStrokeWidth * density
+            if (iconFillColor != null) {
+                fillPaint.color = iconFillColor!!
+                fillPaint.alpha = (iconOpacity * 0.4f * 255).toInt()
+            }
+            PdfEngine.drawVectorIconOnCanvas(
+                canvas,
+                currentIconType,
+                l,
+                t,
+                w,
+                h,
+                previewShapePaint,
+                if (iconFillColor != null) fillPaint else null
+            )
         }
 
-        // 4. Render eraser touch indicator
+        // 5. Render eraser touch indicator (crosshair + outer circle)
         if (currentTool == ToolMode.ERASER && isErasing) {
-            val radiusPx = eraserSize.radiusDp * density
+            val radiusPx = (eraserStrokeWidthDp * density) / 2f
             canvas.drawCircle(eraserTouchX, eraserTouchY, radiusPx, eraserIndicatorFillPaint)
             canvas.drawCircle(eraserTouchX, eraserTouchY, radiusPx, eraserIndicatorStrokePaint)
+            // Crosshair
+            canvas.drawLine(eraserTouchX - 8f * density, eraserTouchY, eraserTouchX + 8f * density, eraserTouchY, eraserIndicatorStrokePaint)
+            canvas.drawLine(eraserTouchX, eraserTouchY - 8f * density, eraserTouchX, eraserTouchY + 8f * density, eraserIndicatorStrokePaint)
         }
 
-        // 5. Render Bounding Box and 4 Corner Resize Handles for selected annotation
+        // 6. Render Bounding Box and 4 Corner Resize Handles for selected annotation
         if (selectedAnnotationId != null) {
             val selectedItem = currentList.find { it.id == selectedAnnotationId }
             if (selectedItem != null) {
