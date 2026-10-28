@@ -2,7 +2,9 @@ package com.example.calendar.util
 
 import androidx.annotation.DrawableRes
 import com.example.R
+import com.example.calendar.model.CalendarDate
 import com.example.calendar.model.CalendarEvent
+import com.example.calendar.model.EventCategory
 import com.example.calendar.model.EventVisualType
 
 /**
@@ -59,21 +61,69 @@ object EventDrawableMapper {
         "photo_moon_dark" to R.drawable.photo_moon_dark
     )
 
+    private val TARGET_DRAWABLE_MAP = mapOf(
+        EventVisualType.MAKAR_SANKRANTI to "photo_makar_sankranti",
+        EventVisualType.HOLI to "photo_holi",
+        EventVisualType.RAM_NAVAMI to "photo_ram_navami",
+        EventVisualType.AKSHAYA_TRITIYA to "photo_akshaya_tritiya",
+        EventVisualType.BHAI_PHOTA to "photo_bhai_phota",
+        EventVisualType.CHHATH_PUJA to "photo_chhath_puja",
+        EventVisualType.KARTIK_PUJA to "photo_kartik_puja",
+        EventVisualType.EKADASHI to "photo_ekadashi",
+        EventVisualType.MAHALAYA to "photo_mahalaya",
+
+        EventVisualType.RAMADAN to "photo_ramadan",
+        EventVisualType.EID_UL_FITR to "photo_eid_ul_fitr",
+        EventVisualType.EID_UL_ADHA to "photo_eid_ul_adha",
+        EventVisualType.MUHARRAM to "photo_muharram",
+        EventVisualType.EID_MILADUNNABI to "photo_eid_miladunnabi",
+        EventVisualType.SHAB_E_BARAT to "photo_shab_e_barat",
+
+        EventVisualType.GURU_NANAK to "photo_guru_nanak",
+        EventVisualType.BAISAKHI to "photo_baisakhi",
+        EventVisualType.BUDDHA_PURNIMA to "photo_buddha_purnima",
+        EventVisualType.MAHAVIR_JAYANTI to "photo_mahavir_jayanti",
+        EventVisualType.GOOD_FRIDAY to "photo_good_friday",
+        EventVisualType.EASTER to "photo_easter",
+        EventVisualType.CHRISTMAS to "photo_christmas",
+
+        EventVisualType.NEHRU to "photo_nehru",
+        EventVisualType.SHASTRI to "photo_shastri",
+        EventVisualType.ABUL_KALAM_AZAD to "photo_abul_kalam_azad",
+        EventVisualType.VAJPAYEE to "photo_vajpayee",
+        EventVisualType.RAMAKRISHNA to "photo_ramakrishna"
+    )
+
     @DrawableRes
     fun getDrawableResForVisualType(type: EventVisualType?): Int? {
         if (type == null) return null
         return VISUAL_TYPE_TO_DRAWABLE[type]
     }
 
-    @DrawableRes
-    fun getDrawableResForName(name: String?): Int? {
-        if (name.isNullOrBlank()) return null
-        val cleanName = name.removeSuffix(".png").trim()
-        return NAME_TO_DRAWABLE[cleanName]
+    fun getTargetDrawableNameForType(type: EventVisualType?): String? {
+        if (type == null) return null
+        return TARGET_DRAWABLE_MAP[type]
     }
 
     @DrawableRes
-    fun getDrawableResForEvent(event: CalendarEvent): Int? {
+    fun getDrawableResForName(name: String?, context: android.content.Context? = null): Int? {
+        if (name.isNullOrBlank()) return null
+        val cleanName = name.removeSuffix(".png").trim()
+        val staticRes = NAME_TO_DRAWABLE[cleanName]
+        if (staticRes != null) return staticRes
+
+        // Dynamic lookup if custom PNG was added to res/drawable/
+        if (context != null) {
+            try {
+                val id = context.resources.getIdentifier(cleanName, "drawable", context.packageName)
+                if (id != 0) return id
+            } catch (_: Exception) {}
+        }
+        return null
+    }
+
+    @DrawableRes
+    fun getDrawableResForEvent(event: CalendarEvent, context: android.content.Context? = null): Int? {
         // 1. Direct explicit imageResId
         if (event.imageResId != null && event.imageResId != 0) {
             return event.imageResId
@@ -81,7 +131,7 @@ object EventDrawableMapper {
 
         // 2. Direct explicit imageDrawableName
         if (!event.imageDrawableName.isNullOrBlank()) {
-            val res = getDrawableResForName(event.imageDrawableName)
+            val res = getDrawableResForName(event.imageDrawableName, context)
             if (res != null) return res
         }
 
@@ -89,11 +139,18 @@ object EventDrawableMapper {
         if (event.visualType != null) {
             val res = getDrawableResForVisualType(event.visualType)
             if (res != null) return res
+
+            // Check if target drawable name exists in resources dynamically
+            val targetName = TARGET_DRAWABLE_MAP[event.visualType]
+            if (targetName != null) {
+                val resFromTarget = getDrawableResForName(targetName, context)
+                if (resFromTarget != null) return resFromTarget
+            }
         }
 
         // 4. Safe keyword matching on titleBn / id
         val text = "${event.id} ${event.titleBn} ${event.titleEn}"
-        return when {
+        val directRes = when {
             text.contains("কালাম") || text.contains("Kalam") || text.contains("abdul_kalam") -> R.drawable.photo_dr_apj_abdul_kalam
             text.contains("লক্ষ্মী") || text.contains("লক্ষী") || text.contains("Laxmi") || text.contains("Lakshmi") -> R.drawable.photo_laxmi
             text.contains("কালী") || text.contains("শ্যামা") || text.contains("Kali") -> R.drawable.photo_kali
@@ -117,5 +174,73 @@ object EventDrawableMapper {
             text.contains("অমাবস্যা") || text.contains("Amavasya") -> R.drawable.photo_moon_dark
             else -> null
         }
+        if (directRes != null) return directRes
+
+        // 5. Dynamic target check based on remaining keywords
+        if (context != null) {
+            val potentialName = when {
+                text.contains("মকর") || text.contains("পৌষ সংক্রান্তি") -> "photo_makar_sankranti"
+                text.contains("হোলি") -> "photo_holi"
+                text.contains("রাম নবমী") -> "photo_ram_navami"
+                text.contains("অক্ষয়") -> "photo_akshaya_tritiya"
+                text.contains("ভাইফোঁটা") || text.contains("ভ্রাতৃদ্বিতীয়া") -> "photo_bhai_phota"
+                text.contains("ছট পূজা") -> "photo_chhath_puja"
+                text.contains("কার্তিক পূজা") -> "photo_kartik_puja"
+                text.contains("একাদশী") -> "photo_ekadashi"
+                text.contains("মহালয়া") -> "photo_mahalaya"
+                text.contains("রমজান") -> "photo_ramadan"
+                text.contains("ঈদুল ফিতর") -> "photo_eid_ul_fitr"
+                text.contains("ঈদুল আজহা") || text.contains("কোরবানি") -> "photo_eid_ul_adha"
+                text.contains("মুহররম") || text.contains("আশুরা") -> "photo_muharram"
+                text.contains("মিলাদুন্নবী") -> "photo_eid_miladunnabi"
+                text.contains("শবে বরাত") -> "photo_shab_e_barat"
+                text.contains("গুরু নানক") -> "photo_guru_nanak"
+                text.contains("বৈশাখী") -> "photo_baisakhi"
+                text.contains("বুদ্ধ পূর্ণিমা") -> "photo_buddha_purnima"
+                text.contains("মহাবীর") -> "photo_mahavir_jayanti"
+                text.contains("গুড ফ্রাইডে") -> "photo_good_friday"
+                text.contains("ইস্টার") -> "photo_easter"
+                text.contains("বড়দিন") || text.contains("ক্রিসমাস") -> "photo_christmas"
+                text.contains("নেহরু") -> "photo_nehru"
+                text.contains("শাস্ত্রী") -> "photo_shastri"
+                text.contains("আজাদ") -> "photo_abul_kalam_azad"
+                text.contains("বাজপেয়ী") -> "photo_vajpayee"
+                text.contains("রামকৃষ্ণ") -> "photo_ramakrishna"
+                else -> null
+            }
+            if (potentialName != null) {
+                val dynId = getDrawableResForName(potentialName, context)
+                if (dynId != null) return dynId
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * Dynamic visual asset resolver with vector fallback as requested.
+     */
+    fun getEventVisualAsset(context: android.content.Context, resName: String?, category: String): Any {
+        if (!resName.isNullOrEmpty()) {
+            val drawableId = getDrawableResForName(resName, context)
+            if (drawableId != null && drawableId != 0) return drawableId
+
+            val cleanName = resName.removePrefix("R.drawable.").removePrefix("res/drawable/").removeSuffix(".png").trim()
+            val visualType = TARGET_DRAWABLE_MAP.entries.find { it.value == cleanName }?.key
+            if (visualType != null) {
+                return EventVisualFallbackEngine.getFallback(
+                    CalendarEvent(
+                        id = "temp_$cleanName",
+                        titleBn = cleanName,
+                        titleEn = cleanName,
+                        date = CalendarDate(2026, 1, 1),
+                        category = EventCategory.FESTIVAL_PUJA,
+                        isHoliday = false,
+                        visualType = visualType
+                    )
+                )
+            }
+        }
+        return EventVisualFallbackEngine.getFallbackByCategory(category)
     }
 }

@@ -44,7 +44,41 @@ enum class EventVisualType {
     TITHI_SHUKLA,
     TITHI_KRISHNA,
     BIRTHDAY_CAKE,
-    CUSTOM_PHOTO
+    CUSTOM_PHOTO,
+
+    // Hindu Festivals
+    MAKAR_SANKRANTI,
+    HOLI,
+    RAM_NAVAMI,
+    AKSHAYA_TRITIYA,
+    BHAI_PHOTA,
+    CHHATH_PUJA,
+    KARTIK_PUJA,
+    EKADASHI,
+    MAHALAYA,
+
+    // Muslim Festivals (Hijri Calendar)
+    RAMADAN,
+    EID_UL_FITR,
+    EID_UL_ADHA,
+    MUHARRAM,
+    EID_MILADUNNABI,
+    SHAB_E_BARAT,
+
+    // Sikh, Buddhist, Jain & Christian Festivals
+    GURU_NANAK,
+    BAISAKHI,
+    BUDDHA_PURNIMA,
+    MAHAVIR_JAYANTI,
+    GOOD_FRIDAY,
+    EASTER,
+
+    // Major National Figures
+    NEHRU,
+    SHASTRI,
+    ABUL_KALAM_AZAD,
+    VAJPAYEE,
+    RAMAKRISHNA
 }
 
 data class CalendarEvent(
@@ -65,9 +99,10 @@ data class CalendarEvent(
 ) {
     /**
      * Resolves the drawable resource ID for this event if an authentic photo exists.
+     * Supports optional Context for runtime resource identification.
      */
-    fun resolveDrawableRes(): Int? {
+    fun resolveDrawableRes(context: android.content.Context? = null): Int? {
         if (imageResId != null && imageResId != 0) return imageResId
-        return EventDrawableMapper.getDrawableResForEvent(this)
+        return EventDrawableMapper.getDrawableResForEvent(this, context)
     }
 }

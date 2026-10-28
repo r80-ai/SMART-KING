@@ -1690,8 +1690,8 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": "ABUL_KALAM_AZAD",
+    "imageDrawableName": "photo_abul_kalam_azad"
   },
   {
     "key": "11-14",
@@ -1704,8 +1704,8 @@
     "categoryType": "ভারত/স্বাস্থ্য",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": "NEHRU",
+    "imageDrawableName": "photo_nehru"
   },
   {
     "key": "11-16",
@@ -1999,7 +1999,7 @@
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
     "visualType": "CHRISTMAS",
-    "imageDrawableName": null
+    "imageDrawableName": "photo_christmas"
   },
   {
     "key": "12-26",
@@ -2040,7 +2040,7 @@
     "categoryType": "আধ্যাত্মিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": "VIVEKANANDA",
-    "imageDrawableName": "photo_vivekananda"
+    "visualType": "RAMAKRISHNA",
+    "imageDrawableName": "photo_ramakrishna"
   }
 ]

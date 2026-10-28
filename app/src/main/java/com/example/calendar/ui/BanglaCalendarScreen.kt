@@ -512,8 +512,6 @@ fun BanglaCalendarScreen(
                                         }
                                     }
 
-                                    val evDrawableRes = ev.resolveDrawableRes()
-
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
@@ -523,44 +521,13 @@ fun BanglaCalendarScreen(
                                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        // Circular / rounded avatar showcasing the corresponding drawable image
-                                        if (evDrawableRes != null) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(52.dp)
-                                                    .clip(CircleShape)
-                                                    .border(1.5.dp, Color(0xFFD4A017), CircleShape),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                Image(
-                                                    painter = painterResource(id = evDrawableRes),
-                                                    contentDescription = ev.titleBn,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-                                        } else if (!ev.photoUrl.isNullOrEmpty()) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .size(52.dp)
-                                                    .clip(CircleShape)
-                                                    .border(1.5.dp, Color(0xFFD4A017), CircleShape),
-                                                contentAlignment = Alignment.Center
-                                            ) {
-                                                AsyncImage(
-                                                    model = ev.photoUrl,
-                                                    contentDescription = ev.titleBn,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize()
-                                                )
-                                            }
-                                        } else if (ev.type == "ISLAMIC" || ev.type == "HINDU" || ev.category == EventCategory.BIRTHDAY) {
-                                            CalendarCellVisual(
-                                                event = ev,
-                                                isToday = false,
-                                                modifier = Modifier.size(44.dp)
-                                            )
-                                        }
+                                        // Circular / rounded avatar showcasing the corresponding drawable image or styled vector fallback
+                                        CalendarCellVisual(
+                                            event = ev,
+                                            isToday = false,
+                                            modifier = Modifier.size(52.dp),
+                                            size = 52.dp
+                                        )
 
                                         Column(
                                             modifier = Modifier.weight(1f),
