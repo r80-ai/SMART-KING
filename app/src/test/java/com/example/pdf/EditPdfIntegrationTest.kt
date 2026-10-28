@@ -287,18 +287,18 @@ class EditPdfIntegrationTest {
 
         // Verify switching to ERASER mode with STROKE (Mode A)
         view.setEraserMode(
-            com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.LARGE,
-            com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.STROKE
+            com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.LARGE
         )
+        view.eraserType = com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.STROKE
         assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.ToolMode.ERASER, view.currentTool)
         assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.STROKE, view.eraserType)
         assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.LARGE, view.eraserSize)
 
         // Verify switching to ERASER mode with MANUAL (Mode B)
         view.setEraserMode(
-            com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.MEDIUM,
-            com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.MANUAL
+            com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.MEDIUM
         )
+        view.eraserType = com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.MANUAL
         assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.ToolMode.ERASER, view.currentTool)
         assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserType.MANUAL, view.eraserType)
         assertEquals(com.example.ui.screens.AnnotationCanvasOverlayView.EraserSize.MEDIUM, view.eraserSize)

@@ -173,7 +173,14 @@ object HinduPanchangEngine {
                 15 -> list.add(createHinduEvent("h25_holi", "হোলি উৎসব", "Holi", date, true, "বসন্তোৎসব ও রঙের আনন্দ", EventVisualType.KRISHNA))
             }
             4 -> when (d) {
+                6 -> list.add(createHinduEvent("h25_ram_navami", "শ্রী রাম নবমী", "Ram Navami", date, true, "চৈত্র শুক্লা নবমী — ভগবান শ্রী রামচন্দ্রের আবির্ভাব তিথি", EventVisualType.HINDU_DIYA))
+                10 -> list.add(createHinduEvent("h25_mahavir_jayanti", "মহাবীর জয়ন্তী", "Mahavir Jayanti", date, true, "চৈত্র শুক্লা ত্রয়োদশী — জৈন তীর্থঙ্কর ভগবান মহাবীরের জন্মদিন", null))
+                18 -> list.add(createHinduEvent("h25_good_friday", "গুড ফ্রাইডে", "Good Friday", date, true, "যিশুখ্রিস্টের আত্মত্যাগ ও ক্রুশবিদ্ধ হওয়ার স্মরণ", EventVisualType.CHRISTMAS))
+                20 -> list.add(createHinduEvent("h25_easter", "ইস্টার সানডে", "Easter Sunday", date, false, "যিশুখ্রিস্টের পুনরুত্থান দিবস", EventVisualType.CHRISTMAS))
                 30 -> list.add(createHinduEvent("h25_akshaya", "অক্ষয় তৃতীয়্যা", "Akshaya Tritiya", date, false, "বৈশাখ শুক্লা তৃতীয়া — শুভ কার্য ও হালখাতা", EventVisualType.GANESHA))
+            }
+            5 -> when (d) {
+                12 -> list.add(createHinduEvent("h25_buddha_purnima", "বুদ্ধ পূর্ণিমা", "Buddha Purnima", date, true, "বৈশাখী পূর্ণিমা — ভগবান গৌতম বুদ্ধের শুভ জন্ম ও বোধিলাভ", EventVisualType.BUDDHA))
             }
             6 -> when (d) {
                 2 -> list.add(createHinduEvent("h25_jamai_sasthi", "জামাই ষষ্ঠী ব্রত", "Jamai Sasthi", date, false, "জ্যৈষ্ঠ শুক্লা ষষ্ঠী — বাঙালির ঐতিহ্যবাহী জামাই আপ্যায়ন", EventVisualType.HINDU_DIYA))
@@ -203,7 +210,11 @@ object HinduPanchangEngine {
                 30 -> list.add(createHinduEvent("h25_jagaddhatri", "জগদ্ধাত্রী পূজা", "Jagaddhatri Puja", date, false, "কার্তিক শুক্লা নবমী — জগদ্ধাত্রী মাতার পূজা", EventVisualType.DURGA))
             }
             11 -> when (d) {
-                5 -> list.add(createHinduEvent("h25_rash", "রাসযাত্রা ও রাস পূর্ণিমা", "Rash Yatra", date, false, "কার্তিকী পূর্ণিমা — বৃন্দাবনের রাস মহোৎসব", EventVisualType.KRISHNA))
+                5 -> {
+                    list.add(createHinduEvent("h25_rash", "রাসযাত্রা ও রাস পূর্ণিমা", "Rash Yatra", date, false, "কার্তিকী পূর্ণিমা — বৃন্দাবনের রাস মহোৎসব", EventVisualType.KRISHNA))
+                    list.add(createHinduEvent("h25_guru_nanak", "গুরু নানক জয়ন্তী", "Guru Nanak Jayanti", date, true, "কার্তিক পূর্ণিমা — শিখ ধর্মের প্রবক্তা গুরু নানক দেবজীর জন্মদিন", EventVisualType.HINDU_DIYA))
+                }
+                16 -> list.add(createHinduEvent("h25_kartik_puja", "কার্তিক পূজা", "Kartik Puja", date, true, "কার্তিক সংক্রান্তি — দেবসেনাপতি শ্রী কার্তিকের পূজা", EventVisualType.HINDU_DIYA))
             }
         }
     }
@@ -219,12 +230,17 @@ object HinduPanchangEngine {
             3 -> when (d) {
                 3 -> list.add(createHinduEvent("h26_dolyatra", "দোলযাত্রা ও গৌর পূর্ণিমা", "Dol Yatra / Holi", date, true, "ফাল্গুনী পূর্ণিমা — বসন্তোৎসব ও রঙের উৎসব", EventVisualType.KRISHNA))
                 4 -> list.add(createHinduEvent("h26_holi", "হোলি উৎসব", "Holi", date, true, "রঙ ও সম্প্রীতির উৎসব", EventVisualType.KRISHNA))
+                27 -> list.add(createHinduEvent("h26_ram_navami", "শ্রী রাম নবমী", "Ram Navami", date, true, "চৈত্র শুক্লা নবমী — ভগবান শ্রী রামচন্দ্রের আবির্ভাব তিথি", EventVisualType.HINDU_DIYA))
+                31 -> list.add(createHinduEvent("h26_mahavir_jayanti", "মহাবীর জয়ন্তী", "Mahavir Jayanti", date, true, "চৈত্র শুক্লা ত্রয়োদশী — ভগবান মহাবীরের শুভ জন্মদিন", null))
             }
             4 -> when (d) {
+                3 -> list.add(createHinduEvent("h26_good_friday", "গুড ফ্রাইডে", "Good Friday", date, true, "পবিত্র গুড ফ্রাইডে — যিশুখ্রিস্টের আত্মত্যাগ স্মরণ", EventVisualType.CHRISTMAS))
+                5 -> list.add(createHinduEvent("h26_easter", "ইস্টার সানডে", "Easter Sunday", date, false, "যিশুখ্রিস্টের পুনরুত্থান দিবস", EventVisualType.CHRISTMAS))
                 19 -> list.add(createHinduEvent("h26_akshaya", "অক্ষয় তৃতীয়্যা", "Akshaya Tritiya", date, false, "বৈশাখ শুক্লা তৃতীয়া — মঙ্গলময় অক্ষয় ফলদায়ক তিথি", EventVisualType.GANESHA))
             }
             5 -> when (d) {
                 22 -> list.add(createHinduEvent("h26_jamai_sasthi", "জামাই ষষ্ঠী ব্রত", "Jamai Sasthi", date, false, "জ্যৈষ্ঠ শুক্লা ষষ্ঠী — জামাই ষষ্ঠীর পার্বণ", EventVisualType.HINDU_DIYA))
+                31 -> list.add(createHinduEvent("h26_buddha_purnima", "বুদ্ধ পূর্ণিমা", "Buddha Purnima", date, true, "বৈশাখী পূর্ণিমা — ভগবান গৌতম বুদ্ধের শুভ জন্ম ও বোধিলাভ", EventVisualType.BUDDHA))
             }
             7 -> when (d) {
                 16 -> list.add(createHinduEvent("h26_rathyatra", "জগন্নাথদেবের রথযাত্রা", "Rath Yatra", date, true, "আষাঢ় শুক্লা দ্বিতীয়া — জগন্নাথ, বলরাম ও সুভদ্রার রথযাত্রা", EventVisualType.JAGANNATH))
@@ -250,8 +266,12 @@ object HinduPanchangEngine {
                 8 -> list.add(createHinduEvent("h26_kali", "কালীপূজা ও দীপাবলি", "Kali Puja & Diwali", date, true, "কার্তিক অমাবস্যা — শ্যামাপূজা ও আলোক উৎসব", EventVisualType.KALI))
                 10 -> list.add(createHinduEvent("h26_bhaiphota", "ভাইফোঁটা ও ভ্রাতৃদ্বিতীয়া", "Bhai Phota", date, true, "কার্তিক শুক্লা দ্বিতীয়া — শুভ ভাইফোঁটা", EventVisualType.HINDU_DIYA))
                 14 -> list.add(createHinduEvent("h26_chhath", "ছট পূজা (সূর্য অর্ঘ্য)", "Chhath Puja", date, true, "কার্তিক শুক্লা ষষ্ঠী — ছট মহোৎসব", EventVisualType.HINDU_DIYA))
+                16 -> list.add(createHinduEvent("h26_kartik_puja", "কার্তিক পূজা", "Kartik Puja", date, true, "কার্তিক সংক্রান্তি — দেব সেনাপতি কার্তিকের আরাধনা", EventVisualType.HINDU_DIYA))
                 18 -> list.add(createHinduEvent("h26_jagaddhatri", "জগদ্ধাত্রী পূজা", "Jagaddhatri Puja", date, false, "কার্তিক শুক্লা নবমী — জগদ্ধাত্রী মাতার পূজা", EventVisualType.DURGA))
-                24 -> list.add(createHinduEvent("h26_rash", "রাসযাত্রা ও রাস পূর্ণিমা", "Rash Yatra", date, false, "কার্তিকী পূর্ণিমা — রাস মহোৎসব", EventVisualType.KRISHNA))
+                24 -> {
+                    list.add(createHinduEvent("h26_rash", "রাসযাত্রা ও রাস পূর্ণিমা", "Rash Yatra", date, false, "কার্তিকী পূর্ণিমা — রাস মহোৎসব", EventVisualType.KRISHNA))
+                    list.add(createHinduEvent("h26_guru_nanak", "গুরু নানক জয়ন্তী", "Guru Nanak Jayanti", date, true, "কার্তিক পূর্ণিমা — শিখ ধর্মের প্রবক্তা গুরু নানকের জন্মতিথি", EventVisualType.HINDU_DIYA))
+                }
             }
         }
     }
@@ -267,9 +287,16 @@ object HinduPanchangEngine {
                 6 -> list.add(createHinduEvent("h27_shivaratri", "মহা শিবরাত্রি ব্রত", "Maha Shivaratri", date, true, "ফাল্গুন কৃষ্ণা চতুর্দশী — মহাদেব পূজা", EventVisualType.SHIVA))
                 22 -> list.add(createHinduEvent("h27_dolyatra", "দোলযাত্রা ও গৌর পূর্ণিমা", "Dol Yatra / Holi", date, true, "ফাল্গুনী পূর্ণিমা — দোল উৎসব", EventVisualType.KRISHNA))
                 23 -> list.add(createHinduEvent("h27_holi", "হোলি উৎসব", "Holi", date, true, "রঙের উৎসব", EventVisualType.KRISHNA))
+                26 -> list.add(createHinduEvent("h27_good_friday", "গুড ফ্রাইডে", "Good Friday", date, true, "গুড ফ্রাইডে", EventVisualType.CHRISTMAS))
+                28 -> list.add(createHinduEvent("h27_easter", "ইস্টার সানডে", "Easter Sunday", date, false, "ইস্টার সানডে", EventVisualType.CHRISTMAS))
+            }
+            4 -> when (d) {
+                15 -> list.add(createHinduEvent("h27_ram_navami", "শ্রী রাম নবমী", "Ram Navami", date, true, "চৈত্র শুক্লা নবমী — শ্রী রাম নবমী", EventVisualType.HINDU_DIYA))
+                19 -> list.add(createHinduEvent("h27_mahavir_jayanti", "মহাবীর জয়ন্তী", "Mahavir Jayanti", date, true, "মহাবীর জয়ন্তী", null))
             }
             5 -> when (d) {
                 9 -> list.add(createHinduEvent("h27_akshaya", "অক্ষয় তৃতীয়্যা", "Akshaya Tritiya", date, false, "বৈশাখ শুক্লা তৃতীয়া", EventVisualType.GANESHA))
+                20 -> list.add(createHinduEvent("h27_buddha_purnima", "বুদ্ধ পূর্ণিমা", "Buddha Purnima", date, true, "বৈশাখী পূর্ণিমা — বুদ্ধ পূর্ণিমা", EventVisualType.BUDDHA))
             }
             6 -> when (d) {
                 11 -> list.add(createHinduEvent("h27_jamai_sasthi", "জামাই ষষ্ঠী ব্রত", "Jamai Sasthi", date, false, "জ্যৈষ্ঠ শুক্লা ষষ্ঠী", EventVisualType.HINDU_DIYA))
@@ -299,7 +326,11 @@ object HinduPanchangEngine {
             11 -> when (d) {
                 4 -> list.add(createHinduEvent("h27_chhath", "ছট পূজা", "Chhath Puja", date, true, "কার্তিক শুক্লা ষষ্ঠী", EventVisualType.HINDU_DIYA))
                 7 -> list.add(createHinduEvent("h27_jagaddhatri", "জগদ্ধাত্রী পূজা", "Jagaddhatri Puja", date, false, "জগদ্ধাত্রী পূজা", EventVisualType.DURGA))
-                13 -> list.add(createHinduEvent("h27_rash", "রাসযাত্রা ও রাস পূর্ণিমা", "Rash Yatra", date, false, "রাস পূর্ণিমা", EventVisualType.KRISHNA))
+                13 -> {
+                    list.add(createHinduEvent("h27_rash", "রাসযাত্রা ও রাস পূর্ণিমা", "Rash Yatra", date, false, "রাস পূর্ণিমা", EventVisualType.KRISHNA))
+                    list.add(createHinduEvent("h27_guru_nanak", "গুরু নানক জয়ন্তী", "Guru Nanak Jayanti", date, true, "গুরু নানক জয়ন্তী", EventVisualType.HINDU_DIYA))
+                }
+                16 -> list.add(createHinduEvent("h27_kartik_puja", "কার্তিক পূজা", "Kartik Puja", date, true, "কার্তিক সংক্রান্তি — কার্তিক পূজা", EventVisualType.HINDU_DIYA))
             }
         }
     }
@@ -317,6 +348,23 @@ object HinduPanchangEngine {
             3 -> when (d) {
                 11 -> list.add(createHinduEvent("h28_dolyatra", "দোলযাত্রা ও গৌর পূর্ণিমা", "Dol Yatra / Holi", date, true, "দোলযাত্রা", EventVisualType.KRISHNA))
             }
+            4 -> when (d) {
+                4 -> list.add(createHinduEvent("h28_ram_navami", "শ্রী রাম নবমী", "Ram Navami", date, true, "শ্রী রাম নবমী", EventVisualType.HINDU_DIYA))
+                8 -> list.add(createHinduEvent("h28_mahavir_jayanti", "মহাবীর জয়ন্তী", "Mahavir Jayanti", date, true, "মহাবীর জয়ন্তী", null))
+                14 -> list.add(createHinduEvent("h28_good_friday", "গুড ফ্রাইডে", "Good Friday", date, true, "গুড ফ্রাইডে", EventVisualType.CHRISTMAS))
+                16 -> list.add(createHinduEvent("h28_easter", "ইস্টার সানডে", "Easter Sunday", date, false, "ইস্টার সানডে", EventVisualType.CHRISTMAS))
+                28 -> list.add(createHinduEvent("h28_akshaya", "অক্ষয় তৃতীয়্যা", "Akshaya Tritiya", date, false, "বৈশাখ শুক্লা তৃতীয়া", EventVisualType.GANESHA))
+            }
+            5 -> when (d) {
+                8 -> list.add(createHinduEvent("h28_buddha_purnima", "বুদ্ধ পূর্ণিমা", "Buddha Purnima", date, true, "বুদ্ধ পূর্ণিমা", EventVisualType.BUDDHA))
+            }
+            6 -> when (d) {
+                24 -> list.add(createHinduEvent("h28_rathyatra", "জগন্নাথদেবের রথযাত্রা", "Rath Yatra", date, true, "রথযাত্রা", EventVisualType.JAGANNATH))
+            }
+            8 -> when (d) {
+                13 -> list.add(createHinduEvent("h28_janmashtami", "শ্রীকৃষ্ণ জন্মাষ্টমী", "Sri Krishna Janmashtami", date, true, "জন্মাষ্টমী", EventVisualType.KRISHNA))
+                23 -> list.add(createHinduEvent("h28_ganesh", "গণেশ চতুর্থী", "Ganesh Chaturthi", date, true, "গণেশ চতুর্থী", EventVisualType.GANESHA))
+            }
             9 -> when (d) {
                 18 -> list.add(createHinduEvent("h28_mahalaya", "মহালয়া", "Mahalaya", date, true, "মহালয়া অমাবস্যা", EventVisualType.DURGA))
                 25 -> list.add(createHinduEvent("h28_sasthi", "দুর্গাপূজা - মহা ষষ্ঠী", "Durga Puja - Maha Sasthi", date, true, "ষষ্ঠী বোধন", EventVisualType.DURGA))
@@ -326,6 +374,14 @@ object HinduPanchangEngine {
                 3 -> list.add(createHinduEvent("h28_lakshmi", "কোজাগরী লক্ষ্মী পূজা", "Kojagari Lakshmi Puja", date, true, "কোজাগরী পূর্ণিমা", EventVisualType.SARASWATI))
                 17 -> list.add(createHinduEvent("h28_kali", "কালীপূজা ও দীপাবলি", "Kali Puja & Diwali", date, true, "দীপাবলি ও কালীপূজা", EventVisualType.KALI))
                 19 -> list.add(createHinduEvent("h28_bhaiphota", "ভাইফোঁটা", "Bhai Phota", date, true, "ভাইফোঁটা", EventVisualType.HINDU_DIYA))
+                23 -> list.add(createHinduEvent("h28_chhath", "ছট পূজা", "Chhath Puja", date, true, "ছট পূজা", EventVisualType.HINDU_DIYA))
+            }
+            11 -> when (d) {
+                1 -> {
+                    list.add(createHinduEvent("h28_rash", "রাস পূর্ণিমা", "Rash Purnima", date, false, "রাস পূর্ণিমা", EventVisualType.KRISHNA))
+                    list.add(createHinduEvent("h28_guru_nanak", "গুরু নানক জয়ন্তী", "Guru Nanak Jayanti", date, true, "গুরু নানক জয়ন্তী", EventVisualType.HINDU_DIYA))
+                }
+                16 -> list.add(createHinduEvent("h28_kartik_puja", "কার্তিক পূজা", "Kartik Puja", date, true, "কার্তিক সংক্রান্তি — কার্তিক পূজা", EventVisualType.HINDU_DIYA))
             }
         }
     }
@@ -352,12 +408,17 @@ object HinduPanchangEngine {
                     list.add(createHinduEvent("h_charak_neel", "নীলপূজা ও চড়ক পূজা", "Neel Puja & Charak Puja", date, false, "চৈত্র সংক্রান্তি, শিবের গাজন ও চড়ক মেলা", EventVisualType.SHIVA))
                 }
                 if (d == 14 || d == 15) {
-                    list.add(createHinduEvent("h_pohela_boishakh", "পয়লা বৈশাখ / বাংলা নববর্ষ", "Pohela Boishakh (Bengali New Year)", date, true, "শুভ নববর্ষ ও শুভ হালখাতা উৎসব", EventVisualType.HINDU_DIYA))
+                    list.add(createHinduEvent("h_pohela_boishakh", "পয়লা বৈশাখ / বাংলা নববর্ষ ও বৈশাখী", "Pohela Boishakh (Bengali New Year) & Vaisakhi", date, true, "শুভ নববর্ষ ও বৈশাখী উৎসব", EventVisualType.HINDU_DIYA))
                 }
             }
             9 -> {
                 if (d == 17 || d == 18) {
                     list.add(createHinduEvent("h_vishwakarma", "বিশ্বকর্মা পূজা", "Vishwakarma Puja", date, true, "কন্যা সংক্রান্তি — দেবশিল্পী বিশ্বকর্মার আরাধনা ও ঘুড়ি উৎসব", EventVisualType.VISHWAKARMA))
+                }
+            }
+            11 -> {
+                if (d == 16 || d == 17) {
+                    list.add(createHinduEvent("h_kartik_sankranti_solar", "কার্তিক সংক্রান্তি ও কার্তিক পূজা", "Kartik Sankranti & Kartik Puja", date, true, "কার্তিক সংক্রান্তি — দেবসেনাপতি কার্তিকের পূজা", EventVisualType.HINDU_DIYA))
                 }
             }
         }
