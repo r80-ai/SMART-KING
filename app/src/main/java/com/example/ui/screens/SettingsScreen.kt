@@ -55,6 +55,17 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.OpenInBrowser
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material3.CircularProgressIndicator
+import android.app.Activity
+import com.example.updater.AppUpdateManager
+import com.example.updater.UpdateConfig
+import com.example.updater.UpdateState
+import com.example.updater.ui.OptionalUpdateDialog
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
@@ -112,6 +123,7 @@ fun SettingsScreen(
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val language by viewModel.appLanguage.collectAsState()
+    val isBn = language == "bn"
     val darkThemeMode by viewModel.darkThemeMode.collectAsState()
     val allFiles by viewModel.allFiles.collectAsState()
 
@@ -133,6 +145,13 @@ fun SettingsScreen(
     var localBackupFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var pendingRestoreData by remember { mutableStateOf<Pair<String, DatabaseBackup>?>(null) }
     var isRestoring by remember { mutableStateOf(false) }
+
+    val updateManager = remember { AppUpdateManager.getInstance(context) }
+    val updateState by updateManager.updateState.collectAsState()
+    val currentManifest by updateManager.currentManifest.collectAsState()
+    var showConfigDialog by remember { mutableStateOf(false) }
+    var configUrlInput by remember(updateManager.config.manifestUrl) { mutableStateOf(updateManager.config.manifestUrl) }
+    var showOptionalUpdateModal by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -442,7 +461,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
         }
 
 
-        // Section: About App
+        // Section: About App & Remote Update System
         item {
             Spacer(modifier = Modifier.height(14.dp))
             Card(
@@ -478,10 +497,138 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = "Version 1.0.0 • Offline First & AI Powered",
+                        text = "Version ${updateManager.installedVersionName} (Build ${updateManager.installedVersionCode}) • Offline First",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Update Status Section
+                    when (val state = updateState) {
+                        is UpdateState.Checking -> {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp, color = CrimsonPrimary)
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = if (isBn) "রিমোট আপডেট চেক করা হচ্ছে..." else "Checking GitHub Releases...",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        is UpdateState.UpToDate -> {
+                            Surface(
+                                color = ToolGreen.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Check, contentDescription = null, tint = ToolGreen, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = if (isBn) "অ্যাপটি সর্বশেষ সংস্করণে আপডেট আছে" else "Application is up to date",
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.SemiBold),
+                                        color = ToolGreen
+                                    )
+                                }
+                            }
+                        }
+                        is UpdateState.Available -> {
+                            Surface(
+                                color = ToolOrange.copy(alpha = 0.15f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.SystemUpdate, contentDescription = null, tint = ToolOrange, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = (if (isBn) "নতুন সংস্করণ উপলভ্য: v" else "Update Available: v") + state.manifest.latestVersionName,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontWeight = FontWeight.Bold),
+                                        color = ToolOrange
+                                    )
+                                }
+                            }
+                        }
+                        is UpdateState.Error -> {
+                            Surface(
+                                color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.4f),
+                                shape = RoundedCornerShape(8.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text(
+                                        text = state.message,
+                                        style = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                                        color = MaterialTheme.colorScheme.error,
+                                        maxLines = 2
+                                    )
+                                }
+                            }
+                        }
+                        else -> {}
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Action Buttons Row
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = {
+                                updateManager.checkForUpdates(isManual = true)
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .testTag("btn_check_for_updates"),
+                            colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(Icons.Default.SystemUpdate, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isBn) "আপডেট চেক" else "Check Updates",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = { showConfigDialog = true },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp)
+                        ) {
+                            Icon(Icons.Default.Tune, contentDescription = "Config", modifier = Modifier.size(16.dp))
+                        }
+
+                        OutlinedButton(
+                            onClick = {
+                                (context as? Activity)?.let { act ->
+                                    updateManager.openReleasesPage(act)
+                                }
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 10.dp)
+                        ) {
+                            Icon(Icons.Default.OpenInBrowser, contentDescription = "Releases", modifier = Modifier.size(16.dp))
+                        }
+                    }
                 }
             }
         }
@@ -681,6 +828,89 @@ AppScreen(modifier = modifier, isScrollable = false) {
                     Text(if (isBn) "বন্ধ করুন" else "Close")
                 }
             }
+        )
+    }
+
+    // Modal dialog to view and configure Remote Update Manifest Endpoint
+    if (showConfigDialog) {
+        val isBn = language == "bn"
+        AlertDialog(
+            onDismissRequest = { showConfigDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Tune, contentDescription = null, tint = CrimsonPrimary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(if (isBn) "রিমোট আপডেট কনফিগারেশন" else "Remote Update Config", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = if (isBn)
+                            "GitHub Releases অথবা যেকোনো কাস্টম সার্ভারের আপডেট ম্যানিফেস্ট JSON URL এখানে দিন:"
+                        else
+                            "Specify the update manifest JSON URL (GitHub Releases raw endpoint or custom server):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    OutlinedTextField(
+                        value = configUrlInput,
+                        onValueChange = { configUrlInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = false,
+                        maxLines = 3,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        label = { Text("Manifest Endpoint URL") }
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextButton(
+                            onClick = {
+                                updateManager.config.resetToDefault()
+                                configUrlInput = updateManager.config.manifestUrl
+                                viewModel.setNotification(if (isBn) "ডিফল্ট URL রিসেট হয়েছে" else "Reset to default endpoint")
+                            }
+                        ) {
+                            Text(if (isBn) "ডিফল্ট রিসেট" else "Reset Default", fontSize = 12.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val trimmed = configUrlInput.trim()
+                        if (trimmed.isNotBlank()) {
+                            updateManager.config.manifestUrl = trimmed
+                            viewModel.setNotification(if (isBn) "✅ আপডেট URL সংরক্ষিত হয়েছে" else "✅ Manifest URL saved")
+                            showConfigDialog = false
+                            updateManager.checkForUpdates(isManual = true)
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
+                ) {
+                    Text(if (isBn) "সংরক্ষণ ও চেক" else "Save & Check")
+                }
+            },
+            dismissButton = {
+                OutlinedButton(onClick = { showConfigDialog = false }) {
+                    Text(if (isBn) "বাতিল" else "Cancel")
+                }
+            }
+        )
+    }
+
+    // Modal dialog when an optional update is available
+    if (showOptionalUpdateModal && currentManifest != null) {
+        OptionalUpdateDialog(
+            updateManager = updateManager,
+            manifest = currentManifest!!,
+            onDismiss = { showOptionalUpdateModal = false }
         )
     }
 }

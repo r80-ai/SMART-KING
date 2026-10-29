@@ -1,0 +1,17 @@
+{
+  "manifestSchemaVersion": 1,
+  "appId": "com.aistudio.pdfmaster.qvrx",
+  "latestVersionCode": 2,
+  "latestVersionName": "1.1.0",
+  "minimumSupportedVersionCode": 2,
+  "mandatoryUpdate": true,
+  "releaseTitle": "SMART KING v1.1.0 — Remote Update & Performance Release",
+  "releaseNotes": "• New GitHub Releases Remote Update Engine with package & signature verification\n• Transplanted high-precision Drawing & Annotation Engine\n• Mandatory storage gate & background sync stability\n• Critical performance enhancements & bug fixes",
+  "downloadUrl": "https://github.com/r80-ai/SMART-KING/releases/download/v1.1.0/smart-king-v1.1.0.apk",
+  "releasePageUrl": "https://github.com/r80-ai/SMART-KING/releases/tag/v1.1.0",
+  "apkSha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "signingCertificateSha256": "d813259c995337db5d7aceb207db830f945b0a95169f2396a7f9e93e888df60d",
+  "publishedAt": "2026-10-29T12:00:00Z",
+  "fileSizeBytes": 0,
+  "nextManifestUrl": null
+}

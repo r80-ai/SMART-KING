@@ -57,6 +57,10 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.storage.StoragePermissionHelper
 import com.example.ui.screens.StoragePermissionGatewayScreen
+import com.example.updater.AppUpdateManager
+import com.example.updater.UpdateState
+import com.example.updater.ui.OptionalUpdateDialog
+import com.example.updater.ui.UpdateRequiredScreen
 
 class MainActivity : ComponentActivity() {
     private var mainViewModel: PdfMasterViewModel? = null
@@ -79,6 +83,25 @@ class MainActivity : ComponentActivity() {
             val systemDark = isSystemInDarkTheme()
             val isDark = darkThemeMode ?: systemDark
 
+            val updateManager = remember { AppUpdateManager.getInstance(this@MainActivity) }
+            val isMandatoryUpdateActive by updateManager.isMandatoryUpdateActive.collectAsState()
+            val updateState by updateManager.updateState.collectAsState()
+            val currentManifest by updateManager.currentManifest.collectAsState()
+
+            var showOptionalDialog by remember { mutableStateOf(false) }
+
+            // Trigger background update check on app launch
+            LaunchedEffect(Unit) {
+                updateManager.checkForUpdates(isManual = false)
+            }
+
+            // Show optional update dialog when available
+            LaunchedEffect(updateState) {
+                if (updateState is UpdateState.Available && !(updateState as UpdateState.Available).isMandatory) {
+                    showOptionalDialog = true
+                }
+            }
+
             var hasStoragePermission by remember {
                 mutableStateOf(StoragePermissionHelper.hasFullStoragePermission(this@MainActivity))
             }
@@ -92,6 +115,7 @@ class MainActivity : ComponentActivity() {
                             StoragePermissionHelper.ensureRootDirectoriesExist()
                         }
                         hasStoragePermission = granted
+                        updateManager.onAppResumed()
                     }
                 }
                 lifecycleOwner.lifecycle.addObserver(observer)
@@ -116,8 +140,23 @@ class MainActivity : ComponentActivity() {
                             hasStoragePermission = true
                         }
                     )
+                } else if (isMandatoryUpdateActive) {
+                    // Mandatory update locks all core application features
+                    UpdateRequiredScreen(updateManager = updateManager)
                 } else {
                     PdfMasterApp(viewModel = vm)
+
+                    // Display optional update notification dialog if available
+                    if (showOptionalDialog && currentManifest != null && updateState is UpdateState.Available) {
+                        OptionalUpdateDialog(
+                            updateManager = updateManager,
+                            manifest = currentManifest!!,
+                            onDismiss = {
+                                showOptionalDialog = false
+                                updateManager.dismissOptionalDialog()
+                            }
+                        )
+                    }
                 }
             }
         }

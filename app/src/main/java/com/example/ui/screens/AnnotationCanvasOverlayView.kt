@@ -108,7 +108,7 @@ class AnnotationCanvasOverlayView @JvmOverloads constructor(
             invalidate()
         }
 
-    var eraserType: EraserType = EraserType.MANUAL
+    var eraserType: EraserType = EraserType.STROKE
         set(value) {
             field = value
             invalidate()
