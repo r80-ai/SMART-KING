@@ -49,6 +49,14 @@ import com.example.ui.theme.CrimsonPrimary
 import com.example.ui.theme.MyApplicationTheme
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import com.example.storage.StoragePermissionHelper
+import com.example.ui.screens.StoragePermissionGatewayScreen
 
 class MainActivity : ComponentActivity() {
     private var mainViewModel: PdfMasterViewModel? = null
@@ -63,22 +71,54 @@ class MainActivity : ComponentActivity() {
         // Initialize Amar Dokan local backup manager
         com.example.amardokan.data.AmarDokanBackupManager.init(this)
 
-
         setContent {
             val vm: PdfMasterViewModel = viewModel()
             mainViewModel = vm
-
-            // Handle widget launch intent
-            LaunchedEffect(Unit) {
-                handleCalendarIntent(intent, vm)
-            }
 
             val darkThemeMode by vm.darkThemeMode.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val isDark = darkThemeMode ?: systemDark
 
+            var hasStoragePermission by remember {
+                mutableStateOf(StoragePermissionHelper.hasFullStoragePermission(this@MainActivity))
+            }
+
+            val lifecycleOwner = LocalLifecycleOwner.current
+            DisposableEffect(lifecycleOwner) {
+                val observer = LifecycleEventObserver { _, event ->
+                    if (event == Lifecycle.Event.ON_RESUME) {
+                        val granted = StoragePermissionHelper.hasFullStoragePermission(this@MainActivity)
+                        if (granted) {
+                            StoragePermissionHelper.ensureRootDirectoriesExist()
+                        }
+                        hasStoragePermission = granted
+                    }
+                }
+                lifecycleOwner.lifecycle.addObserver(observer)
+                onDispose {
+                    lifecycleOwner.lifecycle.removeObserver(observer)
+                }
+            }
+
+            // Handle widget launch intent once storage permission is ready
+            LaunchedEffect(hasStoragePermission) {
+                if (hasStoragePermission) {
+                    StoragePermissionHelper.ensureRootDirectoriesExist()
+                    handleCalendarIntent(intent, vm)
+                }
+            }
+
             MyApplicationTheme(darkTheme = isDark) {
-                PdfMasterApp(viewModel = vm)
+                if (!hasStoragePermission) {
+                    StoragePermissionGatewayScreen(
+                        onPermissionGranted = {
+                            StoragePermissionHelper.ensureRootDirectoriesExist()
+                            hasStoragePermission = true
+                        }
+                    )
+                } else {
+                    PdfMasterApp(viewModel = vm)
+                }
             }
         }
     }

@@ -16,11 +16,13 @@ import java.io.File
 
 object StoragePermissionHelper {
     private const val TAG = "StoragePermHelper"
+    const val ROOT_FOLDER_NAME = "Smart King"
+    const val ROOT_FOLDER_PATH = "/storage/emulated/0/Smart King"
 
     /**
      * Checks if the app has full broad external storage access.
      * On Android 11+ (API 30+), checks Environment.isExternalStorageManager().
-     * On Android 10 and below, checks WRITE_EXTERNAL_STORAGE permission.
+     * On Android 10 and below, checks WRITE_EXTERNAL_STORAGE and READ_EXTERNAL_STORAGE permission.
      */
     fun hasFullStoragePermission(context: Context): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -34,7 +36,36 @@ object StoragePermissionHelper {
             ContextCompat.checkSelfPermission(
                 context,
                 Manifest.permission.WRITE_EXTERNAL_STORAGE
+            ) == PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.READ_EXTERNAL_STORAGE
             ) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    /**
+     * Creates and initializes the primary Smart King root directories
+     * on internal storage once All Files Access permission is granted.
+     */
+    fun ensureRootDirectoriesExist(): Boolean {
+        return try {
+            val root = File(Environment.getExternalStorageDirectory(), ROOT_FOLDER_NAME)
+            if (!root.exists()) {
+                root.mkdirs()
+            }
+            val amarDokanDir = File(root, "Amar Dokan")
+            if (!amarDokanDir.exists()) {
+                amarDokanDir.mkdirs()
+            }
+            val pdfDir = File(root, "PDFs")
+            if (!pdfDir.exists()) {
+                pdfDir.mkdirs()
+            }
+            root.exists() && root.canWrite()
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed ensuring root directories: ${e.message}")
+            false
         }
     }
 
