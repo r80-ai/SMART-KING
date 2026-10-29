@@ -10,8 +10,7 @@
     "categoryType": "সামাজিক/আন্তর্জাতিক",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-04",
@@ -24,8 +23,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-09",
@@ -38,8 +36,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-10",
@@ -52,8 +49,7 @@
     "categoryType": "ভাষা",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-12",
@@ -66,8 +62,7 @@
     "categoryType": "ভারত/জন্মবার্ষিকী",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": "VIVEKANANDA",
-    "imageDrawableName": "photo_vivekananda"
+    "visualType": "VIVEKANANDA"
   },
   {
     "key": "01-15",
@@ -80,8 +75,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-23",
@@ -94,8 +88,7 @@
     "categoryType": "জন্মবার্ষিকী/ভারত",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": "NETAJI",
-    "imageDrawableName": "photo_netaji"
+    "visualType": "NETAJI"
   },
   {
     "key": "01-24",
@@ -108,8 +101,7 @@
     "categoryType": "ভারত/জাতিসংঘ",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-25",
@@ -122,8 +114,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-26",
@@ -136,8 +127,7 @@
     "categoryType": "জাতীয়/জাতিসংঘ",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-27",
@@ -150,8 +140,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "01-30",
@@ -164,8 +153,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": "GANDHI",
-    "imageDrawableName": "photo_gandhi"
+    "visualType": "GANDHI"
   },
   {
     "key": "02-02",
@@ -178,8 +166,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-04",
@@ -192,8 +179,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-11",
@@ -206,8 +192,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-12",
@@ -220,8 +205,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-13",
@@ -234,8 +218,7 @@
     "categoryType": "ভারত/আন্তর্জাতিক",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-14",
@@ -248,8 +231,7 @@
     "categoryType": "সামাজিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-20",
@@ -262,8 +244,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-21",
@@ -276,8 +257,7 @@
     "categoryType": "ইউনেস্কো",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-24",
@@ -290,8 +270,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "02-28",
@@ -304,8 +283,7 @@
     "categoryType": "বিজ্ঞান/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-01",
@@ -318,8 +296,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-03",
@@ -332,8 +309,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-04",
@@ -346,8 +322,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-08",
@@ -360,8 +335,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-14",
@@ -374,8 +348,7 @@
     "categoryType": "বিজ্ঞান",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-15",
@@ -388,8 +361,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-20",
@@ -402,8 +374,7 @@
     "categoryType": "আন্তর্জাতিক/পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-21",
@@ -416,8 +387,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-22",
@@ -430,8 +400,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-23",
@@ -444,8 +413,7 @@
     "categoryType": "ভারত/আন্তর্জাতিক",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-24",
@@ -458,8 +426,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-27",
@@ -472,8 +439,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "03-30",
@@ -486,8 +452,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-05",
@@ -500,8 +465,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-07",
@@ -514,8 +478,7 @@
     "categoryType": "বিশ্ব স্বাস্থ্য সংস্থা",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-10",
@@ -528,8 +491,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-11",
@@ -542,8 +504,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-13",
@@ -556,8 +517,7 @@
     "categoryType": "ইতিহাস/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-14",
@@ -570,8 +530,7 @@
     "categoryType": "ভারত",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": "AMBEDKAR",
-    "imageDrawableName": "photo_ambedkar"
+    "visualType": "AMBEDKAR"
   },
   {
     "key": "04-15",
@@ -584,8 +543,7 @@
     "categoryType": "ইউনেস্কো",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-18",
@@ -598,8 +556,7 @@
     "categoryType": "ঐতিহ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-21",
@@ -612,8 +569,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-22",
@@ -626,8 +582,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-23",
@@ -640,8 +595,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-24",
@@ -654,8 +608,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-25",
@@ -668,8 +621,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-26",
@@ -682,8 +634,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "04-29",
@@ -696,8 +647,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-01",
@@ -710,8 +660,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-03",
@@ -724,8 +673,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-05",
@@ -738,8 +686,7 @@
     "categoryType": "ইউনেস্কো",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-08",
@@ -752,8 +699,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-11",
@@ -766,8 +712,7 @@
     "categoryType": "বিজ্ঞান/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-12",
@@ -780,8 +725,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-15",
@@ -794,8 +738,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-17",
@@ -808,8 +751,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-18",
@@ -822,8 +764,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-20",
@@ -836,8 +777,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-21",
@@ -850,8 +790,7 @@
     "categoryType": "ভারত/আন্তর্জাতিক",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-22",
@@ -864,8 +803,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "05-31",
@@ -878,8 +816,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-01",
@@ -892,8 +829,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-03",
@@ -906,8 +842,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-05",
@@ -920,8 +855,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-07",
@@ -934,8 +868,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-08",
@@ -948,8 +881,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-12",
@@ -962,8 +894,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-14",
@@ -976,8 +907,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-15",
@@ -990,8 +920,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-17",
@@ -1004,8 +933,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-20",
@@ -1018,8 +946,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-21",
@@ -1032,8 +959,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-23",
@@ -1046,8 +972,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-26",
@@ -1060,8 +985,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "06-29",
@@ -1074,8 +998,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-01",
@@ -1088,8 +1011,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-06",
@@ -1102,8 +1024,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-11",
@@ -1116,8 +1037,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-15",
@@ -1130,8 +1050,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-18",
@@ -1144,8 +1063,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-20",
@@ -1158,8 +1076,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-26",
@@ -1172,8 +1089,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-28",
@@ -1186,8 +1102,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "07-29",
@@ -1200,8 +1115,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-06",
@@ -1214,8 +1128,7 @@
     "categoryType": "বিশ্বশান্তি",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-07",
@@ -1228,8 +1141,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-09",
@@ -1242,8 +1154,7 @@
     "categoryType": "জাতিসংঘ/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-12",
@@ -1256,8 +1167,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-15",
@@ -1270,8 +1180,7 @@
     "categoryType": "জাতীয় দিবস",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": "NETAJI",
-    "imageDrawableName": "photo_netaji"
+    "visualType": "NETAJI"
   },
   {
     "key": "08-19",
@@ -1284,8 +1193,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-20",
@@ -1298,8 +1206,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-23",
@@ -1312,8 +1219,7 @@
     "categoryType": "বিজ্ঞান/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "08-29",
@@ -1326,8 +1232,7 @@
     "categoryType": "খেলাধুলা/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-02",
@@ -1340,8 +1245,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-05",
@@ -1354,8 +1258,7 @@
     "categoryType": "শিক্ষা/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": "RADHAKRISHNAN",
-    "imageDrawableName": "photo_radhakrishnan"
+    "visualType": "RADHAKRISHNAN"
   },
   {
     "key": "09-08",
@@ -1368,8 +1271,7 @@
     "categoryType": "ইউনেস্কো",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-14",
@@ -1382,8 +1284,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-15",
@@ -1396,8 +1297,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-16",
@@ -1410,8 +1310,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-21",
@@ -1424,8 +1323,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-23",
@@ -1438,8 +1336,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-27",
@@ -1452,8 +1349,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-28",
@@ -1466,8 +1362,7 @@
     "categoryType": "health/স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "09-29",
@@ -1480,8 +1375,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-01",
@@ -1494,8 +1388,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-02",
@@ -1508,8 +1401,7 @@
     "categoryType": "জাতীয়/আন্তর্জাতিক",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": "GANDHI",
-    "imageDrawableName": "photo_gandhi"
+    "visualType": "GANDHI"
   },
   {
     "key": "10-04",
@@ -1522,8 +1414,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-05",
@@ -1536,8 +1427,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-08",
@@ -1550,8 +1440,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-09",
@@ -1564,8 +1453,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-10",
@@ -1578,8 +1466,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-11",
@@ -1592,8 +1479,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-15",
@@ -1606,8 +1492,7 @@
     "categoryType": "ভারত/আন্তর্জাতিক",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": "APJ_ABDUL_KALAM",
-    "imageDrawableName": "photo_dr_apj_abdul_kalam"
+    "visualType": null
   },
   {
     "key": "10-16",
@@ -1620,8 +1505,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-24",
@@ -1634,8 +1518,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "10-31",
@@ -1648,8 +1531,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-07",
@@ -1662,8 +1544,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-09",
@@ -1676,8 +1557,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-11",
@@ -1690,8 +1570,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": "ABUL_KALAM_AZAD",
-    "imageDrawableName": "photo_abul_kalam_azad"
+    "visualType": null
   },
   {
     "key": "11-14",
@@ -1704,8 +1583,7 @@
     "categoryType": "ভারত/স্বাস্থ্য",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": "NEHRU",
-    "imageDrawableName": "photo_nehru"
+    "visualType": null
   },
   {
     "key": "11-16",
@@ -1718,8 +1596,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-19",
@@ -1732,8 +1609,7 @@
     "categoryType": "আন্তর্জাতিক/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-20",
@@ -1746,8 +1622,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-21",
@@ -1760,8 +1635,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-26",
@@ -1774,8 +1648,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "11-30",
@@ -1788,8 +1661,7 @@
     "categoryType": "তথ্যপ্রযুক্তি",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-01",
@@ -1802,8 +1674,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": "VIVEKANANDA",
-    "imageDrawableName": "photo_vivekananda"
+    "visualType": "VIVEKANANDA"
   },
   {
     "key": "12-02",
@@ -1816,8 +1687,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-03",
@@ -1830,8 +1700,7 @@
     "categoryType": "আন্তর্জাতিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-04",
@@ -1844,8 +1713,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-05",
@@ -1858,8 +1726,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-07",
@@ -1872,8 +1739,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-10",
@@ -1886,8 +1752,7 @@
     "categoryType": "জাতিসংঘ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-11",
@@ -1900,8 +1765,7 @@
     "categoryType": "পরিবেশ",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-14",
@@ -1914,8 +1778,7 @@
     "categoryType": "পরিবেশ/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-16",
@@ -1928,8 +1791,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-18",
@@ -1942,8 +1804,7 @@
     "categoryType": "আন্তর্জাতিক/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-22",
@@ -1956,8 +1817,7 @@
     "categoryType": "বিজ্ঞান/ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-23",
@@ -1970,8 +1830,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-24",
@@ -1984,8 +1843,7 @@
     "categoryType": "ভারত",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-25",
@@ -1998,8 +1856,7 @@
     "categoryType": "ধর্মীয়/ভারত",
     "isHoliday": true,
     "category": "GOVERNMENT_HOLIDAY",
-    "visualType": "CHRISTMAS",
-    "imageDrawableName": "photo_christmas"
+    "visualType": "CHRISTMAS"
   },
   {
     "key": "12-26",
@@ -2012,8 +1869,7 @@
     "categoryType": "ভারত/শিখ",
     "isHoliday": false,
     "category": "NATIONAL_DAY",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-27",
@@ -2026,8 +1882,7 @@
     "categoryType": "স্বাস্থ্য",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": null,
-    "imageDrawableName": null
+    "visualType": null
   },
   {
     "key": "12-28",
@@ -2040,7 +1895,6 @@
     "categoryType": "আধ্যাত্মিক",
     "isHoliday": false,
     "category": "OBSERVANCE",
-    "visualType": "RAMAKRISHNA",
-    "imageDrawableName": "photo_ramakrishna"
+    "visualType": "VIVEKANANDA"
   }
 ]

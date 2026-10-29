@@ -24,8 +24,7 @@ data class SpecialDayItem(
     val categoryType: String,
     val isHoliday: Boolean,
     val category: String,
-    val visualType: String?,
-    val imageDrawableName: String? = null
+    val visualType: String?
 )
 
 /**
@@ -67,7 +66,6 @@ object SpecialDaysRepository {
                     val isHoliday = obj.optBoolean("isHoliday", false)
                     val category = obj.optString("category", "OBSERVANCE")
                     val visualType = if (obj.isNull("visualType")) null else obj.optString("visualType")
-                    val imageDrawableName = if (obj.isNull("imageDrawableName")) null else obj.optString("imageDrawableName").takeIf { it.isNotBlank() }
 
                     val item = SpecialDayItem(
                         key = key,
@@ -80,8 +78,7 @@ object SpecialDaysRepository {
                         categoryType = categoryType,
                         isHoliday = isHoliday,
                         category = category,
-                        visualType = visualType,
-                        imageDrawableName = imageDrawableName
+                        visualType = visualType
                     )
                     allItems.add(item)
 
@@ -125,9 +122,6 @@ object SpecialDaysRepository {
                 else -> EventCategory.OBSERVANCE
             }
 
-            val imgRes = EventDrawableMapper.getDrawableResForVisualType(vType)
-                ?: EventDrawableMapper.getDrawableResForName(item.imageDrawableName)
-
             CalendarEvent(
                 id = "sd_${item.key}_${date.year}",
                 titleBn = item.titleBn,
@@ -139,9 +133,7 @@ object SpecialDaysRepository {
                 descriptionEn = "Reason: ${item.whyBn} | Type: ${item.categoryType}",
                 visualType = vType,
                 type = if (item.isHoliday) "GOVERNMENT_HOLIDAY" else if (cat == EventCategory.NATIONAL_DAY) "NATIONAL" else "OBSERVANCE",
-                moonSightingAdjustable = false,
-                imageResId = imgRes,
-                imageDrawableName = item.imageDrawableName
+                moonSightingAdjustable = false
             )
         }
     }

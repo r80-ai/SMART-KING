@@ -49,18 +49,6 @@ import com.example.ui.theme.CrimsonPrimary
 import com.example.ui.theme.MyApplicationTheme
 import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.storage.StoragePermissionHelper
-import com.example.ui.screens.StoragePermissionGatewayScreen
-import com.example.updater.AppUpdateManager
-import com.example.updater.UpdateState
-import com.example.updater.ui.OptionalUpdateDialog
-import com.example.updater.ui.UpdateRequiredScreen
 
 class MainActivity : ComponentActivity() {
     private var mainViewModel: PdfMasterViewModel? = null
@@ -75,89 +63,22 @@ class MainActivity : ComponentActivity() {
         // Initialize Amar Dokan local backup manager
         com.example.amardokan.data.AmarDokanBackupManager.init(this)
 
+
         setContent {
             val vm: PdfMasterViewModel = viewModel()
             mainViewModel = vm
+
+            // Handle widget launch intent
+            LaunchedEffect(Unit) {
+                handleCalendarIntent(intent, vm)
+            }
 
             val darkThemeMode by vm.darkThemeMode.collectAsState()
             val systemDark = isSystemInDarkTheme()
             val isDark = darkThemeMode ?: systemDark
 
-            val updateManager = remember { AppUpdateManager.getInstance(this@MainActivity) }
-            val isMandatoryUpdateActive by updateManager.isMandatoryUpdateActive.collectAsState()
-            val updateState by updateManager.updateState.collectAsState()
-            val currentManifest by updateManager.currentManifest.collectAsState()
-
-            var showOptionalDialog by remember { mutableStateOf(false) }
-
-            // Trigger background update check on app launch
-            LaunchedEffect(Unit) {
-                updateManager.checkForUpdates(isManual = false)
-            }
-
-            // Show optional update dialog when available
-            LaunchedEffect(updateState) {
-                if (updateState is UpdateState.Available && !(updateState as UpdateState.Available).isMandatory) {
-                    showOptionalDialog = true
-                }
-            }
-
-            var hasStoragePermission by remember {
-                mutableStateOf(StoragePermissionHelper.hasFullStoragePermission(this@MainActivity))
-            }
-
-            val lifecycleOwner = LocalLifecycleOwner.current
-            DisposableEffect(lifecycleOwner) {
-                val observer = LifecycleEventObserver { _, event ->
-                    if (event == Lifecycle.Event.ON_RESUME) {
-                        val granted = StoragePermissionHelper.hasFullStoragePermission(this@MainActivity)
-                        if (granted) {
-                            StoragePermissionHelper.ensureRootDirectoriesExist()
-                        }
-                        hasStoragePermission = granted
-                        updateManager.onAppResumed()
-                    }
-                }
-                lifecycleOwner.lifecycle.addObserver(observer)
-                onDispose {
-                    lifecycleOwner.lifecycle.removeObserver(observer)
-                }
-            }
-
-            // Handle widget launch intent once storage permission is ready
-            LaunchedEffect(hasStoragePermission) {
-                if (hasStoragePermission) {
-                    StoragePermissionHelper.ensureRootDirectoriesExist()
-                    handleCalendarIntent(intent, vm)
-                }
-            }
-
             MyApplicationTheme(darkTheme = isDark) {
-                if (!hasStoragePermission) {
-                    StoragePermissionGatewayScreen(
-                        onPermissionGranted = {
-                            StoragePermissionHelper.ensureRootDirectoriesExist()
-                            hasStoragePermission = true
-                        }
-                    )
-                } else if (isMandatoryUpdateActive) {
-                    // Mandatory update locks all core application features
-                    UpdateRequiredScreen(updateManager = updateManager)
-                } else {
-                    PdfMasterApp(viewModel = vm)
-
-                    // Display optional update notification dialog if available
-                    if (showOptionalDialog && currentManifest != null && updateState is UpdateState.Available) {
-                        OptionalUpdateDialog(
-                            updateManager = updateManager,
-                            manifest = currentManifest!!,
-                            onDismiss = {
-                                showOptionalDialog = false
-                                updateManager.dismissOptionalDialog()
-                            }
-                        )
-                    }
-                }
+                PdfMasterApp(viewModel = vm)
             }
         }
     }

@@ -264,8 +264,7 @@ fun Screen2NewBill(
                             OutlinedButton(
                                 onClick = { customerMenuExpanded = true },
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(8.dp),
-                                border = androidx.compose.foundation.BorderStroke(1.5.dp, Color(0xFF64748B))
+                                shape = RoundedCornerShape(8.dp)
                             ) {
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
@@ -276,9 +275,9 @@ fun Screen2NewBill(
                                         text = if (isCashCustomer) "নগদ কাউন্টার খদ্দের" else (selectedCustomer?.name ?: "কাস্টমার বাছুন"),
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.Black
+                                        color = AmarDokanColors.TextPrimary
                                     )
-                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = Color.Black)
+                                    Icon(Icons.Default.ArrowDropDown, contentDescription = null)
                                 }
                             }
 
@@ -287,13 +286,7 @@ fun Screen2NewBill(
                                 onDismissRequest = { customerMenuExpanded = false }
                             ) {
                                 DropdownMenuItem(
-                                    text = {
-                                        Text(
-                                            "নগদ কাউন্টার খদ্দের (Cash Counter)",
-                                            color = Color.Black,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                    },
+                                    text = { Text("নগদ কাউন্টার খদ্দের (Cash Counter)") },
                                     onClick = {
                                         isCashCustomer = true
                                         selectedCustomer = null
@@ -303,13 +296,7 @@ fun Screen2NewBill(
                                 )
                                 customers.forEach { cust ->
                                     DropdownMenuItem(
-                                        text = {
-                                            Text(
-                                                "${cust.name} ${if (cust.phone.isNotBlank()) "(${cust.phone})" else ""}",
-                                                color = Color.Black,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        },
+                                        text = { Text("${cust.name} ${if (cust.phone.isNotBlank()) "(${cust.phone})" else ""}") },
                                         onClick = {
                                             isCashCustomer = false
                                             selectedCustomer = cust
@@ -339,9 +326,9 @@ fun Screen2NewBill(
                     // Payment Type: Cash vs Credit (Due)
                     Text(
                         text = "পেমেন্টের ধরণ:",
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
-                        color = Color.Black
+                        color = AmarDokanColors.TextPrimary
                     )
 
                     Spacer(modifier = Modifier.height(6.dp))
@@ -353,26 +340,11 @@ fun Screen2NewBill(
                         FilterChip(
                             selected = paymentType == "CASH",
                             onClick = { paymentType = "CASH" },
-                            label = {
-                                Text(
-                                    "🟢 নগদ (Cash)",
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (paymentType == "CASH") Color(0xFF065F46) else Color(0xFF0F172A)
-                                )
-                            },
+                            label = { Text("🟢 নগদ (Cash)", fontWeight = FontWeight.Bold) },
                             modifier = Modifier.weight(1f),
                             colors = FilterChipDefaults.filterChipColors(
-                                containerColor = Color.White,
-                                labelColor = Color(0xFF0F172A),
                                 selectedContainerColor = AmarDokanColors.CashGreenLight,
-                                selectedLabelColor = Color(0xFF065F46)
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = paymentType == "CASH",
-                                borderColor = Color(0xFF64748B),
-                                selectedBorderColor = AmarDokanColors.CashGreen,
-                                borderWidth = 1.5.dp
+                                selectedLabelColor = AmarDokanColors.CashGreen
                             )
                         )
 
@@ -392,26 +364,11 @@ fun Screen2NewBill(
                                     paymentType = "CREDIT"
                                 }
                             },
-                            label = {
-                                Text(
-                                    "🔴 বাকি (Credit)",
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (paymentType == "CREDIT") Color(0xFF991B1B) else Color(0xFF0F172A)
-                                )
-                            },
+                            label = { Text("🔴 বাকি (Credit)", fontWeight = FontWeight.Bold) },
                             modifier = Modifier.weight(1f),
                             colors = FilterChipDefaults.filterChipColors(
-                                containerColor = Color.White,
-                                labelColor = Color(0xFF0F172A),
                                 selectedContainerColor = AmarDokanColors.DueRedLight,
-                                selectedLabelColor = Color(0xFF991B1B)
-                            ),
-                            border = FilterChipDefaults.filterChipBorder(
-                                enabled = true,
-                                selected = paymentType == "CREDIT",
-                                borderColor = Color(0xFF64748B),
-                                selectedBorderColor = AmarDokanColors.DueRed,
-                                borderWidth = 1.5.dp
+                                selectedLabelColor = AmarDokanColors.DueRed
                             )
                         )
                     }
@@ -463,17 +420,15 @@ fun Screen2NewBill(
                                 Text(
                                     text = "+ ${srv.nameBn} (₹${srv.defaultRate.toInt()})",
                                     fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF0F172A)
+                                    fontWeight = FontWeight.Medium
                                 )
                             },
                             colors = SuggestionChipDefaults.suggestionChipColors(
-                                containerColor = Color.White,
-                                labelColor = Color(0xFF0F172A)
+                                containerColor = Color.White
                             ),
                             border = SuggestionChipDefaults.suggestionChipBorder(
                                 enabled = true,
-                                borderColor = Color(0xFF64748B)
+                                borderColor = AmarDokanColors.PrimaryBlue.copy(alpha = 0.5f)
                             )
                         )
                     }
@@ -687,7 +642,7 @@ fun Screen2NewBill(
                                 value = discountInput,
                                 onValueChange = { discountInput = it },
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                                placeholder = { Text("0", fontWeight = FontWeight.Bold, color = Color(0xFF333333)) },
+                                placeholder = { Text("0", fontWeight = FontWeight.Bold, color = AmarDokanColors.TextPrimary.copy(alpha = 0.6f)) },
                                 singleLine = true,
                                 modifier = Modifier
                                     .width(110.dp)
@@ -696,9 +651,8 @@ fun Screen2NewBill(
                                     textAlign = TextAlign.End,
                                     fontSize = 15.sp,
                                     fontWeight = FontWeight.ExtraBold,
-                                    color = Color.Black
-                                ),
-                                colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White)
+                                    color = AmarDokanColors.TextPrimary
+                                )
                             )
                         }
 
@@ -824,45 +778,33 @@ fun Screen2NewBill(
                     OutlinedTextField(
                         value = customItemName,
                         onValueChange = { customItemName = it },
-                        label = { Text("আইটেম বা কাজের নাম *", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
-                        placeholder = { Text("যেমন: স্পাইরাল বাইন্ডিং", color = Color(0xFF444444)) },
+                        label = { Text("আইটেম বা কাজের নাম") },
                         singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                        colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White),
                         modifier = Modifier.fillMaxWidth()
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(
                             value = customItemQty,
                             onValueChange = { customItemQty = it },
-                            label = { Text("পরিমাণ *", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
-                            placeholder = { Text("1", color = Color(0xFF444444)) },
+                            label = { Text("পরিমাণ") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
-                            textStyle = LocalTextStyle.current.copy(color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                            colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White),
                             modifier = Modifier.weight(1f)
                         )
                         OutlinedTextField(
                             value = customItemRate,
                             onValueChange = { customItemRate = it },
-                            label = { Text("দর (₹) *", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
-                            placeholder = { Text("যেমন: 25", color = Color(0xFF444444)) },
+                            label = { Text("দর (₹)") },
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                             singleLine = true,
-                            textStyle = LocalTextStyle.current.copy(color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                            colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White),
                             modifier = Modifier.weight(1f)
                         )
                     }
                     OutlinedTextField(
                         value = customItemUnit,
                         onValueChange = { customItemUnit = it },
-                        label = { Text("একক (পাতা / পিস / টি)", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
-                        placeholder = { Text("যেমন: পিস", color = Color(0xFF444444)) },
+                        label = { Text("একক (পাতা / পিস / টি)") },
                         singleLine = true,
-                        textStyle = LocalTextStyle.current.copy(color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp),
-                        colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White),
                         modifier = Modifier.fillMaxWidth()
                     )
                 }

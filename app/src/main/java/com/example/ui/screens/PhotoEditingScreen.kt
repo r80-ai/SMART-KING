@@ -156,7 +156,6 @@ import com.example.photo.birefnet.BiRefNetLiteEngine
 import com.example.photo.MaskStroke
 import com.example.photo.CropPreset
 import com.example.photo.DrawingStroke
-import com.example.photo.DrawingViewModel
 import com.example.photo.GradientDirection
 import androidx.compose.material.icons.filled.FlashOn
 import com.example.photo.PhotoEditCategory
@@ -385,8 +384,35 @@ fun PhotoEditingScreen(
     var editingTextDraft by remember { mutableStateOf("") }
     var selectedFontCategory by remember { mutableStateOf("English") }
 
-    // DRAWING (Transplanted PDF Edit Pen engine)
-    val drawingViewModel = remember { DrawingViewModel() }
+    // DRAWING
+    var drawBrushSize by remember { mutableFloatStateOf(10f) }
+    var drawOpacity by remember { mutableFloatStateOf(1f) }
+    var drawColor by remember { mutableStateOf(android.graphics.Color.RED) }
+    var isDrawEraser by remember { mutableStateOf(false) }
+    var isColorPickerActive by remember { mutableStateOf(false) }
+    val drawStrokes = remember { mutableStateListOf<DrawingStroke>() }
+    val drawRedoStrokes = remember { mutableStateListOf<DrawingStroke>() }
+    var isDrawingPanMode by remember { mutableStateOf(false) }
+    var currentDrawStrokePoints by remember { mutableStateOf<List<PointF>>(emptyList()) }
+
+    fun undoDrawingStroke() {
+        if (drawStrokes.isNotEmpty()) {
+            val stroke = drawStrokes.removeLast()
+            drawRedoStrokes.add(stroke)
+        }
+    }
+
+    fun redoDrawingStroke() {
+        if (drawRedoStrokes.isNotEmpty()) {
+            val stroke = drawRedoStrokes.removeLast()
+            drawStrokes.add(stroke)
+        }
+    }
+
+    fun clearDrawingStrokes() {
+        drawStrokes.clear()
+        drawRedoStrokes.clear()
+    }
 
     // Helper: Push state to Undo History
     fun pushUndoHistory() {
@@ -444,7 +470,9 @@ fun PhotoEditingScreen(
         enhanceValue = 0f
         sharpenValue = 0f
         textItems.clear()
-        drawingViewModel.reset()
+        drawStrokes.clear()
+        drawRedoStrokes.clear()
+        isDrawingPanMode = false
         activeTool = PhotoEditTool.NONE
         Toast.makeText(context, "Restored to original image", Toast.LENGTH_SHORT).show()
     }
@@ -529,8 +557,8 @@ fun PhotoEditingScreen(
                 if (textItems.isNotEmpty()) {
                     outputBmp = PhotoEditorEngine.burnText(outputBmp, textItems)
                 }
-                if (drawingViewModel.annotations.isNotEmpty()) {
-                    outputBmp = PhotoEditorEngine.burnAnnotations(outputBmp, drawingViewModel.annotations)
+                if (drawStrokes.isNotEmpty()) {
+                    outputBmp = PhotoEditorEngine.burnDrawing(outputBmp, drawStrokes)
                 }
 
                 val hasAlpha = outputBmp.hasAlpha()
@@ -574,12 +602,8 @@ fun PhotoEditingScreen(
             showEditSelectedTextDialog -> showEditSelectedTextDialog = false
             showCustomBgColorPicker -> showCustomBgColorPicker = false
             showCustomTextColorPicker -> showCustomTextColorPicker = false
-            drawingViewModel.isColorPickerActive -> drawingViewModel.isColorPickerActive = false
-            drawingViewModel.showEmojiPicker -> drawingViewModel.showEmojiPicker = false
+            isColorPickerActive -> isColorPickerActive = false
             activeTool != PhotoEditTool.NONE -> {
-                if (activeTool == PhotoEditTool.DRAWING) {
-                    drawingViewModel.reset()
-                }
                 previewBitmap = null
                 extractedSubjectBitmap = null
                 brightnessValue = 0f
@@ -636,15 +660,15 @@ fun PhotoEditingScreen(
                     IconButton(
                         onClick = {
                             if (activeTool == PhotoEditTool.DRAWING) {
-                                drawingViewModel.undo()
+                                undoDrawingStroke()
                             } else {
                                 performUndo()
                             }
                         },
-                        enabled = if (activeTool == PhotoEditTool.DRAWING) drawingViewModel.canUndo else undoStack.isNotEmpty(),
+                        enabled = if (activeTool == PhotoEditTool.DRAWING) drawStrokes.isNotEmpty() else undoStack.isNotEmpty(),
                         modifier = Modifier.testTag("photo_editor_undo_button")
                     ) {
-                        val isUndoEnabled = if (activeTool == PhotoEditTool.DRAWING) drawingViewModel.canUndo else undoStack.isNotEmpty()
+                        val isUndoEnabled = if (activeTool == PhotoEditTool.DRAWING) drawStrokes.isNotEmpty() else undoStack.isNotEmpty()
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Undo,
                             contentDescription = "Undo",
@@ -656,15 +680,15 @@ fun PhotoEditingScreen(
                     IconButton(
                         onClick = {
                             if (activeTool == PhotoEditTool.DRAWING) {
-                                drawingViewModel.redo()
+                                redoDrawingStroke()
                             } else {
                                 performRedo()
                             }
                         },
-                        enabled = if (activeTool == PhotoEditTool.DRAWING) drawingViewModel.canRedo else redoStack.isNotEmpty(),
+                        enabled = if (activeTool == PhotoEditTool.DRAWING) drawRedoStrokes.isNotEmpty() else redoStack.isNotEmpty(),
                         modifier = Modifier.testTag("photo_editor_redo_button")
                     ) {
-                        val isRedoEnabled = if (activeTool == PhotoEditTool.DRAWING) drawingViewModel.canRedo else redoStack.isNotEmpty()
+                        val isRedoEnabled = if (activeTool == PhotoEditTool.DRAWING) drawRedoStrokes.isNotEmpty() else redoStack.isNotEmpty()
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Redo,
                             contentDescription = "Redo",
@@ -675,7 +699,7 @@ fun PhotoEditingScreen(
                     // RESET
                     IconButton(
                         onClick = { showResetConfirmDialog = true },
-                        enabled = originalBitmap != null && (undoStack.isNotEmpty() || currentBitmap != originalBitmap || textItems.isNotEmpty() || drawingViewModel.annotations.isNotEmpty()),
+                        enabled = originalBitmap != null && (undoStack.isNotEmpty() || currentBitmap != originalBitmap || textItems.isNotEmpty() || drawStrokes.isNotEmpty()),
                         modifier = Modifier.testTag("photo_editor_reset_button")
                     ) {
                         Icon(
@@ -755,8 +779,8 @@ fun PhotoEditingScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .background(Color.Black)
-                    .pointerInput(activeTool) {
-                        if (activeTool == PhotoEditTool.DRAWING) {
+                    .pointerInput(activeTool, isDrawingPanMode) {
+                        if (activeTool == PhotoEditTool.DRAWING && !isDrawingPanMode) {
                             // Two-finger pinch and pan only while drawing, so single-finger touches draw with 100% precision without panning the image away
                             awaitEachGesture {
                                 awaitFirstDown(requireUnconsumed = false)
@@ -1023,11 +1047,50 @@ fun PhotoEditingScreen(
                                     }
                                 }
                                 PhotoEditTool.DRAWING -> {
-                                    DrawingCanvas(
-                                        viewModel = drawingViewModel,
-                                        bitmap = displayBmp,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
+                                    if (isColorPickerActive) {
+                                        EyedropperOverlay(
+                                            bitmap = displayBmp,
+                                            currentColor = drawColor,
+                                            onColorSampled = { sampled ->
+                                                drawColor = sampled
+                                            },
+                                            onColorConfirmed = { sampled ->
+                                                drawColor = sampled
+                                                isColorPickerActive = false
+                                                isDrawEraser = false
+                                                isDrawingPanMode = false
+                                            }
+                                        )
+                                    } else {
+                                        DrawingOverlayCanvas(
+                                            strokes = drawStrokes,
+                                            currentStrokePoints = currentDrawStrokePoints,
+                                            currentColor = drawColor,
+                                            currentBrushSizeDp = drawBrushSize,
+                                            currentOpacity = drawOpacity,
+                                            isEraser = isDrawEraser,
+                                            isPanMode = isDrawingPanMode,
+                                            onStrokePointAdded = { currentDrawStrokePoints = currentDrawStrokePoints + it },
+                                            onStrokeCompleted = {
+                                                if (currentDrawStrokePoints.isNotEmpty()) {
+                                                    drawStrokes.add(
+                                                        DrawingStroke(
+                                                            points = currentDrawStrokePoints,
+                                                            color = drawColor,
+                                                            brushSizePx = drawBrushSize,
+                                                            opacity = drawOpacity,
+                                                            isEraser = isDrawEraser
+                                                        )
+                                                    )
+                                                    drawRedoStrokes.clear()
+                                                    currentDrawStrokePoints = emptyList()
+                                                }
+                                            },
+                                            onStrokeCancelled = {
+                                                currentDrawStrokePoints = emptyList()
+                                            }
+                                        )
+                                    }
                                 }
                                 else -> {}
                             }
@@ -1207,7 +1270,10 @@ fun PhotoEditingScreen(
                                             bgSubTab = 0
                                         }
                                         if (activeTool == PhotoEditTool.DRAWING) {
-                                            drawingViewModel.reset()
+                                            drawStrokes.clear()
+                                            drawRedoStrokes.clear()
+                                            currentDrawStrokePoints = emptyList()
+                                            isDrawingPanMode = false
                                         }
                                         if (activeTool == PhotoEditTool.FLASH) {
                                             flashRelitBaseBitmap?.recycle()
@@ -1312,10 +1378,10 @@ fun PhotoEditingScreen(
                                                 selectedTextId = null
                                             }
                                             PhotoEditTool.DRAWING -> {
-                                                if (drawingViewModel.annotations.isNotEmpty()) {
-                                                    currentBitmap = PhotoEditorEngine.burnAnnotations(curr, drawingViewModel.annotations)
-                                                }
-                                                drawingViewModel.reset()
+                                                currentBitmap = PhotoEditorEngine.burnDrawing(curr, drawStrokes)
+                                                drawStrokes.clear()
+                                                drawRedoStrokes.clear()
+                                                isDrawingPanMode = false
                                             }
                                             else -> {}
                                         }
@@ -2120,24 +2186,181 @@ fun PhotoEditingScreen(
                             }
 
                             PhotoEditTool.DRAWING -> {
-                                DrawingToolbar(
-                                    viewModel = drawingViewModel,
-                                    onApply = {
-                                        val curr = currentBitmap
-                                        if (curr != null && drawingViewModel.annotations.isNotEmpty()) {
-                                            pushUndoHistory()
-                                            currentBitmap = PhotoEditorEngine.burnAnnotations(curr, drawingViewModel.annotations)
-                                            drawingViewModel.reset()
-                                        }
-                                        previewBitmap = null
-                                        activeTool = PhotoEditTool.NONE
-                                    },
-                                    onCancel = {
-                                        drawingViewModel.reset()
-                                        previewBitmap = null
-                                        activeTool = PhotoEditTool.NONE
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        FilterChip(
+                                            selected = !isDrawEraser && !isColorPickerActive && !isDrawingPanMode,
+                                            onClick = {
+                                                isDrawEraser = false
+                                                isColorPickerActive = false
+                                                isDrawingPanMode = false
+                                            },
+                                            label = { Text("Brush", fontSize = 12.sp) }
+                                        )
+                                        FilterChip(
+                                            selected = isDrawEraser && !isColorPickerActive && !isDrawingPanMode,
+                                            onClick = {
+                                                isDrawEraser = true
+                                                isColorPickerActive = false
+                                                isDrawingPanMode = false
+                                            },
+                                            label = { Text("Eraser", fontSize = 12.sp) }
+                                        )
+                                        FilterChip(
+                                            selected = isDrawingPanMode,
+                                            onClick = {
+                                                isDrawingPanMode = true
+                                                isColorPickerActive = false
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Default.PanTool,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(13.dp)
+                                                )
+                                            },
+                                            label = { Text("Pan", fontSize = 12.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = AccentPink,
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
+                                        FilterChip(
+                                            selected = isColorPickerActive,
+                                            onClick = {
+                                                isColorPickerActive = true
+                                                isDrawEraser = false
+                                                isDrawingPanMode = false
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    imageVector = Icons.Default.Colorize,
+                                                    contentDescription = null,
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                            },
+                                            label = { Text("Picker", fontSize = 12.sp) },
+                                            colors = FilterChipDefaults.filterChipColors(
+                                                selectedContainerColor = AccentPink,
+                                                selectedLabelColor = Color.White
+                                            )
+                                        )
                                     }
-                                )
+
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(22.dp)
+                                                .clip(RoundedCornerShape(4.dp))
+                                                .background(Color(drawColor))
+                                                .border(1.5.dp, Color.White, RoundedCornerShape(4.dp))
+                                        )
+
+                                        // Undo Drawing
+                                        IconButton(
+                                            onClick = { undoDrawingStroke() },
+                                            enabled = drawStrokes.isNotEmpty(),
+                                            modifier = Modifier.size(28.dp).testTag("drawing_undo_button")
+                                        ) {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.Undo,
+                                                contentDescription = "Undo stroke",
+                                                tint = if (drawStrokes.isNotEmpty()) Color.White else Color(0xFF64748B),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        // Redo Drawing
+                                        IconButton(
+                                            onClick = { redoDrawingStroke() },
+                                            enabled = drawRedoStrokes.isNotEmpty(),
+                                            modifier = Modifier.size(28.dp).testTag("drawing_redo_button")
+                                        ) {
+                                            Icon(
+                                                Icons.AutoMirrored.Filled.Redo,
+                                                contentDescription = "Redo stroke",
+                                                tint = if (drawRedoStrokes.isNotEmpty()) Color.White else Color(0xFF64748B),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        // Clear all strokes
+                                        if (drawStrokes.isNotEmpty()) {
+                                            IconButton(
+                                                onClick = { clearDrawingStrokes() },
+                                                modifier = Modifier.size(28.dp).testTag("drawing_clear_button")
+                                            ) {
+                                                Icon(
+                                                    Icons.Default.Clear,
+                                                    contentDescription = "Clear all",
+                                                    tint = Color(0xFFEF4444),
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (isColorPickerActive) {
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Surface(
+                                        color = Color(0xFF1E293B),
+                                        shape = RoundedCornerShape(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Colorize,
+                                                contentDescription = null,
+                                                tint = AccentPink,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                            Text(
+                                                text = "Touch or drag on photo to sample pixel color",
+                                                color = Color.White,
+                                                fontSize = 11.sp
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text("Size: ${drawBrushSize.roundToInt()}", color = Color.White, fontSize = 12.sp, modifier = Modifier.width(70.dp))
+                                        Slider(
+                                            value = drawBrushSize,
+                                            onValueChange = { drawBrushSize = it },
+                                            valueRange = 2f..50f,
+                                            modifier = Modifier.weight(1f),
+                                            colors = SliderDefaults.colors(thumbColor = CrimsonPrimary, activeTrackColor = CrimsonPrimary)
+                                        )
+                                    }
+                                    if (!isDrawEraser) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Text("Opacity: ${(drawOpacity * 100).roundToInt()}%", color = Color.White, fontSize = 12.sp, modifier = Modifier.width(70.dp))
+                                            Slider(
+                                                value = drawOpacity,
+                                                onValueChange = { drawOpacity = it },
+                                                valueRange = 0.1f..1f,
+                                                modifier = Modifier.weight(1f),
+                                                colors = SliderDefaults.colors(thumbColor = CrimsonPrimary, activeTrackColor = CrimsonPrimary)
+                                            )
+                                        }
+                                        ColorPaletteRow(
+                                            selectedColor = drawColor,
+                                            onColorSelected = { drawColor = it }
+                                        )
+                                    }
+                                }
                             }
 
                             else -> {}
@@ -2343,10 +2566,7 @@ fun PhotoEditingScreen(
                                         icon = Icons.Default.Brush,
                                         label = "Drawing",
                                         testTag = "tool_drawing",
-                                        onClick = {
-                                            drawingViewModel.reset()
-                                            activeTool = PhotoEditTool.DRAWING
-                                        }
+                                        onClick = { activeTool = PhotoEditTool.DRAWING }
                                     )
                                 }
                             }

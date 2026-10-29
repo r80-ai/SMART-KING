@@ -56,9 +56,8 @@ fun AmarDokanMainScreen(
         }
     }
 
-    AmarDokanTheme {
-        Scaffold(
-            snackbarHost = { SnackbarHost(snackbarHostState) },
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
         floatingActionButton = {
             if (currentScreen == AmarDokanScreenType.HOME_DASHBOARD) {
                 FloatingActionButton(
@@ -209,11 +208,10 @@ fun AmarDokanMainScreen(
         )
     }
 
-        if (showBackupRestoreDialog) {
-            BackupRestoreDialog(
-                viewModel = viewModel,
-                onDismiss = { showBackupRestoreDialog = false }
-            )
-        }
+    if (showBackupRestoreDialog) {
+        BackupRestoreDialog(
+            viewModel = viewModel,
+            onDismiss = { showBackupRestoreDialog = false }
+        )
     }
 }

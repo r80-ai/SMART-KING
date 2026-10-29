@@ -1,9 +1,4 @@
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
-import java.net.URI
-import java.net.HttpURLConnection
-import java.io.FileOutputStream
-import java.io.InputStream
-import java.security.MessageDigest
 
 plugins {
   id("com.android.application")
@@ -17,16 +12,12 @@ android {
   namespace = "com.example"
   compileSdk { version = release(36) { minorApiLevel = 1 } }
 
-  val envVersionCode = (System.getenv("BUILD_NUMBER") ?: System.getenv("GITHUB_RUN_NUMBER"))?.toIntOrNull()
-  val appVersionCode = envVersionCode ?: 2
-  val appVersionName = System.getenv("VERSION_NAME") ?: "1.1.0"
-
   defaultConfig {
     applicationId = "com.aistudio.pdfmaster.qvrx"
     minSdk = 24
     targetSdk = 36
-    versionCode = appVersionCode
-    versionName = appVersionName
+    versionCode = 1
+    versionName = "1.0"
 
     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
   }
