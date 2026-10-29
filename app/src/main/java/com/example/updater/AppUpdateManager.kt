@@ -21,13 +21,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONException
 import java.io.File
 import java.io.IOException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 import java.util.concurrent.TimeUnit
 
 sealed class UpdateState {
     data object Idle : UpdateState()
     data object Checking : UpdateState()
+    data class CheckingRelease(val message: String) : UpdateState()
     data class UpToDate(val installedVersionCode: Long, val lastChecked: Long) : UpdateState()
     data class Available(val manifest: UpdateManifest, val isMandatory: Boolean) : UpdateState()
     data class Downloading(
@@ -61,9 +65,11 @@ class AppUpdateManager private constructor(private val appContext: Context) {
     val downloader = UpdateDownloader(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
 
-    private val httpClient = OkHttpClient.Builder()
+    val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
         .build()
 
     private val _updateState = MutableStateFlow<UpdateState>(UpdateState.Idle)
@@ -75,6 +81,10 @@ class AppUpdateManager private constructor(private val appContext: Context) {
     val isMandatoryUpdateActive: StateFlow<Boolean> = _updateState
         .map { state ->
             when (state) {
+                is UpdateState.CheckingRelease -> {
+                    // Retain mandatory lock if current manifest is mandatory
+                    _currentManifest.value?.isMandatory(installedVersionCode) ?: false
+                }
                 is UpdateState.Available -> state.isMandatory
                 is UpdateState.Downloading -> state.isMandatory
                 is UpdateState.Downloaded -> state.isMandatory
@@ -105,7 +115,7 @@ class AppUpdateManager private constructor(private val appContext: Context) {
         }
 
     init {
-        // Load cached manifest on startup to prevent bypassing previously known mandatory updates
+        // Load cached manifest on startup to prevent bypassing previously verified mandatory updates
         config.lastCachedManifestJson?.let { cachedJson ->
             try {
                 val cached = UpdateManifest.fromJson(cachedJson)
@@ -118,9 +128,13 @@ class AppUpdateManager private constructor(private val appContext: Context) {
     }
 
     /**
-     * Checks for updates against the remote manifest.
+     * Checks for updates against the configured remote manifest URL.
      */
     fun checkForUpdates(isManual: Boolean = false) {
+        if (_updateState.value is UpdateState.Downloading || _updateState.value is UpdateState.Installing) {
+            return // Prevent interrupting ongoing operations
+        }
+
         scope.launch {
             _updateState.value = UpdateState.Checking
             val result = fetchRemoteManifest()
@@ -146,90 +160,169 @@ class AppUpdateManager private constructor(private val appContext: Context) {
                     downloader.clearCache()
                 }
             }.onFailure { err ->
-                // Check if we have a cached mandatory update
+                val userErrorMessage = formatErrorMessage(err)
                 val cached = _currentManifest.value
-                if (cached != null && cached.isMandatory(installedVersionCode)) {
-                    _updateState.value = UpdateState.Error(
-                        message = "Network error: ${err.message}. A required update is pending.",
-                        canRetry = true,
-                        isMandatory = true,
-                        manifest = cached
-                    )
-                } else {
-                    _updateState.value = UpdateState.Error(
-                        message = err.message ?: "Failed to check for updates.",
-                        canRetry = true,
-                        isMandatory = false,
-                        manifest = cached
-                    )
-                }
+                val isMandatory = cached?.isMandatory(installedVersionCode) ?: false
+
+                _updateState.value = UpdateState.Error(
+                    message = userErrorMessage,
+                    canRetry = true,
+                    isMandatory = isMandatory,
+                    manifest = cached
+                )
             }
         }
     }
 
     /**
-     * Starts downloading the update APK.
+     * Directly queries GitHub Releases API for the latest published release, identifies the APK asset,
+     * and downloads it in-app with streaming progress without launching Chrome.
      */
-    fun startDownload(manifest: UpdateManifest) {
+    fun fetchAndDownloadLatestReleaseApk(activity: Activity? = null) {
+        val currentState = _updateState.value
+        if (currentState is UpdateState.Downloading || currentState is UpdateState.Installing) {
+            return // Prevent duplicate downloads when tapped repeatedly
+        }
+
+        val wasMandatory = isMandatoryUpdateActive.value ||
+                (_currentManifest.value?.isMandatory(installedVersionCode) ?: false)
+
         scope.launch {
-            val isMandatory = manifest.isMandatory(installedVersionCode)
-            _updateState.value = UpdateState.Downloading(
-                manifest = manifest,
-                progressPercent = 0,
-                bytesDownloaded = 0L,
-                totalBytes = manifest.fileSizeBytes,
-                isMandatory = isMandatory
+            _updateState.value = UpdateState.CheckingRelease(
+                message = "GitHub থেকে সর্বশেষ রিলিজ খোঁজা হচ্ছে..."
             )
 
-            val downloadResult = downloader.downloadApk(
-                downloadUrl = manifest.downloadUrl,
-                expectedSha256 = manifest.apkSha256
-            ) { bytesDownloaded, totalBytes, percent ->
-                _updateState.value = UpdateState.Downloading(
-                    manifest = manifest,
-                    progressPercent = percent,
-                    bytesDownloaded = bytesDownloaded,
-                    totalBytes = totalBytes,
-                    isMandatory = isMandatory
-                )
+            val releaseResult = withContext(Dispatchers.IO) {
+                GitHubReleaseHelper.fetchLatestRelease(httpClient, config.githubOwner, config.githubRepo)
             }
 
-            downloadResult.onSuccess { apkFile ->
-                // Perform complete security and integrity verification
-                val verification = UpdateSecurityVerifier.verifyApk(
-                    context = appContext,
-                    apkFile = apkFile,
-                    manifest = manifest,
-                    installedVersionCode = installedVersionCode
-                )
+            releaseResult.onSuccess { release ->
+                val assetResult = GitHubReleaseHelper.selectApkAsset(release, config.preferredApkAssetName)
 
-                when (verification) {
-                    is VerificationResult.Success -> {
-                        _updateState.value = UpdateState.Downloaded(
-                            manifest = manifest,
-                            apkFile = apkFile,
-                            isMandatory = isMandatory
-                        )
-                    }
-                    is VerificationResult.Failure -> {
-                        val errorDetail = verification.detailedError ?: ""
-                        _updateState.value = UpdateState.Error(
-                            message = "${verification.reason} $errorDetail".trim(),
-                            canRetry = true,
-                            isMandatory = isMandatory,
-                            manifest = manifest
-                        )
-                        apkFile.delete()
+                assetResult.onSuccess { asset ->
+                    // Build manifest representation from GitHub Release API response
+                    val parsedVersionCode = GitHubReleaseHelper.extractVersionCode(release.tagName, release.body)
+                        ?: (installedVersionCode + 1)
+                    val parsedSha256 = GitHubReleaseHelper.extractSha256FromBody(release.body) ?: ""
+
+                    val synthesizedManifest = UpdateManifest(
+                        manifestSchemaVersion = 1,
+                        appId = appContext.packageName,
+                        latestVersionCode = parsedVersionCode,
+                        latestVersionName = release.tagName.removePrefix("v"),
+                        minimumSupportedVersionCode = installedVersionCode,
+                        mandatoryUpdate = wasMandatory,
+                        releaseTitle = release.name.ifBlank { "SMART KING ${release.tagName}" },
+                        releaseNotes = release.body.ifBlank { "Direct update from GitHub Releases (${release.tagName})" },
+                        downloadUrl = asset.downloadUrl,
+                        releasePageUrl = "https://github.com/${config.githubOwner}/${config.githubRepo}/releases/tag/${release.tagName}",
+                        apkSha256 = parsedSha256,
+                        fileSizeBytes = asset.size
+                    )
+
+                    _currentManifest.value = synthesizedManifest
+
+                    // Immediately start downloading the APK with progress tracking
+                    startDownloadInternal(synthesizedManifest, wasMandatory, activity)
+                }.onFailure { assetErr ->
+                    _updateState.value = UpdateState.Error(
+                        message = assetErr.message ?: "No compatible APK asset found in release.",
+                        canRetry = true,
+                        isMandatory = wasMandatory,
+                        manifest = _currentManifest.value
+                    )
+                }
+            }.onFailure { releaseErr ->
+                _updateState.value = UpdateState.Error(
+                    message = formatErrorMessage(releaseErr),
+                    canRetry = true,
+                    isMandatory = wasMandatory,
+                    manifest = _currentManifest.value
+                )
+            }
+        }
+    }
+
+    /**
+     * Starts downloading the update APK based on an existing verified manifest.
+     */
+    fun startDownload(manifest: UpdateManifest) {
+        val currentState = _updateState.value
+        if (currentState is UpdateState.Downloading || currentState is UpdateState.Installing) {
+            return
+        }
+
+        val isMandatory = manifest.isMandatory(installedVersionCode)
+        scope.launch {
+            startDownloadInternal(manifest, isMandatory, null)
+        }
+    }
+
+    private suspend fun startDownloadInternal(
+        manifest: UpdateManifest,
+        isMandatory: Boolean,
+        activity: Activity?
+    ) {
+        _updateState.value = UpdateState.Downloading(
+            manifest = manifest,
+            progressPercent = 0,
+            bytesDownloaded = 0L,
+            totalBytes = manifest.fileSizeBytes,
+            isMandatory = isMandatory
+        )
+
+        val downloadResult = downloader.downloadApk(
+            downloadUrl = manifest.downloadUrl,
+            expectedSha256 = manifest.apkSha256
+        ) { bytesDownloaded, totalBytes, percent ->
+            _updateState.value = UpdateState.Downloading(
+                manifest = manifest,
+                progressPercent = percent,
+                bytesDownloaded = bytesDownloaded,
+                totalBytes = totalBytes,
+                isMandatory = isMandatory
+            )
+        }
+
+        downloadResult.onSuccess { apkFile ->
+            // Perform security, package identity, version, and signature verification
+            val verification = UpdateSecurityVerifier.verifyApk(
+                context = appContext,
+                apkFile = apkFile,
+                manifest = manifest,
+                installedVersionCode = installedVersionCode
+            )
+
+            when (verification) {
+                is VerificationResult.Success -> {
+                    _updateState.value = UpdateState.Downloaded(
+                        manifest = manifest,
+                        apkFile = apkFile,
+                        isMandatory = isMandatory
+                    )
+                    // If activity was provided, can prompt for installation immediately
+                    if (activity != null) {
+                        installApk(activity, apkFile)
                     }
                 }
-            }.onFailure { downloadErr ->
-                _updateState.value = UpdateState.Error(
-                    message = "Download failed: ${downloadErr.message}",
-                    canRetry = true,
-                    isMandatory = isMandatory,
-                    manifest = manifest
-                )
+                is VerificationResult.Failure -> {
+                    val errorDetail = verification.detailedError ?: ""
+                    _updateState.value = UpdateState.Error(
+                        message = "${verification.reason} $errorDetail".trim(),
+                        canRetry = true,
+                        isMandatory = isMandatory,
+                        manifest = manifest
+                    )
+                    apkFile.delete()
+                }
             }
+        }.onFailure { downloadErr ->
+            _updateState.value = UpdateState.Error(
+                message = "APK Download failed: ${downloadErr.message}",
+                canRetry = true,
+                isMandatory = isMandatory,
+                manifest = manifest
+            )
         }
     }
 
@@ -284,7 +377,7 @@ class AppUpdateManager private constructor(private val appContext: Context) {
     }
 
     /**
-     * Checks if the app was just updated upon resume.
+     * Checks if the app was updated upon resume.
      * If installed version >= manifest's latest version or minimum required version,
      * the lock is lifted and the cache is cleared.
      */
@@ -297,18 +390,17 @@ class AppUpdateManager private constructor(private val appContext: Context) {
                 downloader.clearCache()
                 config.lastCachedManifestJson = null
             } else if (!manifest.isMandatory(currentCode) && _updateState.value is UpdateState.Error) {
-                // If the error was on an optional update, don't keep blocking
                 _updateState.value = UpdateState.Available(manifest, isMandatory = false)
             }
         }
     }
 
     /**
-     * Direct link to GitHub Releases web page if user chooses manual browser download.
+     * Opens GitHub Releases web page if user explicitly requests manual browser viewing.
      */
     fun openReleasesPage(activity: Activity) {
         val url = _currentManifest.value?.releasePageUrl?.takeIf { it.isNotBlank() }
-            ?: UpdateConfig.DEFAULT_RELEASES_PAGE
+            ?: config.getReleasesWebUrl()
         try {
             val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -325,15 +417,29 @@ class AppUpdateManager private constructor(private val appContext: Context) {
     }
 
     private suspend fun fetchRemoteManifest(): Result<UpdateManifest> = withContext(Dispatchers.IO) {
-        // Try primary URL first
-        val primaryResult = fetchManifestFromUrl(config.manifestUrl)
+        val configuredUrl = config.manifestUrl.trim()
+
+        // 1. Try primary URL
+        val primaryResult = fetchManifestFromUrl(configuredUrl)
         if (primaryResult.isSuccess) {
             return@withContext primaryResult
         }
 
-        // Try fallback URL if primary fails and is different
-        if (config.fallbackManifestUrl.isNotBlank() && config.fallbackManifestUrl != config.manifestUrl) {
-            val fallbackResult = fetchManifestFromUrl(config.fallbackManifestUrl)
+        // 2. If configured URL gave 404 and does not end in .json, try appending .json
+        if (primaryResult.isFailure && !configuredUrl.endsWith(".json", ignoreCase = true)) {
+            val jsonUrl = "$configuredUrl.json"
+            val altResult = fetchManifestFromUrl(jsonUrl)
+            if (altResult.isSuccess) {
+                // Update config to valid URL with .json
+                config.manifestUrl = jsonUrl
+                return@withContext altResult
+            }
+        }
+
+        // 3. Try fallback URL if primary fails and fallback is distinct
+        val fallbackUrl = config.fallbackManifestUrl.trim()
+        if (fallbackUrl.isNotBlank() && fallbackUrl != configuredUrl) {
+            val fallbackResult = fetchManifestFromUrl(fallbackUrl)
             if (fallbackResult.isSuccess) {
                 return@withContext fallbackResult
             }
@@ -347,20 +453,52 @@ class AppUpdateManager private constructor(private val appContext: Context) {
             val request = Request.Builder()
                 .url(url)
                 .header("User-Agent", "SMART-KING-Android-Updater")
-                .header("Accept", "application/json")
+                .header("Accept", "application/json, text/plain, */*")
                 .header("Cache-Control", "no-cache")
                 .build()
 
             val response = httpClient.newCall(request).execute()
-            if (!response.isSuccessful) {
-                return Result.failure(IOException("HTTP error ${response.code}: ${response.message}"))
-            }
+            val code = response.code
 
-            val responseBody = response.body?.string() ?: return Result.failure(IOException("Empty response body"))
-            val manifest = UpdateManifest.fromJson(responseBody)
-            Result.success(manifest)
+            when {
+                code == 200 -> {
+                    val responseBody = response.body?.string()
+                        ?: return Result.failure(IOException("Empty response body from update server."))
+                    val manifest = UpdateManifest.fromJson(responseBody)
+                    Result.success(manifest)
+                }
+                code == 404 -> {
+                    Result.failure(
+                        IOException("Update manifest not found (HTTP 404). Check endpoint URL or ensure updates/smart_king_update.json is published on GitHub.")
+                    )
+                }
+                code == 403 || code == 429 -> {
+                    Result.failure(
+                        IOException("Update server access rate limited (HTTP $code). Please try again later.")
+                    )
+                }
+                code in 500..599 -> {
+                    Result.failure(
+                        IOException("Update server encountered an error (HTTP $code). Please try again later.")
+                    )
+                }
+                else -> {
+                    Result.failure(
+                        IOException("HTTP error $code: ${response.message}")
+                    )
+                }
+            }
         } catch (e: Exception) {
             Result.failure(e)
+        }
+    }
+
+    private fun formatErrorMessage(throwable: Throwable): String {
+        return when (throwable) {
+            is UnknownHostException -> "No internet connection or DNS failed. Please check network."
+            is SocketTimeoutException -> "Network timeout while checking for updates. Please retry."
+            is JSONException, is IllegalArgumentException -> "Corrupted or invalid update manifest: ${throwable.message}"
+            else -> throwable.message ?: "Failed to check for updates."
         }
     }
 

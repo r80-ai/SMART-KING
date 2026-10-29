@@ -56,6 +56,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Check
@@ -151,6 +152,9 @@ fun SettingsScreen(
     val currentManifest by updateManager.currentManifest.collectAsState()
     var showConfigDialog by remember { mutableStateOf(false) }
     var configUrlInput by remember(updateManager.config.manifestUrl) { mutableStateOf(updateManager.config.manifestUrl) }
+    var configOwnerInput by remember(updateManager.config.githubOwner) { mutableStateOf(updateManager.config.githubOwner) }
+    var configRepoInput by remember(updateManager.config.githubRepo) { mutableStateOf(updateManager.config.githubRepo) }
+    var configAssetInput by remember(updateManager.config.preferredApkAssetName) { mutableStateOf(updateManager.config.preferredApkAssetName) }
     var showOptionalUpdateModal by remember { mutableStateOf(false) }
 
     val filePickerLauncher = rememberLauncherForActivityResult(
@@ -620,13 +624,13 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         OutlinedButton(
                             onClick = {
                                 (context as? Activity)?.let { act ->
-                                    updateManager.openReleasesPage(act)
+                                    updateManager.fetchAndDownloadLatestReleaseApk(act)
                                 }
                             },
                             shape = RoundedCornerShape(8.dp),
                             contentPadding = PaddingValues(horizontal = 10.dp)
                         ) {
-                            Icon(Icons.Default.OpenInBrowser, contentDescription = "Releases", modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.CloudDownload, contentDescription = "Direct Download APK", modifier = Modifier.size(16.dp))
                         }
                     }
                 }
@@ -831,7 +835,7 @@ AppScreen(modifier = modifier, isScrollable = false) {
         )
     }
 
-    // Modal dialog to view and configure Remote Update Manifest Endpoint
+    // Modal dialog to view and configure Remote Update Manifest Endpoint & GitHub Repository
     if (showConfigDialog) {
         val isBn = language == "bn"
         AlertDialog(
@@ -840,16 +844,21 @@ AppScreen(modifier = modifier, isScrollable = false) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Tune, contentDescription = null, tint = CrimsonPrimary)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(if (isBn) "রিমোট আপডেট কনফিগারেশন" else "Remote Update Config", fontWeight = FontWeight.Bold)
+                    Text(if (isBn) "রিমোট আপডেট ও GitHub কনফিগ" else "Remote Update & GitHub Config", fontWeight = FontWeight.Bold)
                 }
             },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .verticalScroll(androidx.compose.foundation.rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
                     Text(
                         text = if (isBn)
-                            "GitHub Releases অথবা যেকোনো কাস্টম সার্ভারের আপডেট ম্যানিফেস্ট JSON URL এখানে দিন:"
+                            "আপডেট ম্যানিফেস্ট JSON URL (রিমোট সার্ভার বা GitHub raw URL):"
                         else
-                            "Specify the update manifest JSON URL (GitHub Releases raw endpoint or custom server):",
+                            "Update manifest JSON URL (Remote server or GitHub raw URL):",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -864,6 +873,49 @@ AppScreen(modifier = modifier, isScrollable = false) {
                         label = { Text("Manifest Endpoint URL") }
                     )
 
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                    Text(
+                        text = if (isBn)
+                            "GitHub Releases API সেটিংস (সরাসরি APK ডাউনলোডের জন্য):"
+                        else
+                            "GitHub Releases API settings (for direct in-app APK download):",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = configOwnerInput,
+                            onValueChange = { configOwnerInput = it },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            label = { Text("Owner (e.g. r80-ai)") }
+                        )
+
+                        OutlinedTextField(
+                            value = configRepoInput,
+                            onValueChange = { configRepoInput = it },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                            label = { Text("Repo (SMART-KING)") }
+                        )
+                    }
+
+                    OutlinedTextField(
+                        value = configAssetInput,
+                        onValueChange = { configAssetInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        textStyle = MaterialTheme.typography.bodySmall.copy(fontSize = 11.sp),
+                        label = { Text("Preferred APK Asset Name (e.g. app-debug.apk)") }
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween,
@@ -873,10 +925,13 @@ AppScreen(modifier = modifier, isScrollable = false) {
                             onClick = {
                                 updateManager.config.resetToDefault()
                                 configUrlInput = updateManager.config.manifestUrl
-                                viewModel.setNotification(if (isBn) "ডিফল্ট URL রিসেট হয়েছে" else "Reset to default endpoint")
+                                configOwnerInput = updateManager.config.githubOwner
+                                configRepoInput = updateManager.config.githubRepo
+                                configAssetInput = updateManager.config.preferredApkAssetName
+                                viewModel.setNotification(if (isBn) "সব ডিফল্ট মান রিসেট হয়েছে" else "Reset to canonical defaults")
                             }
                         ) {
-                            Text(if (isBn) "ডিফল্ট রিসেট" else "Reset Default", fontSize = 12.sp)
+                            Text(if (isBn) "ডিফল্ট রিসেট" else "Reset Defaults", fontSize = 12.sp)
                         }
                     }
                 }
@@ -884,13 +939,19 @@ AppScreen(modifier = modifier, isScrollable = false) {
             confirmButton = {
                 Button(
                     onClick = {
-                        val trimmed = configUrlInput.trim()
-                        if (trimmed.isNotBlank()) {
-                            updateManager.config.manifestUrl = trimmed
-                            viewModel.setNotification(if (isBn) "✅ আপডেট URL সংরক্ষিত হয়েছে" else "✅ Manifest URL saved")
-                            showConfigDialog = false
-                            updateManager.checkForUpdates(isManual = true)
-                        }
+                        val trimmedUrl = configUrlInput.trim()
+                        val trimmedOwner = configOwnerInput.trim()
+                        val trimmedRepo = configRepoInput.trim()
+                        val trimmedAsset = configAssetInput.trim()
+
+                        if (trimmedUrl.isNotBlank()) updateManager.config.manifestUrl = trimmedUrl
+                        if (trimmedOwner.isNotBlank()) updateManager.config.githubOwner = trimmedOwner
+                        if (trimmedRepo.isNotBlank()) updateManager.config.githubRepo = trimmedRepo
+                        if (trimmedAsset.isNotBlank()) updateManager.config.preferredApkAssetName = trimmedAsset
+
+                        viewModel.setNotification(if (isBn) "✅ আপডেট কনফিগারেশন সংরক্ষিত হয়েছে" else "✅ Update configuration saved")
+                        showConfigDialog = false
+                        updateManager.checkForUpdates(isManual = true)
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = CrimsonPrimary)
                 ) {

@@ -1,7 +1,6 @@
 package com.example.updater.ui
 
 import android.app.Activity
-import android.os.Build
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -24,7 +23,6 @@ import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.ErrorOutline
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.SystemUpdate
@@ -65,7 +63,7 @@ fun UpdateRequiredScreen(
 ) {
     // Lock back press completely: mandatory update cannot be bypassed
     BackHandler(enabled = true) {
-        // Deliberately empty: back navigation disabled
+        // Deliberately empty: back navigation disabled during mandatory lock
     }
 
     val context = LocalContext.current
@@ -75,8 +73,8 @@ fun UpdateRequiredScreen(
 
     val installedVersionName = updateManager.installedVersionName
     val installedVersionCode = updateManager.installedVersionCode
-    val targetVersionName = manifest?.latestVersionName ?: "Newer Version"
-    val targetVersionCode = manifest?.latestVersionCode ?: 0L
+    val targetVersionName = manifest?.latestVersionName ?: "Latest Release"
+    val targetVersionCode = manifest?.latestVersionCode ?: (installedVersionCode + 1)
 
     Box(
         modifier = modifier
@@ -218,7 +216,7 @@ fun UpdateRequiredScreen(
 
             // Release Notes Card
             val releaseNotes = manifest?.releaseNotes?.ifBlank {
-                "• গুরুত্বপূর্ণ নিরাপত্তা আপডেট ও বাগ ফিক্স\n• নতুন ফিচার ও কার্যক্ষমতা বৃদ্ধি\n• GitHub Releases অটোমেটিক সিঙ্ক"
+                "• গুরুত্বপূর্ণ নিরাপত্তা আপডেট ও বাগ ফিক্স\n• GitHub Releases অটোমেটিক সিঙ্ক ও লেটেস্ট APK\n• নতুন ফিচার ও কার্যক্ষমতা বৃদ্ধি"
             } ?: "নতুন সংস্করণে আপডেট করুন।"
 
             Card(
@@ -279,6 +277,16 @@ fun UpdateRequiredScreen(
                     )
                 }
 
+                is UpdateState.CheckingRelease -> {
+                    CircularProgressIndicator(color = Color(0xFF38BDF8), modifier = Modifier.size(36.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = state.message,
+                        color = Color(0xFFE0F2FE),
+                        fontSize = 13.sp
+                    )
+                }
+
                 is UpdateState.Downloading -> {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -298,7 +306,11 @@ fun UpdateRequiredScreen(
                             val mbDownloaded = state.bytesDownloaded / (1024f * 1024f)
                             val mbTotal = state.totalBytes / (1024f * 1024f)
                             Text(
-                                text = "ডাউনলোড হচ্ছে: ${state.progressPercent}% (%.1f MB / %.1f MB)".format(mbDownloaded, mbTotal),
+                                text = if (state.totalBytes > 0) {
+                                    "ডাউনলোড হচ্ছে: ${state.progressPercent}% (%.1f MB / %.1f MB)".format(mbDownloaded, mbTotal)
+                                } else {
+                                    "ডাউনলোড হচ্ছে: %.1f MB".format(mbDownloaded)
+                                },
                                 color = Color.White,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium
@@ -403,20 +415,24 @@ fun UpdateRequiredScreen(
                         ) {
                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("পুনরায় চেষ্টা করুন", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                            Text("পুনরায় চেষ্টা করুন", fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
 
-                        OutlinedButton(
-                            onClick = { activity?.let { updateManager.openReleasesPage(it) } },
+                        // Third button: Directly downloads the latest APK from GitHub Releases API without opening Chrome!
+                        Button(
+                            onClick = {
+                                updateManager.fetchAndDownloadLatestReleaseApk(activity)
+                            },
                             modifier = Modifier
                                 .weight(1f)
                                 .height(48.dp)
                                 .testTag("btn_mandatory_browser"),
-                            shape = RoundedCornerShape(10.dp)
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7))
                         ) {
-                            Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
+                            Icon(Icons.Default.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.White)
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("ব্রাউজার থেকে", fontSize = 13.sp, color = Color.White)
+                            Text("সরাসরি APK নিন", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color.White)
                         }
                     }
                 }
@@ -446,17 +462,21 @@ fun UpdateRequiredScreen(
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    OutlinedButton(
-                        onClick = { activity?.let { updateManager.openReleasesPage(it) } },
+                    // Third button: Direct latest APK download from GitHub Releases API
+                    Button(
+                        onClick = {
+                            updateManager.fetchAndDownloadLatestReleaseApk(activity)
+                        },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(48.dp)
                             .testTag("btn_mandatory_browser_direct"),
-                        shape = RoundedCornerShape(10.dp)
+                        shape = RoundedCornerShape(10.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1E293B))
                     ) {
-                        Icon(Icons.Default.OpenInBrowser, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color(0xFF94A3B8))
+                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color(0xFF38BDF8))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("GitHub Releases পেজ দেখুন", color = Color(0xFF94A3B8), fontSize = 13.sp)
+                        Text("GitHub রিলিজ থেকে সরাসরি লেটেস্ট APK ডাউনলোড", color = Color(0xFFE0F2FE), fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
                     }
                 }
             }

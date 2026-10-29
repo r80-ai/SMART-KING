@@ -90,9 +90,9 @@ object UpdateSecurityVerifier {
             )
         }
 
-        if (archiveVersionCode != manifest.latestVersionCode) {
+        if (manifest.latestVersionCode > 0 && archiveVersionCode < manifest.latestVersionCode) {
             return VerificationResult.Failure(
-                "APK version ($archiveVersionCode) does not match manifest latestVersionCode (${manifest.latestVersionCode})."
+                "APK version ($archiveVersionCode) is lower than expected latestVersionCode (${manifest.latestVersionCode})."
             )
         }
 
@@ -138,14 +138,13 @@ object UpdateSecurityVerifier {
                 val sharesCertificate = archiveCleanFingerprints.any { it in installedFingerprints }
                 if (!sharesCertificate) {
                     return VerificationResult.Failure(
-                        "APK signing certificate does not match currently installed app. Android will refuse to update.",
+                        "APK signing certificate mismatch: The downloaded APK is signed with a different key than the installed app. Android will refuse installation with INSTALL_FAILED_UPDATE_INCOMPATIBLE. Please ensure the update is built and signed with the matching keystore.",
                         "Installed: $installedFingerprints, APK: $archiveCleanFingerprints"
                     )
                 }
             }
         } catch (e: Exception) {
-            // In unit tests without full package context or if check fails non-fatally
-            // we allow continuation if manifest check passed
+            // In unit test runner without full package context or if check fails non-fatally
         }
 
         return VerificationResult.Success

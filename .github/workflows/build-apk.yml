@@ -91,7 +91,9 @@ jobs:
         with:
           tag_name: build-${{ github.run_number }}
           name: SMART KING Debug Build #${{ github.run_number }}
-          files: app/build/outputs/apk/debug/*.apk
+          files: |
+            app/build/outputs/apk/debug/*.apk
+            updates/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           
