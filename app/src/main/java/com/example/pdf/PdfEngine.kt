@@ -1647,6 +1647,13 @@ object PdfEngine {
     }
 
     /**
+     * Renders vector annotations, shapes, arrows, icons, and text onto any Canvas (PDF or Bitmap).
+     */
+    fun renderItemsToCanvas(canvas: Canvas, items: List<EditItem>, finalW: Float, finalH: Float) {
+        AnnotationRenderer.renderItemsToCanvas(canvas, items, finalW, finalH)
+    }
+
+    /**
      * Renders standard vector icons (checkmarks, crosses, utility badges, stamps) directly onto a Canvas.
      */
     fun drawVectorIconOnCanvas(

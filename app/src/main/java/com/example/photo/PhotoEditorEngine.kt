@@ -1216,6 +1216,19 @@ object PhotoEditorEngine {
     }
 
     /**
+     * Burns advanced annotations (Pen, Highlighter, Shapes, Arrows, Icons, Emojis, Clear Strokes)
+     * directly onto the photo bitmap using the PDF Pen vector rendering engine.
+     * Preserves exact photo resolution and aspect ratio.
+     */
+    fun burnAnnotations(bitmap: Bitmap, items: List<com.example.pdf.PdfEngine.EditItem>): Bitmap {
+        if (bitmap.isRecycled || items.isEmpty()) return bitmap
+        val output = bitmap.copy(Bitmap.Config.ARGB_8888, true)
+        val canvas = Canvas(output)
+        com.example.pdf.PdfEngine.renderItemsToCanvas(canvas, items, output.width.toFloat(), output.height.toFloat())
+        return output
+    }
+
+    /**
      * Burns user drawings/strokes directly onto the bitmap canvas.
      */
     fun burnDrawing(bitmap: Bitmap, strokes: List<DrawingStroke>): Bitmap {
@@ -1257,3 +1270,4 @@ object PhotoEditorEngine {
         return output
     }
 }
+
