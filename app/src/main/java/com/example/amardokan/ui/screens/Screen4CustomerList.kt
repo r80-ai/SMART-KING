@@ -9,6 +9,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
@@ -79,21 +80,47 @@ fun Screen4CustomerList(
                 .padding(innerPadding)
                 .background(AmarDokanColors.ContentBg)
         ) {
-            // Search Field
+            // Search Field - High Contrast, Solid Bold Black Text, Dark Visible Placeholder
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { searchQuery = it },
-                placeholder = { Text("কাস্টমারের নাম বা ফোন নম্বর দিয়ে খুঁজুন...") },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                placeholder = {
+                    Text(
+                        "কাস্টমারের নাম বা ফোন নম্বর দিয়ে খুঁজুন...",
+                        color = Color(0xFF333333),
+                        fontWeight = FontWeight.Medium
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        Icons.Default.Search,
+                        contentDescription = null,
+                        tint = Color(0xFF0F172A)
+                    )
+                },
+                trailingIcon = if (searchQuery.isNotBlank()) {
+                    {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(
+                                Icons.Default.Close,
+                                contentDescription = "Clear",
+                                tint = Color(0xFF0F172A)
+                            )
+                        }
+                    }
+                } else null,
                 singleLine = true,
+                textStyle = LocalTextStyle.current.copy(
+                    color = Color.Black,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                ),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(16.dp)
+                    .testTag("input_customer_search"),
                 shape = RoundedCornerShape(10.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = Color.White,
-                    unfocusedContainerColor = Color.White
-                )
+                colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White)
             )
 
             if (filteredCustomers.isEmpty()) {

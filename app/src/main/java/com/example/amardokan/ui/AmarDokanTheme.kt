@@ -54,6 +54,49 @@ object AmarDokanColors {
 
     val TableRowEven = Color(0xFFFFFFFF)
     val TableRowOdd = Color(0xFFF8FAFC)
+
+    // High-Contrast Input Field & Form Tokens
+    val InputText = Color(0xFF000000)            // Solid bold black (#000000)
+    val InputPlaceholder = Color(0xFF333333)     // Clearly visible dark slate/black tint
+    val InputLabel = Color(0xFF0F172A)           // Crisp dark navy/black label
+    val InputBorder = Color(0xFF64748B)          // Crisp visible border
+    val InputBorderFocused = Color(0xFF1976D2)   // Primary focus border
+    val ChipUnselectedLabel = Color(0xFF0F172A)  // Dark and crisp unselected chip text
+    val ChipUnselectedBorder = Color(0xFF64748B) // Strong unselected chip border
+}
+
+/**
+ * Standard High-Contrast TextFieldColors for all Amar Dokan form inputs,
+ * search bars, dialogs, and text fields.
+ */
+@Composable
+fun amarDokanTextFieldColors(
+    containerColor: Color = Color.White
+): TextFieldColors {
+    return OutlinedTextFieldDefaults.colors(
+        focusedTextColor = Color(0xFF000000),
+        unfocusedTextColor = Color(0xFF000000),
+        disabledTextColor = Color(0xFF333333),
+        focusedContainerColor = containerColor,
+        unfocusedContainerColor = containerColor,
+        disabledContainerColor = containerColor,
+        cursorColor = Color(0xFF000000),
+        focusedBorderColor = AmarDokanColors.PrimaryBlue,
+        unfocusedBorderColor = Color(0xFF64748B),
+        disabledBorderColor = Color(0xFF94A3B8),
+        focusedLabelColor = Color(0xFF0F172A),
+        unfocusedLabelColor = Color(0xFF1E293B),
+        disabledLabelColor = Color(0xFF333333),
+        focusedPlaceholderColor = Color(0xFF333333),
+        unfocusedPlaceholderColor = Color(0xFF444444),
+        disabledPlaceholderColor = Color(0xFF555555),
+        focusedLeadingIconColor = Color(0xFF0F172A),
+        unfocusedLeadingIconColor = Color(0xFF1E293B),
+        focusedTrailingIconColor = Color(0xFF0F172A),
+        unfocusedTrailingIconColor = Color(0xFF1E293B),
+        focusedSupportingTextColor = Color(0xFF333333),
+        unfocusedSupportingTextColor = Color(0xFF444444)
+    )
 }
 
 /**
@@ -120,11 +163,19 @@ fun AmarDokanTheme(
         primary = AmarDokanColors.PrimaryBlue,
         onPrimary = Color.White,
         primaryContainer = AmarDokanColors.PrimaryContainer,
+        onPrimaryContainer = Color(0xFF0D47A1),
         secondary = AmarDokanColors.NavyDarkHeader,
         onSecondary = Color.White,
-        surface = AmarDokanColors.Surface,
+        surface = Color.White,
+        onSurface = Color(0xFF000000),
+        surfaceVariant = Color(0xFFF1F5F9),
+        onSurfaceVariant = Color(0xFF1E293B),
         background = AmarDokanColors.Background,
-        error = AmarDokanColors.DueRed
+        onBackground = Color(0xFF000000),
+        outline = Color(0xFF64748B),
+        outlineVariant = Color(0xFF94A3B8),
+        error = AmarDokanColors.DueRed,
+        onError = Color.White
     )
 
     MaterialTheme(

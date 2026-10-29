@@ -91,6 +91,12 @@ fun Screen6ReceivePayment(
                             onValueChange = {},
                             readOnly = true,
                             trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = customerDropdownExpanded) },
+                            textStyle = LocalTextStyle.current.copy(
+                                color = if (selectedCustomer != null) Color.Black else Color(0xFF333333),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp
+                            ),
+                            colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White),
                             modifier = Modifier
                                 .menuAnchor()
                                 .fillMaxWidth()
@@ -101,7 +107,14 @@ fun Screen6ReceivePayment(
                         ) {
                             customers.forEach { cust ->
                                 DropdownMenuItem(
-                                    text = { Text("${cust.name} ${if (cust.phone.isNotBlank()) "(${cust.phone})" else ""}") },
+                                    text = {
+                                        Text(
+                                            "${cust.name} ${if (cust.phone.isNotBlank()) "(${cust.phone})" else ""}",
+                                            color = Color.Black,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontSize = 14.sp
+                                        )
+                                    },
                                     onClick = {
                                         selectedCustomerId = cust.id
                                         customerDropdownExpanded = false
@@ -125,22 +138,28 @@ fun Screen6ReceivePayment(
                         text = "জমা টাকার পরিমাণ ও মোড",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp,
-                        color = AmarDokanColors.TextPrimary
+                        color = Color.Black
                     )
 
                     OutlinedTextField(
                         value = amountText,
                         onValueChange = { amountText = it },
-                        label = { Text("জমা টাকার পরিমাণ (₹) *") },
-                        placeholder = { Text("যেমন: 150") },
+                        label = { Text("জমা টাকার পরিমাণ (₹) *", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
+                        placeholder = { Text("যেমন: 150", color = Color(0xFF444444), fontWeight = FontWeight.Medium) },
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(
+                            color = Color.Black,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        ),
+                        colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White),
                         modifier = Modifier
                             .fillMaxWidth()
                             .testTag("input_receive_amount")
                     )
 
-                    Text("পেমেন্ট মাধ্যম:", fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Text("পেমেন্ট মাধ্যম:", fontSize = 13.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0F172A))
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -148,21 +167,66 @@ fun Screen6ReceivePayment(
                         FilterChip(
                             selected = paymentMode == "CASH",
                             onClick = { paymentMode = "CASH" },
-                            label = { Text("নগদ (Cash)") },
-                            modifier = Modifier.weight(1f)
+                            label = {
+                                Text(
+                                    "🟢 নগদ (Cash)",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (paymentMode == "CASH") Color(0xFF065F46) else Color(0xFF0F172A)
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = Color.White,
+                                labelColor = Color(0xFF0F172A),
+                                selectedContainerColor = AmarDokanColors.CashGreenLight,
+                                selectedLabelColor = Color(0xFF065F46)
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = paymentMode == "CASH",
+                                borderColor = Color(0xFF64748B),
+                                selectedBorderColor = AmarDokanColors.CashGreen,
+                                borderWidth = 1.5.dp
+                            )
                         )
                         FilterChip(
                             selected = paymentMode == "UPI",
                             onClick = { paymentMode = "UPI" },
-                            label = { Text("অনলাইন (UPI / QR)") },
-                            modifier = Modifier.weight(1f)
+                            label = {
+                                Text(
+                                    "💳 অনলাইন (UPI / QR)",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (paymentMode == "UPI") Color(0xFF0D47A1) else Color(0xFF0F172A)
+                                )
+                            },
+                            modifier = Modifier.weight(1f),
+                            colors = FilterChipDefaults.filterChipColors(
+                                containerColor = Color.White,
+                                labelColor = Color(0xFF0F172A),
+                                selectedContainerColor = AmarDokanColors.PrimaryContainer,
+                                selectedLabelColor = Color(0xFF0D47A1)
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = paymentMode == "UPI",
+                                borderColor = Color(0xFF64748B),
+                                selectedBorderColor = AmarDokanColors.PrimaryBlue,
+                                borderWidth = 1.5.dp
+                            )
                         )
                     }
 
                     OutlinedTextField(
                         value = notes,
                         onValueChange = { notes = it },
-                        label = { Text("মন্তব্য / নোট (ঐচ্ছিক)") },
+                        label = { Text("মন্তব্য / নোট (ঐচ্ছিক)", fontWeight = FontWeight.Bold, color = Color(0xFF0F172A)) },
+                        placeholder = { Text("যেমন: অনলাইন পেমেন্ট রেফারেন্স", color = Color(0xFF444444)) },
+                        textStyle = LocalTextStyle.current.copy(
+                            color = Color.Black,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
+                        ),
+                        colors = com.example.amardokan.ui.amarDokanTextFieldColors(containerColor = Color.White),
                         modifier = Modifier.fillMaxWidth(),
                         singleLine = true
                     )
