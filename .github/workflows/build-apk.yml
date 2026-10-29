@@ -78,6 +78,42 @@ jobs:
       - name: Build Debug APK
         run: gradle :app:assembleDebug --no-daemon --stacktrace
 
+      - name: Generate Update Manifest
+        run: |
+          mkdir -p updates
+          APK_FILE="app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_FILE" ]; then
+            APK_SIZE=$(stat -c%s "$APK_FILE" 2>/dev/null || stat -f%z "$APK_FILE")
+            APK_SHA256=$(sha256sum "$APK_FILE" | awk '{print $1}')
+            CERT_SHA256=$(keytool -list -v -keystore ./debug.keystore -storepass android -alias androiddebugkey | grep "SHA256:" | awk '{print $2}' | tr -d ':')
+            PUB_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+
+            cat <<EOF > updates/smart_king_update.json
+          {
+            "manifestSchemaVersion": 1,
+            "appId": "com.aistudio.pdfmaster.qvrx",
+            "latestVersionCode": ${{ github.run_number }},
+            "latestVersionName": "1.1.0",
+            "minimumSupportedVersionCode": 1,
+            "mandatoryUpdate": false,
+            "releaseTitle": "SMART KING Debug Build #${{ github.run_number }}",
+            "releaseNotes": "Automated build #${{ github.run_number }} from commit ${{ github.sha }}",
+            "downloadUrl": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/app-debug.apk",
+            "releasePageUrl": "https://github.com/${{ github.repository }}/releases/tag/build-${{ github.run_number }}",
+            "apkSha256": "$APK_SHA256",
+            "signingCertificateSha256": "$CERT_SHA256",
+            "publishedAt": "$PUB_DATE",
+            "fileSizeBytes": $APK_SIZE,
+            "nextManifestUrl": null
+          }
+          EOF
+            cp updates/smart_king_update.json updates/smart_king_update_manifest.json
+            cp updates/smart_king_update.json updates/smart_king_update
+            echo "Generated update manifest with latestVersionCode=${{ github.run_number }}, size=$APK_SIZE bytes, SHA256=$APK_SHA256"
+          else
+            echo "::warning::APK file not found at $APK_FILE"
+          fi
+
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
         with:

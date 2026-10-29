@@ -181,6 +181,44 @@ object GitHubReleaseHelper {
     }
 
     /**
+     * Attempts to fetch the authoritative update manifest JSON asset attached to the release,
+     * such as smart_king_update.json or smart_king_update_manifest.json.
+     */
+    fun fetchReleaseManifest(
+        client: OkHttpClient,
+        release: GitHubReleaseInfo
+    ): Result<UpdateManifest> {
+        val manifestAsset = release.assets.firstOrNull { asset ->
+            asset.name.equals("smart_king_update.json", ignoreCase = true) ||
+                    asset.name.equals("smart_king_update_manifest.json", ignoreCase = true) ||
+                    (asset.name.endsWith(".json", ignoreCase = true) && asset.name.contains("update", ignoreCase = true))
+        } ?: return Result.failure(
+            NoSuchElementException("No update manifest JSON asset found in release '${release.tagName}'.")
+        )
+
+        val request = Request.Builder()
+            .url(manifestAsset.downloadUrl)
+            .header("User-Agent", "SMART-KING-Android-Updater")
+            .header("Accept", "application/json, text/plain, */*")
+            .build()
+
+        return try {
+            val response = client.newCall(request).execute()
+            if (!response.isSuccessful) {
+                return Result.failure(
+                    IOException("Failed to download manifest asset '${manifestAsset.name}' (HTTP ${response.code}).")
+                )
+            }
+            val bodyString = response.body?.string()
+                ?: return Result.failure(IOException("Empty manifest asset response body."))
+            val manifest = UpdateManifest.fromJson(bodyString)
+            Result.success(manifest)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Extracts optional SHA-256 checksum from the release notes body if published there.
      */
     fun extractSha256FromBody(body: String): String? {
@@ -191,20 +229,27 @@ object GitHubReleaseHelper {
     }
 
     /**
-     * Extracts optional versionCode from tag or release notes body (e.g. build-42 -> 42).
+     * Extracts optional versionCode ONLY if explicitly documented in the release notes body
+     * (e.g. "versionCode: 153" or "build: 153").
+     *
+     * IMPORTANT: Tag names like "build-152" or "v1.1.0" must NOT have their digits assumed
+     * to be the Android package versionCode. The only authoritative versionCode is the integer
+     * from the Android manifest / APK archive itself or the verified release manifest JSON.
      */
-    fun extractVersionCode(tagName: String, body: String): Long? {
+    fun extractExplicitVersionCodeFromBody(body: String): Long? {
         val bodyMatcher = VERSION_CODE_PATTERN.matcher(body)
         if (bodyMatcher.find()) {
             bodyMatcher.group(1)?.toLongOrNull()?.let { return it }
         }
-
-        val tagDigits = tagName.filter { it.isDigit() }
-        if (tagDigits.isNotBlank()) {
-            return tagDigits.toLongOrNull()
-        }
-
         return null
+    }
+
+    /**
+     * Compatibility helper: returns explicitly documented versionCode from release body,
+     * or null if not declared. Never infers versionCode from git tag digits.
+     */
+    fun extractVersionCode(tagName: String, body: String): Long? {
+        return extractExplicitVersionCodeFromBody(body)
     }
 
     private fun parseRelease(obj: JSONObject): GitHubReleaseInfo {

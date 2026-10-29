@@ -231,4 +231,89 @@ class UpdateSystemTest {
 
         testFile.delete()
     }
+
+    @Test
+    fun testVerificationFailsOnMissingFile_ReportsSpecificError() {
+        val nonExistentFile = File(context.cacheDir, "non_existent_update.apk")
+        if (nonExistentFile.exists()) nonExistentFile.delete()
+
+        val manifest = UpdateManifest(
+            latestVersionCode = 2,
+            latestVersionName = "1.1.0"
+        )
+
+        val result = UpdateSecurityVerifier.verifyApk(
+            context = context,
+            apkFile = nonExistentFile,
+            manifest = manifest,
+            installedVersionCode = 1
+        )
+
+        assertTrue(result is VerificationResult.Failure)
+        val failure = result as VerificationResult.Failure
+        assertTrue(failure.reason.contains("does not exist at"))
+    }
+
+    @Test
+    fun testVerificationFailsOnEmptyFile_ReportsSpecificError() {
+        val emptyFile = File(context.cacheDir, "empty_update.apk")
+        emptyFile.createNewFile()
+
+        val manifest = UpdateManifest(
+            latestVersionCode = 2,
+            latestVersionName = "1.1.0"
+        )
+
+        val result = UpdateSecurityVerifier.verifyApk(
+            context = context,
+            apkFile = emptyFile,
+            manifest = manifest,
+            installedVersionCode = 1
+        )
+
+        assertTrue(result is VerificationResult.Failure)
+        val failure = result as VerificationResult.Failure
+        assertTrue(failure.reason.contains("is empty (0 bytes)"))
+
+        emptyFile.delete()
+    }
+
+    @Test
+    fun testVerificationFailsOnUnparseableArchive_ReportsSpecificError() {
+        val invalidApkFile = File(context.cacheDir, "invalid_archive.apk")
+        FileOutputStream(invalidApkFile).use { fos ->
+            fos.write("CORRUPTED_ZIP_HEADER_DATA".toByteArray())
+        }
+
+        val manifest = UpdateManifest(
+            latestVersionCode = 2,
+            latestVersionName = "1.1.0"
+        )
+
+        val result = UpdateSecurityVerifier.verifyApk(
+            context = context,
+            apkFile = invalidApkFile,
+            manifest = manifest,
+            installedVersionCode = 1
+        )
+
+        assertTrue(result is VerificationResult.Failure)
+        val failure = result as VerificationResult.Failure
+        assertTrue(failure.reason.contains("Unable to parse APK archive"))
+
+        invalidApkFile.delete()
+    }
+
+    @Test
+    fun testGitHubReleaseHelper_TagDigitsNotAssumedAsVersionCode() {
+        // Tag name "build-152" without explicit body text should NOT yield versionCode 152
+        val plainBody = "Automated release build"
+        val versionCode = GitHubReleaseHelper.extractVersionCode("build-152", plainBody)
+        assertEquals(null, versionCode)
+
+        // Only explicit declaration in body should be recognized
+        val explicitBody = "Automated release\nversionCode: 153"
+        val explicitVersionCode = GitHubReleaseHelper.extractVersionCode("build-152", explicitBody)
+        assertEquals(153L, explicitVersionCode)
+    }
 }

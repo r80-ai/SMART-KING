@@ -32,21 +32,38 @@ object UpdateSecurityVerifier {
         context: Context,
         apkFile: File,
         manifest: UpdateManifest,
-        installedVersionCode: Long
+        installedVersionCode: Long,
+        allowSameVersion: Boolean = false
     ): VerificationResult {
-        // 1. File existence and readability
-        if (!apkFile.exists() || !apkFile.canRead() || apkFile.length() <= 0L) {
-            return VerificationResult.Failure("Downloaded APK file is missing or unreadable.")
+        // 1. File existence
+        if (!apkFile.exists()) {
+            return VerificationResult.Failure(
+                "Downloaded APK file does not exist at '${apkFile.absolutePath}'."
+            )
         }
 
-        // 2. Expected file size check (if specified in manifest)
+        // 2. File readability
+        if (!apkFile.canRead()) {
+            return VerificationResult.Failure(
+                "Downloaded APK file cannot be read due to file permission restrictions."
+            )
+        }
+
+        // 3. File non-empty
+        if (apkFile.length() <= 0L) {
+            return VerificationResult.Failure(
+                "Downloaded APK file is empty (0 bytes)."
+            )
+        }
+
+        // 4. Expected file size check (if specified in manifest and > 0)
         if (manifest.fileSizeBytes > 0L && apkFile.length() != manifest.fileSizeBytes) {
             return VerificationResult.Failure(
                 "Downloaded file size (${apkFile.length()} bytes) does not match manifest (${manifest.fileSizeBytes} bytes)."
             )
         }
 
-        // 3. SHA-256 Checksum check
+        // 5. SHA-256 Checksum check (if specified in manifest and non-blank)
         if (manifest.apkSha256.isNotBlank()) {
             val calculatedSha256 = calculateFileSha256(apkFile)
             val expectedSha256 = manifest.apkSha256.replace(":", "").trim().lowercase(Locale.US)
@@ -60,7 +77,7 @@ object UpdateSecurityVerifier {
             }
         }
 
-        // 4. Archive Parsing & Package Info validation
+        // 6. Archive Parsing & Package Info validation
         val pm = context.packageManager
         val flags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
             PackageManager.GET_SIGNING_CERTIFICATES
@@ -71,10 +88,12 @@ object UpdateSecurityVerifier {
 
         val archiveInfo: PackageInfo? = pm.getPackageArchiveInfo(apkFile.absolutePath, flags)
         if (archiveInfo == null) {
-            return VerificationResult.Failure("Unable to parse Android package archive. The APK file is invalid or incomplete.")
+            return VerificationResult.Failure(
+                "Unable to parse APK archive (corrupted or truncated download). The file is not a valid Android package."
+            )
         }
 
-        // 5. Verify Package Name (Application ID)
+        // 7. Verify Package Name (Application ID)
         val expectedPackageName = context.packageName // com.aistudio.pdfmaster.qvrx
         if (archiveInfo.packageName != expectedPackageName) {
             return VerificationResult.Failure(
@@ -82,24 +101,31 @@ object UpdateSecurityVerifier {
             )
         }
 
-        // 6. Non-downgrade and version code check
+        // 8. Non-downgrade and version code check
         val archiveVersionCode = PackageInfoCompat.getLongVersionCode(archiveInfo)
         if (archiveVersionCode < installedVersionCode) {
             return VerificationResult.Failure(
-                "Version downgrade rejected: APK version ($archiveVersionCode) is older than currently installed ($installedVersionCode)."
+                "Version downgrade rejected: Downloaded APK version ($archiveVersionCode) is older than currently installed ($installedVersionCode)."
+            )
+        }
+
+        if (archiveVersionCode == installedVersionCode && !allowSameVersion) {
+            val archiveVersionName = archiveInfo.versionName ?: "unknown"
+            return VerificationResult.Failure(
+                "Downloaded APK (v$archiveVersionName, Build $archiveVersionCode) is already installed. An update requires a newer build with a higher versionCode."
             )
         }
 
         if (manifest.latestVersionCode > 0 && archiveVersionCode < manifest.latestVersionCode) {
             return VerificationResult.Failure(
-                "APK version ($archiveVersionCode) is lower than expected latestVersionCode (${manifest.latestVersionCode})."
+                "APK build version ($archiveVersionCode) is lower than expected latestVersionCode (${manifest.latestVersionCode})."
             )
         }
 
-        // 7. Verify Signing Certificate
+        // 9. Verify Signing Certificate
         val archiveSignatures = extractSignatures(archiveInfo)
         if (archiveSignatures.isEmpty()) {
-            return VerificationResult.Failure("No signing certificates found in the downloaded APK.")
+            return VerificationResult.Failure("No signing certificates found in the downloaded APK archive.")
         }
 
         val archiveFingerprints = archiveSignatures.map { calculateCertSha256(it) }

@@ -19,9 +19,11 @@ class UpdateDownloader(private val context: Context) {
 
     private val client: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(300, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
         .followRedirects(true)
         .followSslRedirects(true)
+        .retryOnConnectionFailure(true)
         .build()
 
     /**
@@ -86,7 +88,7 @@ class UpdateDownloader(private val context: Context) {
 
             body.byteStream().use { inputStream ->
                 FileOutputStream(tempApkFile).use { outputStream ->
-                    val buffer = ByteArray(8192)
+                    val buffer = ByteArray(65536) // 64KB buffer for efficient large file streaming
                     var read: Int
                     var lastPercent = -1
 
@@ -110,12 +112,35 @@ class UpdateDownloader(private val context: Context) {
                 }
             }
 
-            // Atomically rename temp file to final APK file
+            // Verify downloaded byte count
+            if (bytesReadTotal == 0L) {
+                if (tempApkFile.exists()) tempApkFile.delete()
+                return@withContext Result.failure(
+                    IOException("Downloaded APK file is empty (0 bytes received from server).")
+                )
+            }
+
+            if (contentLength > 0L && bytesReadTotal != contentLength) {
+                if (tempApkFile.exists()) tempApkFile.delete()
+                return@withContext Result.failure(
+                    IOException("Incomplete download: received $bytesReadTotal bytes, expected $contentLength bytes.")
+                )
+            }
+
+            // Atomically move temp file to final APK file with copy fallback
             if (finalApkFile.exists()) {
                 finalApkFile.delete()
             }
             val renamed = tempApkFile.renameTo(finalApkFile)
-            val resultFile = if (renamed) finalApkFile else tempApkFile
+            val resultFile = if (renamed && finalApkFile.exists() && finalApkFile.length() > 0L) {
+                finalApkFile
+            } else {
+                tempApkFile.copyTo(finalApkFile, overwrite = true)
+                tempApkFile.delete()
+                finalApkFile
+            }
+
+            resultFile.setReadable(true, false)
 
             onProgress(bytesReadTotal, bytesReadTotal, 100)
             Result.success(resultFile)

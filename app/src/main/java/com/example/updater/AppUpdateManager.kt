@@ -200,30 +200,43 @@ class AppUpdateManager private constructor(private val appContext: Context) {
                 val assetResult = GitHubReleaseHelper.selectApkAsset(release, config.preferredApkAssetName)
 
                 assetResult.onSuccess { asset ->
-                    // Build manifest representation from GitHub Release API response
-                    val parsedVersionCode = GitHubReleaseHelper.extractVersionCode(release.tagName, release.body)
-                        ?: (installedVersionCode + 1)
-                    val parsedSha256 = GitHubReleaseHelper.extractSha256FromBody(release.body) ?: ""
+                    // 1. Attempt to fetch authoritative update manifest JSON asset attached to the release
+                    val releaseManifest = withContext(Dispatchers.IO) {
+                        GitHubReleaseHelper.fetchReleaseManifest(httpClient, release)
+                    }.getOrNull()
 
-                    val synthesizedManifest = UpdateManifest(
-                        manifestSchemaVersion = 1,
-                        appId = appContext.packageName,
-                        latestVersionCode = parsedVersionCode,
-                        latestVersionName = release.tagName.removePrefix("v"),
-                        minimumSupportedVersionCode = installedVersionCode,
-                        mandatoryUpdate = wasMandatory,
-                        releaseTitle = release.name.ifBlank { "SMART KING ${release.tagName}" },
-                        releaseNotes = release.body.ifBlank { "Direct update from GitHub Releases (${release.tagName})" },
-                        downloadUrl = asset.downloadUrl,
-                        releasePageUrl = "https://github.com/${config.githubOwner}/${config.githubRepo}/releases/tag/${release.tagName}",
-                        apkSha256 = parsedSha256,
-                        fileSizeBytes = asset.size
-                    )
+                    val targetManifest = if (releaseManifest != null) {
+                        releaseManifest.copy(
+                            downloadUrl = asset.downloadUrl,
+                            fileSizeBytes = if (releaseManifest.fileSizeBytes > 0L) releaseManifest.fileSizeBytes else asset.size,
+                            releasePageUrl = if (releaseManifest.releasePageUrl.isNotBlank()) releaseManifest.releasePageUrl
+                            else "https://github.com/${config.githubOwner}/${config.githubRepo}/releases/tag/${release.tagName}"
+                        )
+                    } else {
+                        // 2. Synthesize manifest without guessing versionCode from git tag digits
+                        val explicitVersionCode = GitHubReleaseHelper.extractExplicitVersionCodeFromBody(release.body) ?: 0L
+                        val parsedSha256 = GitHubReleaseHelper.extractSha256FromBody(release.body) ?: ""
 
-                    _currentManifest.value = synthesizedManifest
+                        UpdateManifest(
+                            manifestSchemaVersion = 1,
+                            appId = appContext.packageName,
+                            latestVersionCode = explicitVersionCode, // 0L indicates version to be determined dynamically from downloaded APK
+                            latestVersionName = release.tagName.removePrefix("v"),
+                            minimumSupportedVersionCode = installedVersionCode,
+                            mandatoryUpdate = wasMandatory,
+                            releaseTitle = release.name.ifBlank { "SMART KING ${release.tagName}" },
+                            releaseNotes = release.body.ifBlank { "Direct update from GitHub Releases (${release.tagName})" },
+                            downloadUrl = asset.downloadUrl,
+                            releasePageUrl = "https://github.com/${config.githubOwner}/${config.githubRepo}/releases/tag/${release.tagName}",
+                            apkSha256 = parsedSha256,
+                            fileSizeBytes = asset.size
+                        )
+                    }
+
+                    _currentManifest.value = targetManifest
 
                     // Immediately start downloading the APK with progress tracking
-                    startDownloadInternal(synthesizedManifest, wasMandatory, activity)
+                    startDownloadInternal(targetManifest, wasMandatory, activity)
                 }.onFailure { assetErr ->
                     _updateState.value = UpdateState.Error(
                         message = assetErr.message ?: "No compatible APK asset found in release.",
@@ -285,22 +298,37 @@ class AppUpdateManager private constructor(private val appContext: Context) {
         }
 
         downloadResult.onSuccess { apkFile ->
+            // Dynamically resolve latestVersionCode from APK package archive info if not predetermined
+            var effectiveManifest = manifest
+            val pm = appContext.packageManager
+            val archiveInfo = pm.getPackageArchiveInfo(apkFile.absolutePath, 0)
+            if (archiveInfo != null) {
+                val archiveVersionCode = PackageInfoCompat.getLongVersionCode(archiveInfo)
+                if (manifest.latestVersionCode <= 0L) {
+                    effectiveManifest = manifest.copy(
+                        latestVersionCode = archiveVersionCode,
+                        latestVersionName = archiveInfo.versionName ?: manifest.latestVersionName
+                    )
+                    _currentManifest.value = effectiveManifest
+                }
+            }
+
             // Perform security, package identity, version, and signature verification
             val verification = UpdateSecurityVerifier.verifyApk(
                 context = appContext,
                 apkFile = apkFile,
-                manifest = manifest,
+                manifest = effectiveManifest,
                 installedVersionCode = installedVersionCode
             )
 
             when (verification) {
                 is VerificationResult.Success -> {
                     _updateState.value = UpdateState.Downloaded(
-                        manifest = manifest,
+                        manifest = effectiveManifest,
                         apkFile = apkFile,
                         isMandatory = isMandatory
                     )
-                    // If activity was provided, can prompt for installation immediately
+                    // If activity was provided, prompt for installation immediately
                     if (activity != null) {
                         installApk(activity, apkFile)
                     }
@@ -311,9 +339,10 @@ class AppUpdateManager private constructor(private val appContext: Context) {
                         message = "${verification.reason} $errorDetail".trim(),
                         canRetry = true,
                         isMandatory = isMandatory,
-                        manifest = manifest
+                        manifest = effectiveManifest
                     )
-                    apkFile.delete()
+                    // Note: Do NOT delete apkFile here. Deleting apkFile prematurely causes
+                    // "Downloaded APK file is missing or unreadable" on subsequent checks or UI interactions.
                 }
             }
         }.onFailure { downloadErr ->
